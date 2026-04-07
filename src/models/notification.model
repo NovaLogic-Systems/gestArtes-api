@@ -1,0 +1,44 @@
+// notification.model.js
+const { query } = require('../config/db');
+
+const findByUser = async (userId) => {
+    const result = await query(
+        `SELECT * FROM Notifications WHERE userId = @userId ORDER BY createdAt DESC`,
+        { userId }
+    );
+    return result.recordset;
+};
+
+const findByIdAndUser = async (id, userId) => {
+    const result = await query(
+        `SELECT * FROM Notifications WHERE id = @id AND userId = @userId`,
+        { id, userId }
+    );
+    return result.recordset[0] || null;
+};
+
+const markRead = async (id, userId) => {
+    await query(
+        `UPDATE Notifications SET isRead = 1 WHERE id = @id AND userId = @userId`,
+        { id, userId }
+    );
+};
+
+const deleteNotif = async (id, userId) => {
+    await query(
+        `DELETE FROM Notifications WHERE id = @id AND userId = @userId`,
+        { id, userId }
+    );
+};
+
+const insert = async (userId, message) => {
+    const result = await query(
+        `INSERT INTO Notifications (userId, message)
+     OUTPUT INSERTED.*
+     VALUES (@userId, @message)`,
+        { userId, message }
+    );
+    return result.recordset[0];
+};
+
+module.exports = { findByUser, findByIdAndUser, markRead, delete: deleteNotif, insert };

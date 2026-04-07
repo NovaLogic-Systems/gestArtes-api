@@ -5,7 +5,7 @@ Backend REST API do projeto gestArtes, desenvolvido para a Escola Entartes.
 ## Stack
 
 - **Node.js** + **Express**
-- **SQL Server** via `mssql`
+- **Prisma ORM** com **SQL Server**
 - **dotenv**, **cors**, **nodemon**
 
 ## Requisitos
@@ -17,11 +17,13 @@ Backend REST API do projeto gestArtes, desenvolvido para a Escola Entartes.
 ## Estrutura
 
 - [src/app.js](src/app.js) - ponto de entrada da API e inicialização do servidor
-- [src/config/db.js](src/config/db.js) - ligação à base de dados
+- [src/config/prisma.js](src/config/prisma.js) - cliente Prisma partilhado
 - [src/controllers/](src/controllers/) - controladores da aplicação
-- [src/models/](src/models/) - queries e acesso aos dados
+- [src/models/](src/models/) - acesso aos dados
 - [src/routes/](src/routes/) - definição e registo de rotas
 - [src/middlewares/](src/middlewares/) - middlewares de validação e tratamento de erros
+- [prisma/schema.prisma](prisma/schema.prisma) - schema e modelos introspectados
+- [prisma.config.ts](prisma.config.ts) - configuração Prisma 7
 - [.env.example](.env.example) - exemplo de configuração local
 - [package.json](package.json) - scripts e dependências
 
@@ -35,19 +37,32 @@ npm install
 
 > Se estiveres no PowerShell e o `npm` for bloqueado por policy local, usa `npm.cmd`.
 
-1. Copiar [.env.example](.env.example) para um ficheiro `.env` local e preencher os valores do ambiente:
+1. Copiar [.env.example](.env.example) para `.env` e preencher:
 
 ```env
 PORT=3001
-DB_SERVER=localhost
-DB_DATABASE=gestArtes
-DB_USER=gestArtes_user
-DB_PASSWORD=a_tua_password
+DATABASE_URL="sqlserver://localhost:1433;database=gestArtes;user=gestArtes_user;password=a_tua_password;encrypt=true;trustServerCertificate=true;"
 ```
 
 > O ficheiro `.env` é local e não deve ser versionado.
 
-1. Criar a base de dados `gestArtes` no SQL Server e confirmar que os dados de ligação estão alinhados com [src/config/db.js](src/config/db.js).
+1. Validar o schema Prisma:
+
+```bash
+npx prisma validate
+```
+
+1. Se a base de dados já existe, importar modelos para o schema:
+
+```bash
+npx prisma db pull
+```
+
+1. Gerar o Prisma Client:
+
+```bash
+npx prisma generate
+```
 
 ## Arranque
 
@@ -62,12 +77,3 @@ npm start
 ```
 
 API disponível em `http://localhost:3001`
-
-## Organização
-
-O projeto está preparado para crescer em camadas:
-
-- `src/app.js` centraliza a inicialização do Express.
-- `src/routes/` expõe os endpoints da API.
-- `src/controllers/` concentra a lógica de negócio.
-- `src/models/` concentra o acesso à base de dados.

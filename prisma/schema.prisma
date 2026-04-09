@@ -1,0 +1,539 @@
+generator client {
+  provider        = "prisma-client-js"
+  previewFeatures = ["partialIndexes"]
+}
+
+datasource db {
+  provider = "sqlserver"
+}
+
+model AcademicYear {
+  AcademicYearID               Int                            @id(map: "PK__Academic__C54C7A218A7E6E75") @default(autoincrement())
+  Label                        String                         @unique(map: "UQ__Academic__EDBE0C582EF29033") @db.VarChar(50)
+  StartsOn                     DateTime                       @db.Date
+  EndsOn                       DateTime                       @db.Date
+  IsActive                     Boolean                        @unique(map: "UIX_AcademicYear_OneActive", where: raw("([IsActive]=(1))"))
+  FinancialSummary             FinancialSummary[]
+  SchoolEvent                  SchoolEvent[]
+  SchoolSchedule               SchoolSchedule[]
+  TeacherAvailabilityRecurring TeacherAvailabilityRecurring[]
+}
+
+model AttendanceStatus {
+  AttendanceStatusID Int              @id(map: "PK__Attendan__7696A71515DB5A33") @default(autoincrement())
+  StatusName         String           @unique(map: "UQ__Attendan__05E7698AC307A3DA") @db.VarChar(50)
+  SessionStudent     SessionStudent[]
+}
+
+model AudienceScope {
+  AudienceScopeID Int           @id(map: "PK__Audience__A4FAD128B7765CCA") @default(autoincrement())
+  ScopeName       String        @unique(map: "UQ__Audience__36965DE46BEF1BEC") @db.VarChar(50)
+  SchoolEvent     SchoolEvent[]
+}
+
+model CoachingJoinRequest {
+  JoinRequestID             Int                       @id(map: "PK__Coaching__2573934A92B3CA66") @default(autoincrement())
+  SessionID                 Int
+  StudentAccountID          Int
+  RequestedAt               DateTime                  @db.DateTime
+  StatusID                  Int
+  ReviewedByUserID          Int?
+  ReviewedAt                DateTime?                 @db.DateTime
+  User                      User?                     @relation(fields: [ReviewedByUserID], references: [UserID], onDelete: NoAction, onUpdate: NoAction, map: "FKCoachingJo315859")
+  CoachingJoinRequestStatus CoachingJoinRequestStatus @relation(fields: [StatusID], references: [StatusID], onUpdate: NoAction, map: "FKCoachingJo493731")
+  StudentAccount            StudentAccount            @relation(fields: [StudentAccountID], references: [StudentAccountID], onUpdate: NoAction, map: "FKCoachingJo710192")
+  CoachingSession           CoachingSession           @relation(fields: [SessionID], references: [SessionID], onUpdate: NoAction, map: "FKCoachingJo941654")
+
+  @@index([SessionID], map: "IX_CoachingJoinRequest_SessionID")
+  @@index([StatusID], map: "IX_CoachingJoinRequest_StatusID")
+  @@index([StudentAccountID], map: "IX_CoachingJoinRequest_StudentAccountID")
+}
+
+model CoachingJoinRequestStatus {
+  StatusID            Int                   @id(map: "PK__Coaching__C8EE2043C354056C") @default(autoincrement())
+  StatusName          String                @unique(map: "UQ__Coaching__05E7698A6C2E6A5F") @db.VarChar(50)
+  CoachingJoinRequest CoachingJoinRequest[]
+}
+
+model CoachingSession {
+  SessionID                                    Int                   @id(map: "PK__Coaching__C9F4927041B081E4") @default(autoincrement())
+  StudioID                                     Int
+  StartTime                                    DateTime              @db.DateTime
+  EndTime                                      DateTime              @db.DateTime
+  StatusID                                     Int
+  FinalPrice                                   Decimal?              @db.Decimal(10, 2)
+  ValidationRequestedAt                        DateTime?             @db.DateTime
+  CancellationReason                           String?               @db.VarChar(255)
+  RequestedByUserID                            Int
+  ModalityID                                   Int
+  MaxParticipants                              Int?
+  IsExternal                                   Boolean
+  IsOutsideStdHours                            Boolean
+  CreatedAt                                    DateTime              @db.DateTime
+  ReviewedByUserID                             Int?
+  ReviewedAt                                   DateTime?             @db.DateTime
+  ReviewNotes                                  String?               @db.VarChar(255)
+  PricingRateID                                Int
+  CoachingJoinRequest                          CoachingJoinRequest[]
+  User_CoachingSession_ReviewedByUserIDToUser  User?                 @relation("CoachingSession_ReviewedByUserIDToUser", fields: [ReviewedByUserID], references: [UserID], onDelete: NoAction, onUpdate: NoAction, map: "FKCoachingSe122574")
+  SessionPricingRate                           SessionPricingRate    @relation(fields: [PricingRateID], references: [PricingRateID], onUpdate: NoAction, map: "FKCoachingSe330299")
+  Studio                                       Studio                @relation(fields: [StudioID], references: [StudioID], onUpdate: NoAction, map: "FKCoachingSe374919")
+  SessionStatus                                SessionStatus         @relation(fields: [StatusID], references: [StatusID], onUpdate: NoAction, map: "FKCoachingSe66160")
+  Modality                                     Modality              @relation(fields: [ModalityID], references: [ModalityID], onUpdate: NoAction, map: "FKCoachingSe718595")
+  User_CoachingSession_RequestedByUserIDToUser User                  @relation("CoachingSession_RequestedByUserIDToUser", fields: [RequestedByUserID], references: [UserID], onUpdate: NoAction, map: "FKCoachingSe91769")
+  FinancialEntry                               FinancialEntry[]
+  Notification                                 Notification[]
+  SessionStudent                               SessionStudent[]
+  SessionTeacher                               SessionTeacher[]
+  SessionValidation                            SessionValidation[]
+
+  @@index([ModalityID], map: "IX_CoachingSession_ModalityID")
+  @@index([RequestedByUserID], map: "IX_CoachingSession_RequestedByUserID")
+  @@index([StartTime, EndTime], map: "IX_CoachingSession_StartTime_EndTime")
+  @@index([StatusID], map: "IX_CoachingSession_StatusID")
+  @@index([StudioID], map: "IX_CoachingSession_StudioID")
+}
+
+model FinancialEntry {
+  EntryID            Int                @id(map: "PK__Financia__F57BD2D79CF7204C") @default(autoincrement())
+  SessionID          Int
+  Amount             Decimal            @db.Decimal(10, 2)
+  EntryTypeID        Int
+  CreatedAt          DateTime           @db.DateTime
+  IsExported         Boolean
+  ExportedByUserID   Int?
+  FinancialSummaryID Int
+  CoachingSession    CoachingSession    @relation(fields: [SessionID], references: [SessionID], onUpdate: NoAction, map: "FKFinancialE156070")
+  User               User?              @relation(fields: [ExportedByUserID], references: [UserID], onDelete: NoAction, onUpdate: NoAction, map: "FKFinancialE401382")
+  FinancialEntryType FinancialEntryType @relation(fields: [EntryTypeID], references: [EntryTypeID], onUpdate: NoAction, map: "FKFinancialE684094")
+  FinancialSummary   FinancialSummary   @relation(fields: [FinancialSummaryID], references: [FinancialSummaryID], onUpdate: NoAction, map: "FKFinancialE900991")
+
+  @@index([FinancialSummaryID], map: "IX_FinancialEntry_FinancialSummaryID")
+  @@index([IsExported], map: "IX_FinancialEntry_IsExported")
+  @@index([SessionID], map: "IX_FinancialEntry_SessionID")
+}
+
+model FinancialEntryType {
+  EntryTypeID    Int              @id(map: "PK__Financia__BA9FFE83BD0CCF63") @default(autoincrement())
+  TypeName       String           @unique(map: "UQ__Financia__D4E7DFA8E8DC357D") @db.VarChar(50)
+  FinancialEntry FinancialEntry[]
+}
+
+model FinancialSummary {
+  FinancialSummaryID Int              @id(map: "PK__Financia__6B0A0A77B126877E") @default(autoincrement())
+  PeriodStart        DateTime         @db.Date
+  PeriodEnd          DateTime         @db.Date
+  GeneratedAt        DateTime         @db.DateTime
+  TotalAmount        Decimal          @db.Decimal(10, 2)
+  GeneratedByUserID  Int
+  IsExported         Boolean
+  AcademicYearID     Int
+  FinancialEntry     FinancialEntry[]
+  User               User             @relation(fields: [GeneratedByUserID], references: [UserID], onUpdate: NoAction, map: "FKFinancialS483396")
+  AcademicYear       AcademicYear     @relation(fields: [AcademicYearID], references: [AcademicYearID], onUpdate: NoAction, map: "FKFinancialS977589")
+}
+
+model InventoryItem {
+  InventoryItemID      Int                    @id(map: "PK__Inventor__3BB2ACA02F5D974F") @default(autoincrement())
+  ItemName             String                 @db.VarChar(100)
+  CategoryID           Int
+  SymbolicFee          Decimal                @db.Decimal(10, 2)
+  Description          String?                @db.VarChar(255)
+  PhotoURL             String?                @db.VarChar(255)
+  TotalQuantity        Int                    @default(1, map: "DF__Inventory__Total__00200768")
+  ItemCategory         ItemCategory           @relation(fields: [CategoryID], references: [CategoryID], onUpdate: NoAction, map: "FKInventoryI464627")
+  InventoryTransaction InventoryTransaction[]
+
+  @@index([CategoryID], map: "IX_InventoryItem_CategoryID")
+}
+
+model InventoryTransaction {
+  TransactionID    Int           @id(map: "PK__Inventor__55433A4B42D8A932") @default(autoincrement())
+  InventoryItemID  Int
+  RenterID         Int
+  StartDate        DateTime      @db.DateTime
+  EndDate          DateTime?     @db.DateTime
+  PaymentMethodID  Int
+  IsCompleted      Boolean
+  ConditionChecked Boolean
+  ReturnVerified   Boolean
+  User             User          @relation(fields: [RenterID], references: [UserID], onUpdate: NoAction, map: "FKInventoryT279068")
+  InventoryItem    InventoryItem @relation(fields: [InventoryItemID], references: [InventoryItemID], onUpdate: NoAction, map: "FKInventoryT392770")
+  PaymentMethod    PaymentMethod @relation(fields: [PaymentMethodID], references: [PaymentMethodID], onUpdate: NoAction, map: "FKInventoryT529044")
+
+  @@index([InventoryItemID], map: "IX_InventoryTransaction_InventoryItemID")
+  @@index([IsCompleted], map: "IX_InventoryTransaction_IsCompleted")
+  @@index([RenterID], map: "IX_InventoryTransaction_RenterID")
+}
+
+model ItemCategory {
+  CategoryID    Int             @id(map: "PK__ItemCate__19093A2B226F0095") @default(autoincrement())
+  CategoryName  String          @unique(map: "UQ__ItemCate__8517B2E06DE554F1") @db.VarChar(50)
+  Description   String?         @db.VarChar(255)
+  IsActive      Boolean
+  InventoryItem InventoryItem[]
+}
+
+model LostAndFoundItem {
+  LostItemID         Int      @id(map: "PK__LostAndF__3B3BF432FD1879C6") @default(autoincrement())
+  Title              String   @db.VarChar(255)
+  Description        String?  @db.VarChar(255)
+  FoundDate          DateTime @db.DateTime
+  ClaimedStatus      Boolean
+  PhotoURL           String?  @db.VarChar(255)
+  RegisteredByUserID Int
+  User               User     @relation(fields: [RegisteredByUserID], references: [UserID], onUpdate: NoAction, map: "FKLostAndFou221547")
+}
+
+model MarketplaceItem {
+  MarketplaceItemID        Int                      @id(map: "PK__Marketpl__F14E4E0D09FB5B5E") @default(autoincrement())
+  SellerID                 Int
+  Title                    String                   @db.VarChar(100)
+  Description              String?                  @db.VarChar(255)
+  Price                    Decimal                  @db.Decimal(10, 2)
+  ConditionID              Int
+  StatusID                 Int
+  IsActive                 Boolean
+  MarketplaceItemCondition MarketplaceItemCondition @relation(fields: [ConditionID], references: [ConditionID], onUpdate: NoAction, map: "FKMarketplac133556")
+  User                     User                     @relation(fields: [SellerID], references: [UserID], onUpdate: NoAction, map: "FKMarketplac521076")
+  MarketplaceItemStatus    MarketplaceItemStatus    @relation(fields: [StatusID], references: [StatusID], onUpdate: NoAction, map: "FKMarketplac786798")
+  MarketplaceTransaction   MarketplaceTransaction[]
+
+  @@index([IsActive, StatusID], map: "IX_MarketplaceItem_IsActive_StatusID")
+  @@index([SellerID], map: "IX_MarketplaceItem_SellerID")
+}
+
+model MarketplaceItemCondition {
+  ConditionID     Int               @id(map: "PK__Marketpl__37F5C0EFD5F2BDE8") @default(autoincrement())
+  ConditionName   String            @unique(map: "UQ__Marketpl__CE7E60661C8564AF") @db.VarChar(50)
+  MarketplaceItem MarketplaceItem[]
+}
+
+model MarketplaceItemStatus {
+  StatusID        Int               @id(map: "PK__Marketpl__C8EE2043506FAF88") @default(autoincrement())
+  StatusName      String            @unique(map: "UQ__Marketpl__05E7698A4D61170B") @db.VarChar(50)
+  MarketplaceItem MarketplaceItem[]
+}
+
+model MarketplaceTransaction {
+  TransactionID     Int             @id(map: "PK__Marketpl__55433A4B6437B448") @default(autoincrement())
+  MarketplaceItemID Int
+  BuyerID           Int
+  TransactionDate   DateTime        @db.DateTime
+  PaymentMethodID   Int
+  PaymentMethod     PaymentMethod   @relation(fields: [PaymentMethodID], references: [PaymentMethodID], onUpdate: NoAction, map: "FKMarketplac488711")
+  User              User            @relation(fields: [BuyerID], references: [UserID], onUpdate: NoAction, map: "FKMarketplac626084")
+  MarketplaceItem   MarketplaceItem @relation(fields: [MarketplaceItemID], references: [MarketplaceItemID], onUpdate: NoAction, map: "FKMarketplac794520")
+}
+
+model Modality {
+  ModalityID      Int               @id(map: "PK__Modality__C179441B1ADC4F85") @default(autoincrement())
+  ModalityName    String            @unique(map: "UQ__Modality__2C2AEFDF50A354AF") @db.VarChar(50)
+  CoachingSession CoachingSession[]
+  StudioModality  StudioModality[]
+  TeacherModality TeacherModality[]
+}
+
+model Notification {
+  NotificationID   Int              @id(map: "PK__Notifica__20CF2E32CFAA27B9") @default(autoincrement())
+  UserID           Int
+  Message          String?          @db.VarChar(255)
+  TypeID           Int
+  IsRead           Boolean
+  CreatedAt        DateTime         @db.DateTime
+  Title            String           @db.VarChar(255)
+  SessionID        Int?
+  NotificationType NotificationType @relation(fields: [TypeID], references: [TypeID], onUpdate: NoAction, map: "FKNotificati559307")
+  User             User             @relation(fields: [UserID], references: [UserID], onUpdate: NoAction, map: "FKNotificati840594")
+  CoachingSession  CoachingSession? @relation(fields: [SessionID], references: [SessionID], onDelete: NoAction, onUpdate: NoAction, map: "FKNotificati961434")
+
+  @@index([UserID], map: "IX_Notification_UserID")
+  @@index([UserID, IsRead], map: "IX_Notification_UserID_IsRead")
+}
+
+model NotificationType {
+  TypeID       Int            @id(map: "PK__Notifica__516F0395BC7FE5B6") @default(autoincrement())
+  TypeName     String         @unique(map: "UQ__Notifica__D4E7DFA8B2CA81EE") @db.VarChar(50)
+  Notification Notification[]
+}
+
+model PaymentMethod {
+  PaymentMethodID        Int                      @id(map: "PK__PaymentM__DC31C1F343D85679") @default(autoincrement())
+  MethodName             String                   @unique(map: "UQ__PaymentM__218CFB1710D11DE6") @db.VarChar(50)
+  IsActive               Boolean
+  InventoryTransaction   InventoryTransaction[]
+  MarketplaceTransaction MarketplaceTransaction[]
+}
+
+model Role {
+  RoleID      Int        @id(map: "PK__Role__8AFACE3AC379B24D") @default(autoincrement())
+  RoleName    String     @unique(map: "UQ__Role__8A2B6160372DC74D") @db.VarChar(50)
+  Description String?    @db.VarChar(255)
+  UserRole    UserRole[]
+}
+
+model SchoolEvent {
+  EventID           Int               @id(map: "PK__SchoolEv__7944C870B6748E73") @default(autoincrement())
+  Title             String            @db.VarChar(100)
+  Description       String?           @db.VarChar(255)
+  StartsAt          DateTime          @db.DateTime
+  EndsAt            DateTime          @db.DateTime
+  AudienceScopeID   Int
+  AcademicYearID    Int
+  CreatedByUserID   Int
+  StatusID          Int
+  IsActive          Boolean
+  SchoolEventStatus SchoolEventStatus @relation(fields: [StatusID], references: [StatusID], onUpdate: NoAction, map: "FKSchoolEven325292")
+  AudienceScope     AudienceScope     @relation(fields: [AudienceScopeID], references: [AudienceScopeID], onUpdate: NoAction, map: "FKSchoolEven592714")
+  AcademicYear      AcademicYear      @relation(fields: [AcademicYearID], references: [AcademicYearID], onUpdate: NoAction, map: "FKSchoolEven793594")
+  User              User              @relation(fields: [CreatedByUserID], references: [UserID], onUpdate: NoAction, map: "FKSchoolEven937570")
+
+  @@index([AcademicYearID, StartsAt], map: "IX_SchoolEvent_AcademicYearID_StartsAt")
+}
+
+model SchoolEventStatus {
+  StatusID    Int           @id(map: "PK__SchoolEv__C8EE20433C7846DA") @default(autoincrement())
+  StatusName  String        @unique(map: "UQ__SchoolEv__05E7698A8979970F") @db.VarChar(50)
+  SchoolEvent SchoolEvent[]
+}
+
+model SchoolSchedule {
+  ScheduleEntryID      Int                  @id(map: "PK__SchoolSc__EC0159E9B4AD51E4") @default(autoincrement())
+  StartsAt             DateTime             @db.DateTime
+  EndsAt               DateTime             @db.DateTime
+  Notes                String?              @db.VarChar(255)
+  StudioID             Int?
+  AcademicYearID       Int
+  StatusID             Int
+  IsActive             Boolean
+  AcademicYear         AcademicYear         @relation(fields: [AcademicYearID], references: [AcademicYearID], onUpdate: NoAction, map: "FKSchoolSche339026")
+  Studio               Studio?              @relation(fields: [StudioID], references: [StudioID], onDelete: NoAction, onUpdate: NoAction, map: "FKSchoolSche688461")
+  SchoolScheduleStatus SchoolScheduleStatus @relation(fields: [StatusID], references: [StatusID], onUpdate: NoAction, map: "FKSchoolSche776034")
+
+  @@index([AcademicYearID, StartsAt], map: "IX_SchoolSchedule_AcademicYearID_StartsAt")
+  @@index([StudioID], map: "IX_SchoolSchedule_StudioID")
+}
+
+model SchoolScheduleStatus {
+  StatusID       Int              @id(map: "PK__SchoolSc__C8EE20434AD1827D") @default(autoincrement())
+  StatusName     String           @unique(map: "UQ__SchoolSc__05E7698A9D4285E9") @db.VarChar(50)
+  SchoolSchedule SchoolSchedule[]
+}
+
+model SessionPricingRate {
+  PricingRateID   Int               @id(map: "PK__SessionP__226B79F19903323A") @default(autoincrement())
+  RateName        String            @unique(map: "UQ__SessionP__5467AC1BF4FAA1DC") @db.VarChar(50)
+  HourlyRate      Decimal           @db.Decimal(10, 2)
+  Description     String?           @db.VarChar(255)
+  CoachingSession CoachingSession[]
+}
+
+model SessionStatus {
+  StatusID        Int               @id(map: "PK__SessionS__C8EE204342663372") @default(autoincrement())
+  StatusName      String            @unique(map: "UQ__SessionS__05E7698AB94C02EF") @db.VarChar(50)
+  CoachingSession CoachingSession[]
+}
+
+model SessionStudent {
+  SessionID          Int
+  StudentAccountID   Int
+  EnrolledAt         DateTime         @db.DateTime
+  AttendanceStatusID Int
+  StudentAccount     StudentAccount   @relation(fields: [StudentAccountID], references: [StudentAccountID], onUpdate: NoAction, map: "FKSessionStu268529")
+  CoachingSession    CoachingSession  @relation(fields: [SessionID], references: [SessionID], onUpdate: NoAction, map: "FKSessionStu499991")
+  AttendanceStatus   AttendanceStatus @relation(fields: [AttendanceStatusID], references: [AttendanceStatusID], onUpdate: NoAction, map: "FKSessionStu927481")
+
+  @@id([SessionID, StudentAccountID], map: "PK__SessionS__FE5C628A4EE3D0D6")
+  @@index([StudentAccountID], map: "IX_SessionStudent_StudentAccountID")
+}
+
+model SessionTeacher {
+  SessionID             Int
+  TeacherID             Int
+  AssignmentRoleID      Int
+  User                  User                  @relation(fields: [TeacherID], references: [UserID], onUpdate: NoAction, map: "FKSessionTea26891")
+  TeacherAssignmentRole TeacherAssignmentRole @relation(fields: [AssignmentRoleID], references: [AssignmentRoleID], onUpdate: NoAction, map: "FKSessionTea70331")
+  CoachingSession       CoachingSession       @relation(fields: [SessionID], references: [SessionID], onUpdate: NoAction, map: "FKSessionTea930744")
+
+  @@id([SessionID, TeacherID], map: "PK__SessionT__972BB7E4DE64134C")
+  @@index([TeacherID], map: "IX_SessionTeacher_TeacherID")
+}
+
+model SessionValidation {
+  ValidationID      Int             @id(map: "PK__SessionV__FA0B50E525977942") @default(autoincrement())
+  SessionID         Int
+  ValidatedByUserID Int
+  ValidatedAt       DateTime        @db.DateTime
+  ValidationStepID  Int
+  ValidationStep    ValidationStep  @relation(fields: [ValidationStepID], references: [StepID], onUpdate: NoAction, map: "FKSessionVal556128")
+  CoachingSession   CoachingSession @relation(fields: [SessionID], references: [SessionID], onUpdate: NoAction, map: "FKSessionVal768396")
+  User              User            @relation(fields: [ValidatedByUserID], references: [UserID], onUpdate: NoAction, map: "FKSessionVal845416")
+
+  @@index([SessionID], map: "IX_SessionValidation_SessionID")
+}
+
+model StudentAccount {
+  StudentAccountID    Int                   @id(map: "PK__StudentA__7A8F0FA2F5D02547") @default(autoincrement())
+  UserID              Int                   @unique(map: "UQ__StudentA__1788CCAD78A4799C")
+  BirthDate           DateTime              @db.Date
+  GuardianName        String?               @db.VarChar(150)
+  GuardianPhone       String?               @db.VarChar(20)
+  CoachingJoinRequest CoachingJoinRequest[]
+  SessionStudent      SessionStudent[]
+  User                User                  @relation(fields: [UserID], references: [UserID], onUpdate: NoAction, map: "FKStudentAcc231273")
+}
+
+model Studio {
+  StudioID        Int               @id(map: "PK__Studio__4ACC3B50E3DB87D4") @default(autoincrement())
+  StudioName      String            @unique(map: "UQ__Studio__CEF9C6005841A721") @db.VarChar(50)
+  Capacity        Int
+  CoachingSession CoachingSession[]
+  SchoolSchedule  SchoolSchedule[]
+  StudioModality  StudioModality[]
+}
+
+model StudioModality {
+  StudioID   Int
+  ModalityID Int
+  Modality   Modality @relation(fields: [ModalityID], references: [ModalityID], onUpdate: NoAction, map: "FKStudioModa892485")
+  Studio     Studio   @relation(fields: [StudioID], references: [StudioID], onUpdate: NoAction, map: "FKStudioModa985589")
+
+  @@id([StudioID, ModalityID], map: "PK__StudioMo__E6DBAF11307BC0F7")
+}
+
+model TeacherAbsence {
+  AbsenceID                                  Int                  @id(map: "PK__TeacherA__3A074E47CF16B350") @default(autoincrement())
+  TeacherID                                  Int
+  StartDate                                  DateTime             @db.DateTime
+  EndDate                                    DateTime             @db.DateTime
+  Reason                                     String?              @db.VarChar(255)
+  StatusID                                   Int
+  RequestedAt                                DateTime             @db.DateTime
+  ReviewedByUserID                           Int?
+  ReviewedAt                                 DateTime?            @db.DateTime
+  ReviewNotes                                String?              @db.VarChar(255)
+  User_TeacherAbsence_ReviewedByUserIDToUser User?                @relation("TeacherAbsence_ReviewedByUserIDToUser", fields: [ReviewedByUserID], references: [UserID], onDelete: NoAction, onUpdate: NoAction, map: "FKTeacherAbs338533")
+  User_TeacherAbsence_TeacherIDToUser        User                 @relation("TeacherAbsence_TeacherIDToUser", fields: [TeacherID], references: [UserID], onUpdate: NoAction, map: "FKTeacherAbs60475")
+  TeacherAbsenceStatus                       TeacherAbsenceStatus @relation(fields: [StatusID], references: [StatusID], onUpdate: NoAction, map: "FKTeacherAbs72313")
+
+  @@index([StartDate, EndDate], map: "IX_TeacherAbsence_Dates")
+  @@index([TeacherID], map: "IX_TeacherAbsence_TeacherID")
+}
+
+model TeacherAbsenceStatus {
+  StatusID       Int              @id(map: "PK__TeacherA__C8EE20436546136D") @default(autoincrement())
+  StatusName     String           @unique(map: "UQ__TeacherA__05E7698AB6F9EDA7") @db.VarChar(50)
+  TeacherAbsence TeacherAbsence[]
+}
+
+model TeacherAssignmentRole {
+  AssignmentRoleID Int              @id(map: "PK__TeacherA__207A73E0B54DB011") @default(autoincrement())
+  RoleName         String           @unique(map: "UQ__TeacherA__8A2B616091BAE96F") @db.VarChar(50)
+  SessionTeacher   SessionTeacher[]
+}
+
+model TeacherAvailability {
+  AvailabilityID                                  Int                           @id(map: "PK__TeacherA__DA397991DAC82611") @default(autoincrement())
+  TeacherID                                       Int
+  Notes                                           String?                       @db.VarChar(255)
+  RequestedAt                                     DateTime                      @db.DateTime
+  StatusID                                        Int
+  ReviewedByUserID                                Int?
+  ReviewedAt                                      DateTime?                     @db.DateTime
+  ReviewNotes                                     String?                       @db.VarChar(255)
+  User_TeacherAvailability_ReviewedByUserIDToUser User?                         @relation("TeacherAvailability_ReviewedByUserIDToUser", fields: [ReviewedByUserID], references: [UserID], onDelete: NoAction, onUpdate: NoAction, map: "FKTeacherAva2587")
+  User_TeacherAvailability_TeacherIDToUser        User                          @relation("TeacherAvailability_TeacherIDToUser", fields: [TeacherID], references: [UserID], onUpdate: NoAction, map: "FKTeacherAva280645")
+  TeacherAvailabilityStatus                       TeacherAvailabilityStatus     @relation(fields: [StatusID], references: [StatusID], onUpdate: NoAction, map: "FKTeacherAva771431")
+  TeacherAvailabilityPunctual                     TeacherAvailabilityPunctual?
+  TeacherAvailabilityRecurring                    TeacherAvailabilityRecurring?
+
+  @@index([StatusID], map: "IX_TeacherAvailability_StatusID")
+  @@index([TeacherID], map: "IX_TeacherAvailability_TeacherID")
+}
+
+model TeacherAvailabilityPunctual {
+  AvailabilityID      Int                 @id(map: "PK__TeacherA__DA39799190A4EF11")
+  StartDateTime       DateTime            @db.DateTime
+  EndDateTime         DateTime            @db.DateTime
+  TeacherAvailability TeacherAvailability @relation(fields: [AvailabilityID], references: [AvailabilityID], onUpdate: NoAction, map: "FKTeacherAva895352")
+}
+
+model TeacherAvailabilityRecurring {
+  AvailabilityID      Int                 @id(map: "PK__TeacherA__DA397991D16C0259")
+  DayOfWeek           Int
+  StartTime           DateTime            @db.Time
+  EndTime             DateTime            @db.Time
+  AcademicYearID      Int
+  IsActive            Boolean
+  TeacherAvailability TeacherAvailability @relation(fields: [AvailabilityID], references: [AvailabilityID], onUpdate: NoAction, map: "FKTeacherAva485916")
+  AcademicYear        AcademicYear        @relation(fields: [AcademicYearID], references: [AcademicYearID], onUpdate: NoAction, map: "FKTeacherAva690103")
+
+  @@index([DayOfWeek], map: "IX_TeacherAvailabilityRecurring_DayOfWeek")
+}
+
+model TeacherAvailabilityStatus {
+  StatusID            Int                   @id(map: "PK__TeacherA__C8EE204377F19B98") @default(autoincrement())
+  StatusName          String                @unique(map: "UQ__TeacherA__05E7698A1023552C") @db.VarChar(50)
+  TeacherAvailability TeacherAvailability[]
+}
+
+model TeacherModality {
+  TeacherID  Int
+  ModalityID Int
+  User       User     @relation(fields: [TeacherID], references: [UserID], onUpdate: NoAction, map: "FKTeacherMod35746")
+  Modality   Modality @relation(fields: [ModalityID], references: [ModalityID], onUpdate: NoAction, map: "FKTeacherMod909825")
+
+  @@id([TeacherID, ModalityID], map: "PK__TeacherM__41E5CD05544F6A85")
+}
+
+model User {
+  UserID                                                         Int                      @id(map: "PK__User__1788CCAC372A42BA") @default(autoincrement())
+  FirstName                                                      String                   @db.VarChar(150)
+  LastName                                                       String?                  @db.VarChar(150)
+  PhoneNumber                                                    String?                  @db.VarChar(20)
+  Email                                                          String                   @unique(map: "UQ__User__A9D1053491E873B3") @db.VarChar(100)
+  Photo                                                          String?                  @db.VarChar(255)
+  PasswordHash                                                   String                   @db.VarChar(255)
+  AuthUID                                                        String                   @unique(map: "UQ__User__CC40E69736336C7F") @db.VarChar(255)
+  CreatedAt                                                      DateTime                 @db.DateTime
+  UpdatedAt                                                      DateTime?                @db.DateTime
+  IsActive                                                       Boolean
+  DeletedAt                                                      DateTime?                @db.DateTime
+  CoachingJoinRequest                                            CoachingJoinRequest[]
+  CoachingSession_CoachingSession_ReviewedByUserIDToUser         CoachingSession[]        @relation("CoachingSession_ReviewedByUserIDToUser")
+  CoachingSession_CoachingSession_RequestedByUserIDToUser        CoachingSession[]        @relation("CoachingSession_RequestedByUserIDToUser")
+  FinancialEntry                                                 FinancialEntry[]
+  FinancialSummary                                               FinancialSummary[]
+  InventoryTransaction                                           InventoryTransaction[]
+  LostAndFoundItem                                               LostAndFoundItem[]
+  MarketplaceItem                                                MarketplaceItem[]
+  MarketplaceTransaction                                         MarketplaceTransaction[]
+  Notification                                                   Notification[]
+  SchoolEvent                                                    SchoolEvent[]
+  SessionTeacher                                                 SessionTeacher[]
+  SessionValidation                                              SessionValidation[]
+  StudentAccount                                                 StudentAccount?
+  TeacherAbsence_TeacherAbsence_ReviewedByUserIDToUser           TeacherAbsence[]         @relation("TeacherAbsence_ReviewedByUserIDToUser")
+  TeacherAbsence_TeacherAbsence_TeacherIDToUser                  TeacherAbsence[]         @relation("TeacherAbsence_TeacherIDToUser")
+  TeacherAvailability_TeacherAvailability_ReviewedByUserIDToUser TeacherAvailability[]    @relation("TeacherAvailability_ReviewedByUserIDToUser")
+  TeacherAvailability_TeacherAvailability_TeacherIDToUser        TeacherAvailability[]    @relation("TeacherAvailability_TeacherIDToUser")
+  TeacherModality                                                TeacherModality[]
+  UserRole                                                       UserRole[]
+
+  @@index([IsActive], map: "IX_User_IsActive")
+}
+
+model UserRole {
+  UserID Int
+  RoleID Int
+  User   User @relation(fields: [UserID], references: [UserID], onUpdate: NoAction, map: "FKUserRole396295")
+  Role   Role @relation(fields: [RoleID], references: [RoleID], onUpdate: NoAction, map: "FKUserRole532117")
+
+  @@id([UserID, RoleID], map: "PK__UserRole__AF27604FCF44A2AC")
+}
+
+model ValidationStep {
+  StepID            Int                 @id(map: "PK__Validati__24343337C8768B00") @default(autoincrement())
+  StepName          String              @unique(map: "UQ__Validati__2613973A95996C1A") @db.VarChar(50)
+  SessionValidation SessionValidation[]
+}

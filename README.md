@@ -75,5 +75,42 @@ Ou, se preferires arrancar diretamente sem `nodemon`:
 ```bash
 npm start
 ```
-
 API disponível em `http://localhost:3001`
+
+## Notas
+
+- Rotas de domínio (auth, student, etc.) ficam para a próxima fase.
+- O middleware global de erro devolve `{ error: err.message }` com status 500 por defeito.
+
+## Database Performance Scripts
+
+Este projeto usa duas vias para otimização de base de dados:
+
+- Índices simples e compostos: definidos em `prisma/schema.prisma` com `@@index` e aplicados por migrações Prisma.
+- Full-text indexes e stored procedures: definidos em scripts SQL versionados em `prisma/sql/`.
+
+### Aplicar índices Prisma
+
+```bash
+npm run prisma:generate
+npm run prisma:migrate:dev
+```
+
+Em ambiente de deploy:
+
+```bash
+npm run prisma:migrate:deploy
+```
+
+### Scripts SQL externos
+
+- `prisma/sql/20260411_fulltext_marketplace_inventory.sql`
+- `prisma/sql/20260411_stored_procedures_performance.sql`
+
+Executar os scripts no SQL Server após a migração Prisma (por exemplo, via SQL Server Management Studio ou pipeline de DB).
+
+### Critério de aceite desta entrega
+
+- Checklist de indexação coberta.
+- Migração Prisma sem erros.
+- Scripts SQL de full-text e stored procedures executados sem erros.

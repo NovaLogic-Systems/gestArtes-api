@@ -92,6 +92,7 @@ model CoachingSession {
   @@index([StartTime, EndTime], map: "IX_CoachingSession_StartTime_EndTime")
   @@index([StatusID], map: "IX_CoachingSession_StatusID")
   @@index([StudioID], map: "IX_CoachingSession_StudioID")
+  @@index([StudioID, StartTime, EndTime], map: "IX_CoachingSession_StudioID_StartTime_EndTime")
 }
 
 model FinancialEntry {
@@ -111,6 +112,7 @@ model FinancialEntry {
   @@index([FinancialSummaryID], map: "IX_FinancialEntry_FinancialSummaryID")
   @@index([IsExported], map: "IX_FinancialEntry_IsExported")
   @@index([SessionID], map: "IX_FinancialEntry_SessionID")
+  @@index([IsExported, CreatedAt], map: "IX_FinancialEntry_IsExported_CreatedAt")
 }
 
 model FinancialEntryType {
@@ -164,6 +166,7 @@ model InventoryTransaction {
   @@index([InventoryItemID], map: "IX_InventoryTransaction_InventoryItemID")
   @@index([IsCompleted], map: "IX_InventoryTransaction_IsCompleted")
   @@index([RenterID], map: "IX_InventoryTransaction_RenterID")
+  @@index([RenterID, IsCompleted], map: "IX_InventoryTransaction_RenterID_IsCompleted")
 }
 
 model ItemCategory {
@@ -201,6 +204,7 @@ model MarketplaceItem {
 
   @@index([IsActive, StatusID], map: "IX_MarketplaceItem_IsActive_StatusID")
   @@index([SellerID], map: "IX_MarketplaceItem_SellerID")
+  @@index([SellerID, IsActive, StatusID], map: "IX_MarketplaceItem_SellerID_IsActive_StatusID")
 }
 
 model MarketplaceItemCondition {
@@ -312,6 +316,7 @@ model SchoolSchedule {
 
   @@index([AcademicYearID, StartsAt], map: "IX_SchoolSchedule_AcademicYearID_StartsAt")
   @@index([StudioID], map: "IX_SchoolSchedule_StudioID")
+  @@index([AcademicYearID, StudioID, IsActive], map: "IX_SchoolSchedule_AcademicYearID_StudioID_IsActive")
 }
 
 model SchoolScheduleStatus {
@@ -344,6 +349,7 @@ model SessionStudent {
   AttendanceStatus   AttendanceStatus @relation(fields: [AttendanceStatusID], references: [AttendanceStatusID], onUpdate: NoAction, map: "FKSessionStu927481")
 
   @@id([SessionID, StudentAccountID], map: "PK__SessionS__FE5C628A4EE3D0D6")
+  @@index([SessionID], map: "IX_SessionStudent_SessionID")
   @@index([StudentAccountID], map: "IX_SessionStudent_StudentAccountID")
 }
 
@@ -356,6 +362,7 @@ model SessionTeacher {
   CoachingSession       CoachingSession       @relation(fields: [SessionID], references: [SessionID], onUpdate: NoAction, map: "FKSessionTea930744")
 
   @@id([SessionID, TeacherID], map: "PK__SessionT__972BB7E4DE64134C")
+  @@index([SessionID], map: "IX_SessionTeacher_SessionID")
   @@index([TeacherID], map: "IX_SessionTeacher_TeacherID")
 }
 
@@ -469,6 +476,7 @@ model TeacherAvailabilityRecurring {
   AcademicYear        AcademicYear        @relation(fields: [AcademicYearID], references: [AcademicYearID], onUpdate: NoAction, map: "FKTeacherAva690103")
 
   @@index([DayOfWeek], map: "IX_TeacherAvailabilityRecurring_DayOfWeek")
+  @@index([AcademicYearID, IsActive, DayOfWeek], map: "IX_TeacherAvailabilityRecurring_AcademicYearID_IsActive_DayOfWeek")
 }
 
 model TeacherAvailabilityStatus {
@@ -521,6 +529,7 @@ model User {
   UserRole                                                       UserRole[]
 
   @@index([IsActive], map: "IX_User_IsActive")
+  @@index([CreatedAt], map: "IX_User_CreatedAt")
 }
 
 model UserRole {

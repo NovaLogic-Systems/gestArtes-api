@@ -1,0 +1,13 @@
+const { body } = require('express-validator');
+
+const loginSchema = [
+  body('email')
+    .isEmail().withMessage('Email inválido')
+    .normalizeEmail(),
+  body('password')
+    .isLength({ min: 8 }).withMessage('Password deve ter no mínimo 8 caracteres'),
+];
+
+module.exports = {
+  loginSchema,
+};

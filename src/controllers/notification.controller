@@ -1,5 +1,5 @@
 // notification.controller.js
-const notificationService = require('../services/notification.service');
+const notificationService = require('../services/notification.services');
 
 const getAll = async (req, res) => {
     try {

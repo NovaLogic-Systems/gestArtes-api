@@ -43,6 +43,7 @@ DB_SERVER=localhost
 DB_DATABASE=gestArtes
 DB_USER=gestArtes_user
 DB_PASSWORD=a_tua_password
+INTERNAL_API_TOKEN=token_interno_notificacoes
 ```
 
 > O ficheiro `.env` é local e não deve ser versionado.

@@ -7,6 +7,12 @@ const requireAuth = (req, res, next) => {
     next();
 };
 
+const secureTokenEquals = (providedToken, configuredToken) => {
+    const configuredHash = crypto.createHash('sha256').update(configuredToken, 'utf8').digest();
+    const providedHash = crypto.createHash('sha256').update(providedToken, 'utf8').digest();
+    return crypto.timingSafeEqual(configuredHash, providedHash);
+};
+
 const requireInternalToken = (req, res, next) => {
     const configuredToken = process.env.INTERNAL_API_TOKEN;
     const providedToken = req.get('x-internal-token');
@@ -14,12 +20,7 @@ const requireInternalToken = (req, res, next) => {
         return res.status(401).json({ error: 'Unauthorized' });
     }
 
-    const configuredBuffer = Buffer.from(configuredToken, 'utf8');
-    const providedBuffer = Buffer.from(providedToken, 'utf8');
-    if (
-        configuredBuffer.length !== providedBuffer.length
-        || !crypto.timingSafeEqual(configuredBuffer, providedBuffer)
-    ) {
+    if (!secureTokenEquals(providedToken, configuredToken)) {
         return res.status(401).json({ error: 'Unauthorized' });
     }
 

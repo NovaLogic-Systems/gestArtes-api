@@ -41,7 +41,7 @@ const remove = async (req, res) => {
 const create = async (req, res) => {
     try {
         const { userId, message } = req.body;
-        const parsedUserId = Number.parseInt(userId, 10);
+        const parsedUserId = parseInt(userId, 10);
 
         if (!Number.isInteger(parsedUserId) || parsedUserId <= 0) {
             return res.status(400).json({ error: 'Invalid userId' });

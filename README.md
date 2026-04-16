@@ -6,7 +6,7 @@ Backend REST API do projeto gestArtes, desenvolvido para a Escola Entartes.
 
 - Node.js + Express
 - Prisma ORM com SQL Server
-- dotenv, cors, express-session
+- dotenv, cors, express-session, helmet
 - morgan (logs HTTP no console)
 - winston (logs estruturados para ficheiro)
 - express-rate-limit (rate limiting básico)
@@ -32,6 +32,12 @@ npm install
 ```
 
 2. Copiar .env.example para .env e preencher valores.
+
+Variáveis de segurança relevantes:
+
+- `CORS_ORIGINS`: lista separada por vírgula com origins permitidas (fallback para `CLIENT_URL`).
+- `CORS_ALLOW_NO_ORIGIN`: permite requests sem Origin (ex.: curl/Postman).
+- Em produção, é obrigatório configurar pelo menos uma origin em `CORS_ORIGINS` ou `CLIENT_URL`.
 
 3. Executar em desenvolvimento:
 

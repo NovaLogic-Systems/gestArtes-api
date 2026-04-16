@@ -5,6 +5,7 @@ const express = require('express');
 const session = require('express-session');
 const MSSQLStore = require('connect-mssql-v2');
 const cors = require('cors');
+const helmet = require('helmet');
 const morgan = require('morgan');
 
 const authRoutes = require('./routes/auth.routes');
@@ -21,7 +22,13 @@ const SESSION_TABLE_NAME = 'Sessions';
 const SESSION_AUTO_REMOVE_INTERVAL_MS = 1000 * 60 * 10;
 const SESSION_STORE_RETRIES = 1;
 const SESSION_STORE_RETRY_DELAY_MS = 1000;
+const CSP_NONCE_BYTE_LENGTH = 16;
 const IS_PRODUCTION = process.env.NODE_ENV === 'production';
+const CORS_ALLOW_NO_ORIGIN = parseBoolean(
+  process.env.CORS_ALLOW_NO_ORIGIN,
+  true
+);
+const CORS_ORIGINS = buildCorsAllowList();
 const SESSION_CROSS_SITE = parseBoolean(
   process.env.SESSION_COOKIE_CROSS_SITE,
   false
@@ -39,6 +46,16 @@ if (IS_PRODUCTION && !HAS_SESSION_SECRET) {
 
 if (!HAS_SESSION_SECRET) {
   logger.warn('SESSION_SECRET not set; using an ephemeral development secret');
+}
+
+if (IS_PRODUCTION && CORS_ORIGINS.length === 0) {
+  throw new Error(
+    'At least one CORS origin is required in production (CORS_ORIGINS or CLIENT_URL)'
+  );
+}
+
+if (!IS_PRODUCTION && CORS_ORIGINS.length === 0) {
+  logger.warn('No CORS origins configured; allowing all origins in non-production');
 }
 
 function parseBoolean(value, fallback) {
@@ -62,6 +79,85 @@ function parseBoolean(value, fallback) {
 
   return fallback;
 }
+
+function parseCsv(value) {
+  if (value === undefined || value === null || value === '') {
+    return [];
+  }
+
+  return String(value)
+    .split(',')
+    .map((entry) => entry.trim())
+    .filter(Boolean);
+}
+
+function buildCorsAllowList() {
+  return Array.from(
+    new Set([...parseCsv(process.env.CORS_ORIGINS), ...parseCsv(process.env.CLIENT_URL)])
+  );
+}
+
+function createCorsOriginValidator(allowedOrigins) {
+  const allowList = new Set(allowedOrigins);
+
+  return (origin, callback) => {
+    if (!origin) {
+      return callback(null, CORS_ALLOW_NO_ORIGIN);
+    }
+
+    if (allowList.size === 0 || allowList.has(origin)) {
+      return callback(null, true);
+    }
+
+    return callback(null, false);
+  };
+}
+
+function buildCspNonceSource(req, res) {
+  return `'nonce-${res.locals.cspNonce}'`;
+}
+
+function attachCspNonce(req, res, next) {
+  res.locals.cspNonce = crypto
+    .randomBytes(CSP_NONCE_BYTE_LENGTH)
+    .toString('hex');
+  next();
+}
+
+const apiCspMiddleware = helmet.contentSecurityPolicy({
+  useDefaults: true,
+  directives: {
+    defaultSrc: ["'self'"],
+    baseUri: ["'self'"],
+    objectSrc: ["'none'"],
+    frameAncestors: ["'none'"],
+    scriptSrc: ["'self'"],
+    styleSrc: ["'self'"],
+    imgSrc: ["'self'", 'data:'],
+    connectSrc: ["'self'"],
+    fontSrc: ["'self'", 'data:'],
+    formAction: ["'self'"],
+    upgradeInsecureRequests: IS_PRODUCTION ? [] : null,
+  },
+});
+
+const docsCspMiddleware = helmet.contentSecurityPolicy({
+  useDefaults: true,
+  directives: {
+    defaultSrc: ["'self'"],
+    baseUri: ["'self'"],
+    objectSrc: ["'none'"],
+    frameAncestors: ["'none'"],
+    scriptSrc: ["'self'", buildCspNonceSource],
+    styleSrc: ["'self'", buildCspNonceSource],
+    styleSrcAttr: ["'none'"],
+    imgSrc: ["'self'", 'data:'],
+    connectSrc: ["'self'"],
+    fontSrc: ["'self'", 'data:'],
+    formAction: ["'self'"],
+    upgradeInsecureRequests: IS_PRODUCTION ? [] : null,
+  },
+});
 
 function sanitizeConnectionString(value) {
   if (!value) {
@@ -179,7 +275,28 @@ sessionStore.on('sessionError', (error, method) => {
   logger.error(`Session store method error (${method}): ${error.message}`);
 });
 
-app.use(cors({ origin: process.env.CLIENT_URL, credentials: true }));
+app.use(
+  cors({
+    origin: createCorsOriginValidator(CORS_ORIGINS),
+    credentials: true,
+    optionsSuccessStatus: 204,
+  })
+);
+app.use(
+  helmet({
+    contentSecurityPolicy: false,
+    frameguard: { action: 'deny' },
+    referrerPolicy: { policy: 'no-referrer' },
+  })
+);
+app.use(attachCspNonce);
+app.use((req, res, next) => {
+  if (req.path.startsWith('/docs')) {
+    return docsCspMiddleware(req, res, next);
+  }
+
+  return apiCspMiddleware(req, res, next);
+});
 app.use(express.json());
 app.use(morgan('dev'));
 if (parseBoolean(process.env.TRUST_PROXY, false)) {

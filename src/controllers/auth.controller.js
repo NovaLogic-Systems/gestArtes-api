@@ -1,10 +1,10 @@
-const bcrypt = require("bcrypt");
-const prisma = require("../config/prisma");
+const bcrypt = require('bcrypt');
+const prisma = require('../config/prisma');
 
-const allowedRoles = new Set(["student", "teacher", "admin"]);
+const allowedRoles = new Set(['student', 'teacher', 'admin']);
 
 function toAppRole(roleName) {
-  const normalized = String(roleName || "")
+  const normalized = String(roleName || '')
     .trim()
     .toLowerCase();
 
@@ -12,16 +12,16 @@ function toAppRole(roleName) {
     return normalized;
   }
 
-  if (normalized.includes("admin")) {
-    return "admin";
+  if (normalized.includes('admin')) {
+    return 'admin';
   }
 
-  if (normalized.includes("teacher") || normalized.includes("prof")) {
-    return "teacher";
+  if (normalized.includes('teacher') || normalized.includes('prof')) {
+    return 'teacher';
   }
 
-  if (normalized.includes("student") || normalized.includes("aluno")) {
-    return "student";
+  if (normalized.includes('student') || normalized.includes('aluno')) {
+    return 'student';
   }
 
   return null;
@@ -33,14 +33,14 @@ function getPrimaryRole(user) {
     .filter(Boolean);
 
   // Priority from highest privilege to lowest.
-  const priorityOrder = ["admin", "teacher", "student"];
+  const priorityOrder = ['admin', 'teacher', 'student'];
   for (const candidate of priorityOrder) {
     if (roleNames.includes(candidate)) {
       return candidate;
     }
   }
 
-  return "student";
+  return 'student';
 }
 
 function serializeUser(user, role) {
@@ -58,6 +58,19 @@ function serializeUser(user, role) {
 function saveSession(req) {
   return new Promise((resolve, reject) => {
     req.session.save((error) => {
+      if (error) {
+        reject(error);
+        return;
+      }
+
+      resolve();
+    });
+  });
+}
+
+function regenerateSession(req) {
+  return new Promise((resolve, reject) => {
+    req.session.regenerate((error) => {
       if (error) {
         reject(error);
         return;
@@ -96,24 +109,26 @@ async function findUserById(userId) {
 
 async function login(req, res, next) {
   try {
-    const email = String(req.body?.email || "")
+    const email = String(req.body?.email || '')
       .trim()
       .toLowerCase();
-    const password = String(req.body?.password || "");
+    const password = String(req.body?.password || '');
 
     const user = await findUserByEmail(email);
 
     if (!user || !user.IsActive) {
-      res.status(401).json({ error: "Invalid credentials" });
+      res.status(401).json({ error: 'Invalid credentials' });
       return;
     }
 
     const validPassword = await bcrypt.compare(password, user.PasswordHash);
 
     if (!validPassword) {
-      res.status(401).json({ error: "Invalid credentials" });
+      res.status(401).json({ error: 'Invalid credentials' });
       return;
     }
+
+    await regenerateSession(req);
 
     const role = getPrimaryRole(user);
     const sessionUser = serializeUser(user, role);
@@ -136,7 +151,7 @@ async function login(req, res, next) {
 async function me(req, res, next) {
   try {
     if (!req.session?.userId) {
-      res.status(401).json({ error: "Not authenticated" });
+      res.status(401).json({ error: 'Not authenticated' });
       return;
     }
 
@@ -144,7 +159,7 @@ async function me(req, res, next) {
 
     if (!user || !user.IsActive) {
       req.session.destroy(() => {});
-      res.status(401).json({ error: "Not authenticated" });
+      res.status(401).json({ error: 'Not authenticated' });
       return;
     }
 
@@ -173,7 +188,10 @@ function logout(req, res, next) {
       return;
     }
 
-    res.clearCookie("connect.sid");
+    const cookieName = req.app?.get('sessionCookieName') || 'connect.sid';
+    const cookieOptions = req.app?.get('sessionCookieOptions') || {};
+
+    res.clearCookie(cookieName, cookieOptions);
     res.status(204).send();
   });
 }

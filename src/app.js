@@ -20,6 +20,18 @@ const SESSION_TABLE_NAME = 'Sessions';
 const SESSION_AUTO_REMOVE_INTERVAL_MS = 1000 * 60 * 10;
 const SESSION_STORE_RETRIES = 1;
 const SESSION_STORE_RETRY_DELAY_MS = 1000;
+const IS_PRODUCTION = process.env.NODE_ENV === 'production';
+const SESSION_CROSS_SITE = parseBoolean(
+  process.env.SESSION_COOKIE_CROSS_SITE,
+  false
+);
+const SESSION_COOKIE_SAMESITE = SESSION_CROSS_SITE ? 'none' : 'lax';
+const SESSION_COOKIE_SECURE = SESSION_CROSS_SITE ? true : IS_PRODUCTION;
+const SESSION_SECRET = process.env.SESSION_SECRET;
+
+if (IS_PRODUCTION && !SESSION_SECRET) {
+  throw new Error('SESSION_SECRET is required in production');
+}
 
 function parseBoolean(value, fallback) {
   if (value === undefined || value === null || value === '') {
@@ -162,20 +174,24 @@ sessionStore.on('sessionError', (error, method) => {
 app.use(cors({ origin: process.env.CLIENT_URL, credentials: true }));
 app.use(express.json());
 app.use(morgan('dev'));
-app.set('trust proxy', 1);
+if (parseBoolean(process.env.TRUST_PROXY, false)) {
+  app.set('trust proxy', 1);
+}
+app.set('sessionCookieName', SESSION_COOKIE_NAME);
+app.set('sessionCookieOptions', {
+  httpOnly: true,
+  secure: SESSION_COOKIE_SECURE,
+  sameSite: SESSION_COOKIE_SAMESITE,
+  maxAge: SESSION_TTL_MS,
+});
 app.use(
   session({
     name: SESSION_COOKIE_NAME,
     store: sessionStore,
-    secret: process.env.SESSION_SECRET || 'dev-session-secret',
+    secret: SESSION_SECRET || 'dev-session-secret',
     resave: false,
     saveUninitialized: false,
-    cookie: {
-      httpOnly: true,
-      secure: process.env.NODE_ENV === 'production',
-      sameSite: 'strict',
-      maxAge: SESSION_TTL_MS,
-    },
+    cookie: app.get('sessionCookieOptions'),
   })
 );
 app.use(apiRateLimiter);

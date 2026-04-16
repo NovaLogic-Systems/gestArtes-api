@@ -190,8 +190,9 @@ function logout(req, res, next) {
 
     const cookieName = req.app.get('sessionCookieName');
     const cookieOptions = req.app.get('sessionCookieOptions');
+    const { maxAge, expires, ...clearCookieOptions } = cookieOptions || {};
 
-    res.clearCookie(cookieName, cookieOptions);
+    res.clearCookie(cookieName, clearCookieOptions);
     res.status(204).send();
   });
 }

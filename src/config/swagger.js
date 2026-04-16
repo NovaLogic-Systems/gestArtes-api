@@ -45,6 +45,38 @@ const swaggerSpec = swaggerJsdoc({
             },
           ],
         },
+        LostFoundAdminCreateRequest: {
+          type: 'object',
+          required: ['title', 'foundDate'],
+          properties: {
+            title: { type: 'string', minLength: 1, maxLength: 255 },
+            description: { type: 'string', maxLength: 255, nullable: true },
+            foundDate: { type: 'string', format: 'date-time' },
+            claimedStatus: { type: 'boolean' },
+            photoUrl: { type: 'string', maxLength: 255, nullable: true },
+            adminNotes: { type: 'string', maxLength: 255, nullable: true },
+          },
+        },
+        LostFoundAdminUpdateRequest: {
+          type: 'object',
+          minProperties: 1,
+          properties: {
+            title: { type: 'string', minLength: 1, maxLength: 255 },
+            description: { type: 'string', maxLength: 255, nullable: true },
+            foundDate: { type: 'string', format: 'date-time' },
+            claimedStatus: { type: 'boolean' },
+            photoUrl: { type: 'string', maxLength: 255, nullable: true },
+            adminNotes: { type: 'string', maxLength: 255, nullable: true },
+          },
+          additionalProperties: false,
+        },
+        LostFoundAdminActionRequest: {
+          type: 'object',
+          properties: {
+            adminNotes: { type: 'string', maxLength: 255, nullable: true },
+          },
+          additionalProperties: false,
+        },
       },
     },
     paths: {
@@ -98,6 +130,14 @@ const swaggerSpec = swaggerJsdoc({
         post: {
           tags: ['LostFound'],
           summary: 'Create lost and found item (admin)',
+          requestBody: {
+            required: true,
+            content: {
+              'application/json': {
+                schema: { $ref: '#/components/schemas/LostFoundAdminCreateRequest' },
+              },
+            },
+          },
           responses: {
             201: {
               description: 'Created',
@@ -116,6 +156,22 @@ const swaggerSpec = swaggerJsdoc({
         patch: {
           tags: ['LostFound'],
           summary: 'Update lost and found item (admin)',
+          parameters: [
+            {
+              in: 'path',
+              name: 'id',
+              required: true,
+              schema: { type: 'integer' },
+            },
+          ],
+          requestBody: {
+            required: true,
+            content: {
+              'application/json': {
+                schema: { $ref: '#/components/schemas/LostFoundAdminUpdateRequest' },
+              },
+            },
+          },
           responses: {
             200: {
               description: 'Updated',
@@ -133,6 +189,14 @@ const swaggerSpec = swaggerJsdoc({
         delete: {
           tags: ['LostFound'],
           summary: 'Delete lost and found item (admin)',
+          parameters: [
+            {
+              in: 'path',
+              name: 'id',
+              required: true,
+              schema: { type: 'integer' },
+            },
+          ],
           responses: {
             204: { description: 'Deleted' },
             401: { description: 'Not authenticated' },
@@ -145,6 +209,22 @@ const swaggerSpec = swaggerJsdoc({
         patch: {
           tags: ['LostFound'],
           summary: 'Mark lost and found item as claimed (admin)',
+          parameters: [
+            {
+              in: 'path',
+              name: 'id',
+              required: true,
+              schema: { type: 'integer' },
+            },
+          ],
+          requestBody: {
+            required: false,
+            content: {
+              'application/json': {
+                schema: { $ref: '#/components/schemas/LostFoundAdminActionRequest' },
+              },
+            },
+          },
           responses: {
             200: {
               description: 'Claimed',
@@ -164,6 +244,22 @@ const swaggerSpec = swaggerJsdoc({
         patch: {
           tags: ['LostFound'],
           summary: 'Archive lost and found item (admin)',
+          parameters: [
+            {
+              in: 'path',
+              name: 'id',
+              required: true,
+              schema: { type: 'integer' },
+            },
+          ],
+          requestBody: {
+            required: false,
+            content: {
+              'application/json': {
+                schema: { $ref: '#/components/schemas/LostFoundAdminActionRequest' },
+              },
+            },
+          },
           responses: {
             200: {
               description: 'Archived',

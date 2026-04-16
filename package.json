@@ -7,7 +7,11 @@
     "test": "node --test test/integration/*.test.js",
     "test:integration": "cross-env RUN_DB_INTEGRATION_TESTS=true node --test test/integration/*.test.js",
     "dev": "nodemon src/app.js",
-    "start": "node src/app.js"
+    "start": "node src/app.js",
+    "prisma:generate": "prisma generate",
+    "prisma:migrate:dev": "prisma migrate dev",
+    "prisma:migrate:deploy": "prisma migrate deploy",
+    "prisma:migrate:status": "prisma migrate status"
   },
   "repository": {
     "type": "git",
@@ -25,14 +29,30 @@
   },
   "homepage": "https://github.com/NovaLogic-Systems/gestArtes-api#readme",
   "dependencies": {
+    "@prisma/adapter-mssql": "^7.7.0",
+    "@prisma/client": "^7.6.0",
     "cors": "^2.8.6",
-    "dotenv": "^17.3.1",
+    "dotenv": "^17.4.1",
     "express": "^5.2.1",
+<<<<<<< HEAD
     "mssql": "^12.2.1",
     "node-cron": "^4.2.1"
+=======
+    "express-rate-limit": "^8.3.2",
+    "express-session": "^1.19.0",
+    "express-validator": "^7.3.2",
+    "morgan": "^1.10.1",
+    "swagger-jsdoc": "^6.2.8",
+    "swagger-ui-express": "^5.0.1",
+    "winston": "^3.19.0"
+>>>>>>> e2b7e45a68439e70a4c37b3e762faac0a951e8bb
   },
   "devDependencies": {
     "cross-env": "^10.1.0",
-    "nodemon": "^3.1.14"
+    "nodemon": "^3.1.14",
+    "prisma": "^7.6.0"
+  },
+  "overrides": {
+    "@hono/node-server": "1.19.13"
   }
 }

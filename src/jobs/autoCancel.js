@@ -1,5 +1,5 @@
 const cron = require('node-cron');
-const db = require('../config/db');
+const prisma = require('../config/prisma');
 
 const STATUS_AWAITING_APPROVAL = 1;
 const STATUS_CANCELLED = 5;
@@ -10,32 +10,22 @@ cron.schedule('0 * * * *', async () => {
     console.log('Sistema de cancelamento automático em execução...');
 
     try {
-        const expiredSessions = await db.query(
-            `SELECT SessionID
-             FROM Sessions
-             WHERE StatusID = @awaitingApproval
-               AND SessionDate <= DATEADD(HOUR, -@expirationHours, GETDATE())`,
-            {
-                awaitingApproval: STATUS_AWAITING_APPROVAL,
-                expirationHours: EXPIRATION_HOURS
-            }
-        );
+        const expirationDate = new Date(Date.now() - EXPIRATION_HOURS * 60 * 60 * 1000);
 
-        for (const session of expiredSessions.recordset) {
-            await db.query(
-                `UPDATE Sessions
-                 SET StatusID = @cancelled
-                 WHERE SessionID = @sessionId
-                   AND StatusID = @awaitingApproval`,
-                {
-                    sessionId: session.SessionID,
-                    cancelled: STATUS_CANCELLED,
-                    awaitingApproval: STATUS_AWAITING_APPROVAL
-                }
-            );
-        }
+        const result = await prisma.coachingSession.updateMany({
+            where: {
+                StatusID: STATUS_AWAITING_APPROVAL,
+                CreatedAt: {
+                    lte: expirationDate,
+                },
+            },
+            data: {
+                StatusID: STATUS_CANCELLED,
+                CancellationReason: 'Cancelamento automático por expiração',
+            },
+        });
 
-        console.log(`Sessoes canceladas: ${expiredSessions.recordset.length}`);
+        console.log(`Sessoes canceladas: ${result.count}`);
     } catch (err) {
         console.error('Erro no cancelamento automatico:', err.message);
     }

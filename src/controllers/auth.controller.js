@@ -188,8 +188,8 @@ function logout(req, res, next) {
       return;
     }
 
-    const cookieName = req.app?.get('sessionCookieName') || 'connect.sid';
-    const cookieOptions = req.app?.get('sessionCookieOptions') || {};
+    const cookieName = req.app.get('sessionCookieName');
+    const cookieOptions = req.app.get('sessionCookieOptions');
 
     res.clearCookie(cookieName, cookieOptions);
     res.status(204).send();

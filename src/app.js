@@ -1,5 +1,6 @@
 require('dotenv').config();
 
+const crypto = require('node:crypto');
 const express = require('express');
 const session = require('express-session');
 const MSSQLStore = require('connect-mssql-v2');
@@ -27,10 +28,17 @@ const SESSION_CROSS_SITE = parseBoolean(
 );
 const SESSION_COOKIE_SAMESITE = SESSION_CROSS_SITE ? 'none' : 'lax';
 const SESSION_COOKIE_SECURE = SESSION_CROSS_SITE ? true : IS_PRODUCTION;
-const SESSION_SECRET = process.env.SESSION_SECRET;
+const HAS_SESSION_SECRET = Boolean(process.env.SESSION_SECRET);
+const SESSION_SECRET = HAS_SESSION_SECRET
+  ? process.env.SESSION_SECRET
+  : crypto.randomBytes(32).toString('hex');
 
-if (IS_PRODUCTION && !SESSION_SECRET) {
+if (IS_PRODUCTION && !HAS_SESSION_SECRET) {
   throw new Error('SESSION_SECRET is required in production');
+}
+
+if (!HAS_SESSION_SECRET) {
+  logger.warn('SESSION_SECRET not set; using an ephemeral development secret');
 }
 
 function parseBoolean(value, fallback) {
@@ -188,7 +196,7 @@ app.use(
   session({
     name: SESSION_COOKIE_NAME,
     store: sessionStore,
-    secret: SESSION_SECRET || 'dev-session-secret',
+    secret: SESSION_SECRET,
     resave: false,
     saveUninitialized: false,
     cookie: app.get('sessionCookieOptions'),

@@ -100,7 +100,7 @@ if (!shouldRun) {
     }
   });
 
-  test('marketplace endpoints support filters, detail, ownership flow and soft-delete', async (t) => {
+  test('marketplace endpoints support filters, detail and soft-delete lifecycle', async (t) => {
     const condition = await prisma.marketplaceItemCondition.findFirst({
       orderBy: {
         ConditionID: 'asc',

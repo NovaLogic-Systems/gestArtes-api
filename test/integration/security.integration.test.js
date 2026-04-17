@@ -183,3 +183,24 @@ test('swagger helper rewrites every hidden svg placeholder', () => {
   assert.equal((rewritten.match(/class="swagger-hidden-svg"/g) || []).length, 2);
   assert.doesNotMatch(rewritten, /style="position:absolute;width:0;height:0"/);
 });
+
+test('student profile endpoint requires authentication', async () => {
+  const response = await request('/student/profile');
+
+  assert.equal(response.status, 401);
+
+  const body = await response.json();
+  assert.equal(body.error, 'Not authenticated');
+});
+
+test('student profile has no update endpoints (read-only)', async () => {
+  const putResponse = await request('/student/profile', {
+    method: 'PUT',
+  });
+  const patchResponse = await request('/student/profile', {
+    method: 'PATCH',
+  });
+
+  assert.equal(putResponse.status, 404);
+  assert.equal(patchResponse.status, 404);
+});

@@ -9,6 +9,7 @@ const helmet = require('helmet');
 const morgan = require('morgan');
 
 const authRoutes = require('./routes/auth.routes');
+const studentRoutes = require('./routes/student.routes');
 const apiRateLimiter = require('./middlewares/rateLimit.middleware');
 const errorHandler = require('./middlewares/error.middleware');
 const { setupSwagger } = require('./config/swagger');
@@ -323,6 +324,7 @@ app.use(apiRateLimiter);
 
 // Routes
 app.use('/auth', authRoutes);
+app.use('/student', studentRoutes);
 
 app.get('/health', (req, res) => res.json({ status: 'ok' }));
 

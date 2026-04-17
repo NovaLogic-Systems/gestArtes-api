@@ -1,3 +1,5 @@
+const { Prisma } = require('@prisma/client');
+
 const prisma = require('../config/prisma');
 
 function createHttpError(status, message) {
@@ -87,12 +89,11 @@ function serializeRental(record) {
     status: toRentalStatus(record),
     startDate: record.StartDate,
     endDate: record.EndDate,
-    createdAt: record.StartDate,
     symbolicFee,
     estimatedTotal: symbolicFee,
     paymentMethod: {
       paymentMethodId: record.PaymentMethod.PaymentMethodID,
-      typeName: record.PaymentMethod.TypeName,
+      methodName: record.PaymentMethod.MethodName,
     },
     item: {
       itemId: record.InventoryItem.InventoryItemID,
@@ -202,8 +203,8 @@ async function getItemById(itemId) {
   return serializeItem(item, activeRentalsCount);
 }
 
-async function ensurePaymentMethodExists(paymentMethodId) {
-  const paymentMethod = await prisma.paymentMethod.findUnique({
+async function ensurePaymentMethodExists(db, paymentMethodId) {
+  const paymentMethod = await db.paymentMethod.findUnique({
     where: {
       PaymentMethodID: paymentMethodId,
     },
@@ -217,8 +218,8 @@ async function ensurePaymentMethodExists(paymentMethodId) {
   }
 }
 
-async function ensureItemCanBeRented(itemId) {
-  const item = await prisma.inventoryItem.findFirst({
+async function ensureItemCanBeRented(db, itemId) {
+  const item = await db.inventoryItem.findFirst({
     where: {
       InventoryItemID: itemId,
       ItemCategory: {
@@ -239,7 +240,7 @@ async function ensureItemCanBeRented(itemId) {
     throw createHttpError(404, 'Artigo não encontrado');
   }
 
-  const activeRentalsCount = await prisma.inventoryTransaction.count({
+  const activeRentalsCount = await db.inventoryTransaction.count({
     where: {
       InventoryItemID: itemId,
       IsCompleted: false,
@@ -254,59 +255,63 @@ async function ensureItemCanBeRented(itemId) {
 }
 
 async function createRental(data, renterId) {
-  const item = await ensureItemCanBeRented(data.inventoryItemId);
-  await ensurePaymentMethodExists(data.paymentMethodId);
+  return prisma.$transaction(async (tx) => {
+    const item = await ensureItemCanBeRented(tx, data.inventoryItemId);
+    await ensurePaymentMethodExists(tx, data.paymentMethodId);
 
-  const created = await prisma.inventoryTransaction.create({
-    data: {
-      InventoryItemID: data.inventoryItemId,
-      RenterID: renterId,
-      StartDate: data.startDate,
-      EndDate: data.endDate || null,
-      PaymentMethodID: data.paymentMethodId,
-      IsCompleted: false,
-      ConditionChecked: false,
-      ReturnVerified: false,
-    },
-    include: {
-      InventoryItem: {
-        select: {
-          InventoryItemID: true,
-          ItemName: true,
-          PhotoURL: true,
-          SymbolicFee: true,
+    const created = await tx.inventoryTransaction.create({
+      data: {
+        InventoryItemID: data.inventoryItemId,
+        RenterID: renterId,
+        StartDate: data.startDate,
+        EndDate: data.endDate || null,
+        PaymentMethodID: data.paymentMethodId,
+        IsCompleted: false,
+        ConditionChecked: false,
+        ReturnVerified: false,
+      },
+      include: {
+        InventoryItem: {
+          select: {
+            InventoryItemID: true,
+            ItemName: true,
+            PhotoURL: true,
+            SymbolicFee: true,
+          },
+        },
+        PaymentMethod: {
+          select: {
+            PaymentMethodID: true,
+            MethodName: true,
+          },
         },
       },
-      PaymentMethod: {
-        select: {
-          PaymentMethodID: true,
-          TypeName: true,
+    });
+
+    const symbolicFee = toMoney(item.SymbolicFee) || 0;
+
+    return {
+      rental: serializeRental(created),
+      checkoutSummary: {
+        reference: `INV-R-${created.StartDate.getUTCFullYear()}-${String(created.TransactionID).padStart(4, '0')}`,
+        item: {
+          itemId: item.InventoryItemID,
+          itemName: item.ItemName,
         },
+        rentalPeriod: {
+          startDate: created.StartDate,
+          endDate: created.EndDate,
+        },
+        symbolicFee,
+        estimatedTotal: symbolicFee,
+        status: 'pending',
+        paymentMethodName: created.PaymentMethod.MethodName,
+        paymentFlow: 'offline',
       },
-    },
+    };
+  }, {
+    isolationLevel: Prisma.TransactionIsolationLevel.Serializable,
   });
-
-  const symbolicFee = toMoney(item.SymbolicFee) || 0;
-
-  return {
-    rental: serializeRental(created),
-    checkoutSummary: {
-      reference: `INV-R-${created.StartDate.getUTCFullYear()}-${String(created.TransactionID).padStart(4, '0')}`,
-      item: {
-        itemId: item.InventoryItemID,
-        itemName: item.ItemName,
-      },
-      rentalPeriod: {
-        startDate: created.StartDate,
-        endDate: created.EndDate,
-      },
-      symbolicFee,
-      estimatedTotal: symbolicFee,
-      status: 'pending',
-      paymentMethod: created.PaymentMethod.TypeName,
-      paymentFlow: 'offline',
-    },
-  };
 }
 
 async function listRentalsByRenterId(renterId) {
@@ -326,7 +331,7 @@ async function listRentalsByRenterId(renterId) {
       PaymentMethod: {
         select: {
           PaymentMethodID: true,
-          TypeName: true,
+          MethodName: true,
         },
       },
     },

@@ -63,7 +63,7 @@ async function getProfile(req, res, next) {
       return;
     }
 
-    if (role && role !== 'student') {
+    if (role !== 'student') {
       res.status(403).json({ error: 'Forbidden' });
       return;
     }

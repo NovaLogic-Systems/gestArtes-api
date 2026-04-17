@@ -180,7 +180,5 @@ if (!shouldRun) {
       rentalsBody.rentals.some((rental) => rental.rentalId === createdRentalId),
       'Created rental should be visible in student rental history'
     );
-
-    createdRentalId = null;
   });
 }

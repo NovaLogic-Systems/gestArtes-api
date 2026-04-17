@@ -30,7 +30,7 @@ function injectCspNonceInSwaggerHtml(html, nonce) {
 
   return html
     .replace(
-      /<svg([^>]*?)\sstyle="position:absolute;width:0;height:0"/,
+      /<svg([^>]*?)\sstyle="position:absolute;width:0;height:0"/g,
       '<svg$1 class="swagger-hidden-svg"'
     )
     .replace(/<script(?![^>]*\snonce=)/g, `<script nonce="${nonce}"`)
@@ -69,6 +69,7 @@ function setupSwagger(app) {
 }
 
 module.exports = {
+  injectCspNonceInSwaggerHtml,
   setupSwagger,
   swaggerSpec,
 };

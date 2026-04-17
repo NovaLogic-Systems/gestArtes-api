@@ -71,9 +71,17 @@ Module._load = function patchedLoad(request, parent, isMain) {
   return originalLoad.call(this, request, parent, isMain);
 };
 
-const app = require('../../src/app');
+let app;
 
-Module._load = originalLoad;
+try {
+  app = require('../../src/app');
+} finally {
+  Module._load = originalLoad;
+}
+
+const {
+  injectCspNonceInSwaggerHtml,
+} = require('../../src/config/swagger');
 
 let server;
 let baseUrl;
@@ -162,4 +170,16 @@ test('docs redirects to trailing slash and serves nonce-hardened HTML', async ()
   assert.match(html, /class="swagger-hidden-svg"/);
   assert.doesNotMatch(html, /style="position:absolute;width:0;height:0"/);
   assert.match(html, /nonce="[^"]+"/);
+});
+
+test('swagger helper rewrites every hidden svg placeholder', () => {
+  const html = [
+    '<svg aria-hidden="true" style="position:absolute;width:0;height:0"></svg>',
+    '<div><svg focusable="false" style="position:absolute;width:0;height:0"></svg></div>',
+  ].join('');
+
+  const rewritten = injectCspNonceInSwaggerHtml(html, 'nonce-123');
+
+  assert.equal((rewritten.match(/class="swagger-hidden-svg"/g) || []).length, 2);
+  assert.doesNotMatch(rewritten, /style="position:absolute;width:0;height:0"/);
 });

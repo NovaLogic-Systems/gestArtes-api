@@ -7,6 +7,21 @@ function requireAuth(req, res, next) {
   next();
 }
 
+const requireSessionAuth = requireAuth;
+
+function requireAdminRole(req, res, next) {
+  requireAuth(req, res, () => {
+    if (req.session.role !== 'admin') {
+      res.status(403).json({ error: 'Forbidden' });
+      return;
+    }
+
+    next();
+  });
+}
+
 module.exports = {
   requireAuth,
+  requireSessionAuth,
+  requireAdminRole,
 };

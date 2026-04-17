@@ -8,6 +8,7 @@ const cors = require('cors');
 const morgan = require('morgan');
 
 const authRoutes = require('./routes/auth.routes');
+const lostFoundRoutes = require('./routes/lostFound.routes');
 const marketplaceRoutes = require('./routes/marketplace.routes');
 const apiRateLimiter = require('./middlewares/rateLimit.middleware');
 const errorHandler = require('./middlewares/error.middleware');
@@ -207,6 +208,7 @@ app.use(apiRateLimiter);
 
 // Routes
 app.use('/auth', authRoutes);
+app.use('/', lostFoundRoutes);
 app.use('/marketplace', marketplaceRoutes);
 
 app.get('/health', (req, res) => res.json({ status: 'ok' }));

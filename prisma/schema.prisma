@@ -185,8 +185,14 @@ model LostAndFoundItem {
   FoundDate          DateTime @db.DateTime
   ClaimedStatus      Boolean
   PhotoURL           String?  @db.VarChar(255)
+  IsArchived         Boolean  @default(false)
+  AdminNotes         String?  @db.VarChar(255)
+  ArchivedAt         DateTime? @db.DateTime
   RegisteredByUserID Int
   User               User     @relation(fields: [RegisteredByUserID], references: [UserID], onUpdate: NoAction, map: "FKLostAndFou221547")
+
+  @@index([IsArchived, FoundDate], map: "IX_LostAndFoundItem_IsArchived_FoundDate")
+  @@index([RegisteredByUserID], map: "IX_LostAndFoundItem_RegisteredByUserID")
 }
 
 model MarketplaceItem {

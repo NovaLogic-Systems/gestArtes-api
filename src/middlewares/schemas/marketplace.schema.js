@@ -52,7 +52,7 @@ const updateMarketplaceItemSchema = [
     .isInt({ min: 1 }).withMessage('Condição inválida')
     .toInt(),
   body('categoryId')
-    .optional()
+    .optional({ nullable: true })
     .isInt({ min: 1 }).withMessage('Categoria inválida')
     .toInt(),
   body('photoUrl')

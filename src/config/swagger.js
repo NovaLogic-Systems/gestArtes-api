@@ -280,8 +280,47 @@ const swaggerSpec = swaggerJsdoc({
   apis: [],
 });
 
+const swaggerHiddenSvgCss = '.swagger-hidden-svg { position: absolute; width: 0; height: 0; }';
+
+function injectCspNonceInSwaggerHtml(html, nonce) {
+  if (!nonce) {
+    return html;
+  }
+
+  return html
+    .replace(
+      /<svg([^>]*?)\sstyle="position:absolute;width:0;height:0"/g,
+      '<svg$1 class="swagger-hidden-svg"'
+    )
+    .replace(/<script(?![^>]*\snonce=)/g, `<script nonce="${nonce}"`)
+    .replace(/<style(?![^>]*\snonce=)/g, `<style nonce="${nonce}"`);
+}
+
 function setupSwagger(app) {
-  app.use('/docs', swaggerUi.serve, swaggerUi.setup(swaggerSpec));
+  const docsHandler = (req, res) => {
+    const html = swaggerUi.generateHTML(swaggerSpec, {
+      customCss: swaggerHiddenSvgCss,
+    });
+    const htmlWithNonce = injectCspNonceInSwaggerHtml(
+      html,
+      res.locals.cspNonce
+    );
+
+    res.type('html');
+    res.send(htmlWithNonce);
+  };
+
+  app.use((req, res, next) => {
+    if (req.path === '/docs') {
+      return res.redirect(308, '/docs/');
+    }
+
+    return next();
+  });
+
+  app.use('/docs', swaggerUi.serve);
+  app.get('/docs/', docsHandler);
+
   app.get('/docs.json', (req, res) => {
     res.setHeader('Content-Type', 'application/json');
     res.send(swaggerSpec);
@@ -289,6 +328,7 @@ function setupSwagger(app) {
 }
 
 module.exports = {
+  injectCspNonceInSwaggerHtml,
   setupSwagger,
   swaggerSpec,
 };

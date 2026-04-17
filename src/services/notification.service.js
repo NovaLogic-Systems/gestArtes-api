@@ -1,11 +1,14 @@
-const notificationModel = require('../models/notification.model');
-
-const getAllByUser = (UserID) => notificationModel.findByUser(UserID);
-const getById = (id, UserID) => notificationModel.findByIdAndUser(id, UserID);
-const markAsRead = (id, UserID) => notificationModel.markRead(id, UserID);
-const remove = (id, UserID) => notificationModel.delete(id, UserID);
-
-// Chamado por BE-10, BE-11, BE-12 — nunca diretamente pelo browser
-const create = (UserID, message) => notificationModel.insert(UserID, message);
 
 module.exports = { getAllByUser, getById, markAsRead, remove, create };
+const notificationModel = require('../models/notification.model');
+
+const getAllByUser = (userId) => notificationModel.findByUser(userId);
+const getById = (id, userId) => notificationModel.findByIdAndUser(id, userId);
+const markAsRead = (id, userId) => notificationModel.markRead(id, userId);
+const remove = (id, userId) => notificationModel.delete(id, userId);
+
+// Chamado por BE-10, BE-11, BE-12 — nunca diretamente pelo browser
+const create = (userId, message) => notificationModel.insert(userId, message);
+
+module.exports = { getAllByUser, getById, markAsRead, remove, create };
+

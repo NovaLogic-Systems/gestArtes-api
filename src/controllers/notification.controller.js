@@ -41,7 +41,17 @@ const remove = async (req, res) => {
 const create = async (req, res) => {
     try {
         const { userId, message } = req.body;
-        const notification = await notificationService.create(userId, message);
+        const parsedUserId = parseInt(userId, 10);
+
+        if (!Number.isInteger(parsedUserId) || parsedUserId <= 0) {
+            return res.status(400).json({ error: 'Invalid userId' });
+        }
+
+        if (typeof message !== 'string' || !message.trim()) {
+            return res.status(400).json({ error: 'Invalid message' });
+        }
+
+        const notification = await notificationService.create(parsedUserId, message.trim());
         res.status(201).json(notification);
     } catch (err) {
         res.status(500).json({ error: err.message });

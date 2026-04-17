@@ -7,6 +7,18 @@ const requireAuth = (req, res, next) => {
   next();
 };
 
+const requireSessionAuth = requireAuth;
+
+const requireAdminRole = (req, res, next) => {
+  const role = String(req.session?.role || '').trim().toLowerCase();
+
+  if (role !== 'admin') {
+    return res.status(403).json({ error: 'Forbidden' });
+  }
+
+  next();
+};
+
 const secureTokenEquals = (providedToken, configuredToken) => {
   const configuredHash = crypto.createHash('sha256').update(configuredToken, 'utf8').digest();
   const providedHash = crypto.createHash('sha256').update(providedToken, 'utf8').digest();
@@ -25,10 +37,11 @@ const requireInternalToken = (req, res, next) => {
   }
 
   next();
-}
+};
 
 module.exports = {
   requireAuth,
+  requireSessionAuth,
+  requireAdminRole,
+  requireInternalToken,
 };
-
-module.exports = { requireAuth, requireInternalToken };

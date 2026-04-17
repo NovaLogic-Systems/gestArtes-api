@@ -1,3 +1,13 @@
 node_modules/
 .env
 *.log
+logs/
+instructions/
+skills/
+scratch/
+
+# Postman
+Postman/
+*.postman_collection.json
+*.postman_environment.json
+.postman/

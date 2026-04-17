@@ -170,11 +170,12 @@ model InventoryTransaction {
 }
 
 model ItemCategory {
-  CategoryID    Int             @id(map: "PK__ItemCate__19093A2B226F0095") @default(autoincrement())
-  CategoryName  String          @unique(map: "UQ__ItemCate__8517B2E06DE554F1") @db.VarChar(50)
-  Description   String?         @db.VarChar(255)
-  IsActive      Boolean
-  InventoryItem InventoryItem[]
+  CategoryID      Int                @id(map: "PK__ItemCate__19093A2B226F0095") @default(autoincrement())
+  CategoryName    String             @unique(map: "UQ__ItemCate__8517B2E06DE554F1") @db.VarChar(50)
+  Description     String?            @db.VarChar(255)
+  IsActive        Boolean
+  InventoryItem   InventoryItem[]
+  MarketplaceItem MarketplaceItem[]
 }
 
 model LostAndFoundItem {
@@ -197,12 +198,17 @@ model LostAndFoundItem {
 model MarketplaceItem {
   MarketplaceItemID        Int                      @id(map: "PK__Marketpl__F14E4E0D09FB5B5E") @default(autoincrement())
   SellerID                 Int
+  CategoryID               Int?
   Title                    String                   @db.VarChar(100)
   Description              String?                  @db.VarChar(255)
   Price                    Decimal                  @db.Decimal(10, 2)
   ConditionID              Int
   StatusID                 Int
+  PhotoURL                 String?                  @db.VarChar(255)
+  Location                 String?                  @db.VarChar(100)
+  CreatedAt                DateTime                 @db.DateTime @default(now())
   IsActive                 Boolean
+  ItemCategory             ItemCategory?            @relation(fields: [CategoryID], references: [CategoryID], onUpdate: NoAction, map: "FKMarketplac_CategoryID")
   MarketplaceItemCondition MarketplaceItemCondition @relation(fields: [ConditionID], references: [ConditionID], onUpdate: NoAction, map: "FKMarketplac133556")
   User                     User                     @relation(fields: [SellerID], references: [UserID], onUpdate: NoAction, map: "FKMarketplac521076")
   MarketplaceItemStatus    MarketplaceItemStatus    @relation(fields: [StatusID], references: [StatusID], onUpdate: NoAction, map: "FKMarketplac786798")
@@ -211,6 +217,7 @@ model MarketplaceItem {
   @@index([IsActive, StatusID], map: "IX_MarketplaceItem_IsActive_StatusID")
   @@index([SellerID], map: "IX_MarketplaceItem_SellerID")
   @@index([SellerID, IsActive, StatusID], map: "IX_MarketplaceItem_SellerID_IsActive_StatusID")
+  @@index([CategoryID], map: "IX_MarketplaceItem_CategoryID")
 }
 
 model MarketplaceItemCondition {

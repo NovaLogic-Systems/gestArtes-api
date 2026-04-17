@@ -1,27 +1,34 @@
-function requireAuth(req, res, next) {
+const crypto = require('crypto');
+
+const requireAuth = (req, res, next) => {
   if (!req.session || !req.session.userId) {
-    res.status(401).json({ error: 'Not authenticated' });
-    return;
+    return res.status(401).json({ error: 'Unauthorized' });
+  }
+  next();
+};
+
+const secureTokenEquals = (providedToken, configuredToken) => {
+  const configuredHash = crypto.createHash('sha256').update(configuredToken, 'utf8').digest();
+  const providedHash = crypto.createHash('sha256').update(providedToken, 'utf8').digest();
+  return crypto.timingSafeEqual(configuredHash, providedHash);
+};
+
+const requireInternalToken = (req, res, next) => {
+  const configuredToken = process.env.INTERNAL_API_TOKEN;
+  const providedToken = req.get('x-internal-token');
+  if (!configuredToken || !providedToken) {
+    return res.status(401).json({ error: 'Unauthorized' });
+  }
+
+  if (!secureTokenEquals(providedToken, configuredToken)) {
+    return res.status(401).json({ error: 'Unauthorized' });
   }
 
   next();
 }
 
-const requireSessionAuth = requireAuth;
-
-function requireAdminRole(req, res, next) {
-  requireAuth(req, res, () => {
-    if (req.session.role !== 'admin') {
-      res.status(403).json({ error: 'Forbidden' });
-      return;
-    }
-
-    next();
-  });
-}
-
 module.exports = {
   requireAuth,
-  requireSessionAuth,
-  requireAdminRole,
 };
+
+module.exports = { requireAuth, requireInternalToken };

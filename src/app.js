@@ -10,6 +10,7 @@ const morgan = require('morgan');
 const authRoutes = require('./routes/auth.routes');
 const lostFoundRoutes = require('./routes/lostFound.routes');
 const marketplaceRoutes = require('./routes/marketplace.routes');
+const notificationRoutes = require('./routes/notification.routes');
 const apiRateLimiter = require('./middlewares/rateLimit.middleware');
 const errorHandler = require('./middlewares/error.middleware');
 const { setupSwagger } = require('./config/swagger');
@@ -181,6 +182,7 @@ sessionStore.on('sessionError', (error, method) => {
   logger.error(`Session store method error (${method}): ${error.message}`);
 });
 
+
 app.use(cors({ origin: process.env.CLIENT_URL, credentials: true }));
 app.use(express.json());
 app.use(morgan('dev'));
@@ -210,7 +212,7 @@ app.use(apiRateLimiter);
 app.use('/auth', authRoutes);
 app.use('/', lostFoundRoutes);
 app.use('/marketplace', marketplaceRoutes);
-
+app.use('/notifications', notificationRoutes);
 app.get('/health', (req, res) => res.json({ status: 'ok' }));
 
 setupSwagger(app);

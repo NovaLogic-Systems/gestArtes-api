@@ -7,7 +7,7 @@ const MSSQLStore = require('connect-mssql-v2');
 const cors = require('cors');
 const helmet = require('helmet');
 const morgan = require('morgan');
-
+const adminRoutes = require('./routes/admin.routes');
 const authRoutes = require('./routes/auth.routes');
 const studentRoutes = require('./routes/student.routes');
 const lostFoundRoutes = require('./routes/lostFound.routes');
@@ -320,7 +320,9 @@ app.use(
     secret: SESSION_SECRET,
     resave: false,
     saveUninitialized: false,
-    cookie: app.get('sessionCookieOptions'),
+    cookie:
+      app.get('sessionCookieOptions'),
+    httpOnly: true,
   })
 );
 app.use(apiRateLimiter);
@@ -332,7 +334,7 @@ app.use('/', lostFoundRoutes);
 app.use('/marketplace', marketplaceRoutes);
 app.use('/notifications', notificationRoutes);
 app.get('/health', (req, res) => res.json({ status: 'ok' }));
-
+app.use('/admin', adminRoutes);
 setupSwagger(app);
 
 app.use((err, req, res, next) => {

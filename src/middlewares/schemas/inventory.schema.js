@@ -1,4 +1,4 @@
-const { body } = require('express-validator');
+const { body, param, query } = require('express-validator');
 
 const createInventoryItemSchema = [
   body('itemName')
@@ -48,7 +48,27 @@ const createInventoryTransactionSchema = [
     .toInt(),
 ];
 
+const inventoryItemIdParamSchema = [
+  param('id')
+    .isInt({ min: 1 }).withMessage('ID de artigo inválido')
+    .toInt(),
+];
+
+const listInventoryItemsQuerySchema = [
+  query('category')
+    .optional()
+    .trim()
+    .isLength({ min: 1, max: 50 }).withMessage('Categoria inválida')
+    .escape(),
+  query('onlyAvailable')
+    .optional()
+    .isBoolean().withMessage('Filtro de disponibilidade inválido')
+    .toBoolean(),
+];
+
 module.exports = {
   createInventoryItemSchema,
   createInventoryTransactionSchema,
+  inventoryItemIdParamSchema,
+  listInventoryItemsQuerySchema,
 };

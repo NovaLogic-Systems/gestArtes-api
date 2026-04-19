@@ -9,6 +9,33 @@ const requireAuth = (req, res, next) => {
 
 const requireSessionAuth = requireAuth;
 
+function normalizeRole(value) {
+  return String(value || '')
+    .trim()
+    .toLowerCase();
+}
+
+const requireRoles = (allowedRoles) => {
+  const normalizedAllowedRoles = new Set(
+    (Array.isArray(allowedRoles) ? allowedRoles : [allowedRoles])
+      .map(normalizeRole)
+      .filter(Boolean)
+  );
+
+  return (req, res, next) => {
+    if (!req.session || !req.session.userId) {
+      return res.status(401).json({ error: 'Unauthorized' });
+    }
+
+    const currentRole = normalizeRole(req.session.role);
+    if (!normalizedAllowedRoles.has(currentRole)) {
+      return res.status(403).json({ error: 'Forbidden' });
+    }
+
+    next();
+  };
+};
+
 const requireAdminRole = (req, res, next) => {
   if (!req.session || !req.session.userId) {
     return res.status(401).json({ error: 'Unauthorized' });
@@ -44,6 +71,7 @@ const requireInternalToken = (req, res, next) => {
 module.exports = {
   requireAuth,
   requireSessionAuth,
+  requireRoles,
   requireAdminRole,
   requireInternalToken,
 };

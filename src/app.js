@@ -12,6 +12,7 @@ const authRoutes = require('./routes/auth.routes');
 const studentRoutes = require('./routes/student.routes');
 const lostFoundRoutes = require('./routes/lostFound.routes');
 const marketplaceRoutes = require('./routes/marketplace.routes');
+const inventoryRoutes = require('./routes/inventory.routes');
 const notificationRoutes = require('./routes/notification.routes');
 const apiRateLimiter = require('./middlewares/rateLimit.middleware');
 const errorHandler = require('./middlewares/error.middleware');
@@ -330,6 +331,7 @@ app.use('/auth', authRoutes);
 app.use('/student', studentRoutes);
 app.use('/', lostFoundRoutes);
 app.use('/marketplace', marketplaceRoutes);
+app.use('/inventory', inventoryRoutes);
 app.use('/notifications', notificationRoutes);
 app.get('/health', (req, res) => res.json({ status: 'ok' }));
 

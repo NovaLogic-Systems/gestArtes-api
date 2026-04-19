@@ -50,6 +50,7 @@ let inventoryItems = [];
 let paymentMethods = [];
 let inventoryTransactions = [];
 let nextTransactionId = 900;
+let transactionQueue = Promise.resolve();
 
 function cloneInventoryItem(item) {
   return {
@@ -120,6 +121,7 @@ function resetData() {
     },
   ];
   nextTransactionId = 900;
+  transactionQueue = Promise.resolve();
 }
 
 function normalizeString(value) {
@@ -165,7 +167,32 @@ function matchesInventoryTransactionWhere(transaction, where = {}) {
 }
 
 const fakePrisma = {
-  $transaction: async (callback) => callback(fakePrisma),
+  $transaction: async (callback, options = {}) => {
+    if (String(options.isolationLevel) === 'Serializable') {
+      const queued = transactionQueue.then(() => callback(fakePrisma), () => callback(fakePrisma));
+      transactionQueue = queued.then(() => undefined, () => undefined);
+      return queued;
+    }
+
+    return callback(fakePrisma);
+  },
+  $queryRaw: async (strings, ...values) => {
+    const inventoryItemId = Number(values[0]);
+    const item = inventoryItems.find((entry) => entry.InventoryItemID === inventoryItemId);
+
+    if (!item) {
+      return [];
+    }
+
+    return [
+      {
+        InventoryItemID: item.InventoryItemID,
+        ItemName: item.ItemName,
+        SymbolicFee: item.SymbolicFee,
+        TotalQuantity: item.TotalQuantity,
+      },
+    ];
+  },
   inventoryItem: {
     findMany: async ({ where = {} } = {}) => {
       return inventoryItems
@@ -396,6 +423,58 @@ test('teacher can create a symbolic checkout rental', async () => {
     (transaction) => transaction.InventoryItemID === 1 && transaction.IsCompleted === false
   );
   assert.equal(activeForItemOne.length, 2);
+});
+
+test('symbolic checkout serializes concurrent reservations for the same item', async () => {
+  const originalCount = fakePrisma.inventoryTransaction.count;
+
+  fakePrisma.inventoryTransaction.count = async (args = {}) => {
+    await new Promise((resolve) => setImmediate(resolve));
+    return originalCount(args);
+  };
+
+  try {
+    const [firstResponse, secondResponse] = await Promise.all([
+      request('/inventory/rentals', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'x-test-user-id': '215',
+          'x-test-role': 'teacher',
+        },
+        body: JSON.stringify({
+          inventoryItemId: 1,
+          startDate: '2026-04-21T10:00:00.000Z',
+          paymentMethodId: 1,
+        }),
+      }),
+      request('/inventory/rentals', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'x-test-user-id': '216',
+          'x-test-role': 'teacher',
+        },
+        body: JSON.stringify({
+          inventoryItemId: 1,
+          startDate: '2026-04-21T10:00:00.000Z',
+          paymentMethodId: 1,
+        }),
+      }),
+    ]);
+
+    assert.deepEqual(
+      [firstResponse.status, secondResponse.status].sort((a, b) => a - b),
+      [201, 409],
+    );
+
+    const activeForItemOne = inventoryTransactions.filter(
+      (transaction) => transaction.InventoryItemID === 1 && transaction.IsCompleted === false
+    );
+    assert.equal(activeForItemOne.length, 2);
+  } finally {
+    fakePrisma.inventoryTransaction.count = originalCount;
+  }
 });
 
 test('symbolic checkout rejects unavailable inventory', async () => {

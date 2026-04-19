@@ -1,3 +1,4 @@
+const { Prisma } = require('@prisma/client');
 const prisma = require('../config/prisma');
 
 function createHttpError(status, message) {
@@ -77,6 +78,20 @@ function serializeInventoryItem(record, reservedQuantity = 0) {
       }
       : null,
   };
+}
+
+async function lockInventoryItemRow(tx, inventoryItemId) {
+  const lockedItems = await tx.$queryRaw`
+    SELECT TOP (1)
+      InventoryItemID,
+      ItemName,
+      SymbolicFee,
+      TotalQuantity
+    FROM InventoryItem WITH (UPDLOCK, HOLDLOCK, ROWLOCK)
+    WHERE InventoryItemID = ${inventoryItemId}
+  `;
+
+  return lockedItems[0] ?? null;
 }
 
 async function getItems(req, res, next) {
@@ -183,17 +198,7 @@ async function createRental(req, res, next) {
     }
 
     const transactionResult = await prisma.$transaction(async (tx) => {
-      const item = await tx.inventoryItem.findUnique({
-        where: {
-          InventoryItemID: req.body.inventoryItemId,
-        },
-        select: {
-          InventoryItemID: true,
-          ItemName: true,
-          SymbolicFee: true,
-          TotalQuantity: true,
-        },
-      });
+      const item = await lockInventoryItemRow(tx, req.body.inventoryItemId);
 
       if (!item) {
         throw createHttpError(404, 'Artigo não encontrado');
@@ -243,6 +248,8 @@ async function createRental(req, res, next) {
         item,
         paymentMethod,
       };
+    }, {
+      isolationLevel: Prisma.TransactionIsolationLevel.Serializable,
     });
 
     res.status(201).json({

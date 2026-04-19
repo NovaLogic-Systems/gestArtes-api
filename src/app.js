@@ -322,7 +322,6 @@ app.use(
     saveUninitialized: false,
     cookie:
       app.get('sessionCookieOptions'),
-    httpOnly: true,
   })
 );
 app.use(apiRateLimiter);

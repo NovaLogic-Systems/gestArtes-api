@@ -9,7 +9,8 @@ const resetUserPasswordSchema = [
         .matches(/[A-Z]/).withMessage('Password deve conter pelo menos uma letra maiúscula')
         .matches(/[a-z]/).withMessage('Password deve conter pelo menos uma letra minúscula')
         .matches(/[0-9]/).withMessage('Password deve conter pelo menos um número')
-        .trim(),
+        .trim()
+        .escape()
 ];
 
 module.exports = { resetUserPasswordSchema };

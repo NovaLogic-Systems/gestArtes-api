@@ -4,7 +4,8 @@
   "description": "",
   "main": "src/app.js",
   "scripts": {
-    "test": "node --test test/integration/*.test.js",
+    "test": "node --test test/unit/*.test.js test/integration/*.test.js",
+    "test:unit": "node --test test/unit/*.test.js",
     "test:integration": "cross-env RUN_DB_INTEGRATION_TESTS=true node --test test/integration/*.test.js",
     "dev": "nodemon src/app.js",
     "start": "node src/app.js",

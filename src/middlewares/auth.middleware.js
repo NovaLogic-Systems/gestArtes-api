@@ -10,6 +10,10 @@ const requireAuth = (req, res, next) => {
 const requireSessionAuth = requireAuth;
 
 const requireAdminRole = (req, res, next) => {
+  if (!req.session || !req.session.userId) {
+    return res.status(401).json({ error: 'Unauthorized' });
+  }
+
   const role = String(req.session?.role || '').trim().toLowerCase();
 
   if (role !== 'admin') {

@@ -269,7 +269,6 @@ function safeDecode(value) {
       ),
     },
   };
-}
 
 const sessionStore = new MSSQLStore(buildMssqlSessionConfig(), {
   table: SESSION_TABLE_NAME,

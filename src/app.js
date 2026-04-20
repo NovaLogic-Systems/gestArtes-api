@@ -2,6 +2,7 @@ require('dotenv').config();
 
 const crypto = require('node:crypto');
 const express = require('express');
+const http = require('node:http');
 const session = require('express-session');
 const MSSQLStore = require('connect-mssql-v2');
 const cors = require('cors');
@@ -18,6 +19,7 @@ const apiRateLimiter = require('./middlewares/rateLimit.middleware');
 const errorHandler = require('./middlewares/error.middleware');
 const { setupSwagger } = require('./config/swagger');
 const logger = require('./utils/logger');
+const { initSocket } = require('./socket');
 
 const app = express();
 
@@ -96,9 +98,18 @@ function parseCsv(value) {
     .filter(Boolean);
 }
 
+function normalizeOrigin(value) {
+  return String(value || '')
+    .trim()
+    .replace(/\/+$/, '');
+}
+
 function buildCorsAllowList() {
   return Array.from(
-    new Set([...parseCsv(process.env.CORS_ORIGINS), ...parseCsv(process.env.CLIENT_URL)])
+    new Set([
+      ...parseCsv(process.env.CORS_ORIGINS).map(normalizeOrigin),
+      ...parseCsv(process.env.CLIENT_URL).map(normalizeOrigin),
+    ])
   );
 }
 
@@ -189,8 +200,6 @@ function safeDecode(value) {
     return String(value);
   }
 }
-
-function buildMssqlSessionConfig() {
   const rawConnectionString = sanitizeConnectionString(
     process.env.DATABASE_URL
   );
@@ -314,17 +323,16 @@ app.set('sessionCookieOptions', {
   sameSite: SESSION_COOKIE_SAMESITE,
   maxAge: SESSION_TTL_MS,
 });
-app.use(
-  session({
-    name: SESSION_COOKIE_NAME,
-    store: sessionStore,
-    secret: SESSION_SECRET,
-    resave: false,
-    saveUninitialized: false,
-    cookie:
-      app.get('sessionCookieOptions'),
-  })
-);
+const sessionMiddleware = session({
+  name: SESSION_COOKIE_NAME,
+  store: sessionStore,
+  secret: SESSION_SECRET,
+  resave: false,
+  saveUninitialized: false,
+  cookie: app.get('sessionCookieOptions'),
+});
+
+app.use(sessionMiddleware);
 app.use(apiRateLimiter);
 
 // Routes
@@ -342,9 +350,14 @@ app.use((err, req, res, next) => {
   errorHandler(err, req, res, next);
 });
 
+const httpServer = http.createServer(app);
+
+const io = initSocket(httpServer, sessionMiddleware);
+  app.set('io', io);
+
 if (require.main === module) {
   const port = Number(process.env.PORT) || 3001;
-  app.listen(port, () => {
+    httpServer.listen(port, () => {
     logger.info(`API running on http://localhost:${port}`);
   });
 }

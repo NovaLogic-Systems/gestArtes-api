@@ -24,6 +24,10 @@ const requireAdminRole = (req, res, next) => {
 };
 
 const secureTokenEquals = (providedToken, configuredToken) => {
+  if (String(providedToken || '').length !== String(configuredToken || '').length) {
+    return false;
+  }
+
   const configuredHash = crypto.createHash('sha256').update(configuredToken, 'utf8').digest();
   const providedHash = crypto.createHash('sha256').update(providedToken, 'utf8').digest();
   return crypto.timingSafeEqual(configuredHash, providedHash);

@@ -66,7 +66,7 @@ const updateMarketplaceItemSchema = [
     .isLength({ min: 1, max: 100 }).withMessage('Localização inválida')
     .escape(),
   body()
-    .custom((value, { req }) => {
+    .custom((value) => {
       const editableFields = [
         'title',
         'description',
@@ -80,10 +80,6 @@ const updateMarketplaceItemSchema = [
       const hasEditableField = editableFields.some((field) => {
         return Object.prototype.hasOwnProperty.call(payload, field);
       });
-
-      if (req.file) {
-        return true;
-      }
 
       if (!hasEditableField) {
         throw new Error('Nenhum campo para atualizar');

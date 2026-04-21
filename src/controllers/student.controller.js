@@ -331,7 +331,7 @@ async function getDashboard(req, res, next) {
 
     const { studentAccountId } = student;
 
-    const [upcomingSessionsRows, pendingValidationsRows, reviewRequestsRows, notificationsRows, schedule] =
+    const [upcomingSessionsRows, pendingValidationsRows, reviewRequestsRows, externalPaymentsRows, notificationsRows, schedule] =
       await Promise.all([
         prisma.$queryRaw`
           SELECT COUNT(1) AS upcomingSessions
@@ -359,6 +359,19 @@ async function getDashboard(req, res, next) {
             AND LOWER(cjrs.StatusName) LIKE '%pend%'
         `,
         prisma.$queryRaw`
+          SELECT COUNT(DISTINCT cs.SessionID) AS externalPayments
+          FROM [CoachingSession] AS cs
+          INNER JOIN [SessionStudent] AS ss ON ss.SessionID = cs.SessionID
+          INNER JOIN [SessionStatus] AS sst ON sst.StatusID = cs.StatusID
+          WHERE ss.StudentAccountID = ${studentAccountId}
+            AND cs.IsExternal = 1
+            AND cs.StartTime >= SYSUTCDATETIME()
+            AND (
+              LOWER(sst.StatusName) NOT LIKE '%completed%'
+              AND LOWER(sst.StatusName) NOT LIKE '%cancelled%'
+            )
+        `,
+        prisma.$queryRaw`
           SELECT TOP (5)
             n.NotificationID AS notificationId,
             n.Title AS title,
@@ -376,6 +389,7 @@ async function getDashboard(req, res, next) {
       upcomingSessions: toInteger(upcomingSessionsRows[0]?.upcomingSessions),
       pendingValidations: toInteger(pendingValidationsRows[0]?.pendingValidations),
       reviewRequests: toInteger(reviewRequestsRows[0]?.reviewRequests),
+      externalPaymentsInProgress: toInteger(externalPaymentsRows[0]?.externalPayments),
       notifications: notificationsRows.map(mapNotificationRow),
       schedule,
     });

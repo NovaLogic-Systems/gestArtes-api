@@ -41,7 +41,9 @@ const requireAdminRole = (req, res, next) => {
     return res.status(401).json({ error: 'Unauthorized' });
   }
 
-  if (req.session.role !== 'admin') {
+  const role = String(req.session?.role || '').trim().toLowerCase();
+
+  if (role !== 'admin') {
     return res.status(403).json({ error: 'Forbidden' });
   }
 

@@ -34,4 +34,6 @@ router.post(
   inventoryController.createRental
 );
 
+router.get('/rentals', inventoryController.getRentals);
+
 module.exports = router;

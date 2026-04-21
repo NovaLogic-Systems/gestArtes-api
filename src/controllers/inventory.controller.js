@@ -1,5 +1,6 @@
 const { Prisma } = require('@prisma/client');
 const prisma = require('../config/prisma');
+const inventoryService = require('../services/inventory.service');
 
 function createHttpError(status, message) {
   const error = new Error(message);
@@ -92,6 +93,12 @@ async function lockInventoryItemRow(tx, inventoryItemId) {
   `;
 
   return lockedItems[0] ?? null;
+function ensureStudentRole(req) {
+  const role = String(req.session?.role || '').trim().toLowerCase();
+
+  if (role !== 'student') {
+    throw createHttpError(403, 'Forbidden');
+  }
 }
 
 async function getItems(req, res, next) {
@@ -280,4 +287,6 @@ module.exports = {
   getItems,
   getItemById,
   createRental,
+};
+  getRentals,
 };

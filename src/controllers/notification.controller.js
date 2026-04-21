@@ -53,6 +53,12 @@ const create = async (req, res) => {
 
         const notification = await notificationService.create(parsedUserId, message.trim());
         res.status(201).json(notification);
+
+        const io = req.app.get('io');
+        if (io) {
+            io.to(`user:${parsedUserId}`).emit('notification', notification);
+        }
+        
     } catch (err) {
         res.status(500).json({ error: err.message });
     }

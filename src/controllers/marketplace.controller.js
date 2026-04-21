@@ -1,4 +1,5 @@
 const prisma = require('../config/prisma');
+const multer = require('multer');
 
 const DEFAULT_STATUS_NAMES = ['available', 'disponivel', 'disponível', 'active', 'ativo'];
 const REMOVED_STATUS_NAMES = ['removed', 'removido', 'hidden', 'oculto', 'inactive', 'inativo'];
@@ -19,6 +20,14 @@ function toMoney(value) {
   }
 
   return Number(value);
+}
+
+function resolveUploadedPhotoUrl(req) {
+  if (!req.file) {
+    return null;
+  }
+
+  return `/uploads/marketplace/${req.file.filename}`;
 }
 
 function serializeListing(record, includeSellerContact = false) {
@@ -186,6 +195,45 @@ function buildListingInclude(includeSellerContact = false) {
   };
 }
 
+async function getMarketplaceOptions(req, res, next) {
+  try {
+    const [categories, conditions] = await Promise.all([
+      prisma.itemCategory.findMany({
+        where: { IsActive: true },
+        select: {
+          CategoryID: true,
+          CategoryName: true,
+        },
+        orderBy: {
+          CategoryName: 'asc',
+        },
+      }),
+      prisma.marketplaceItemCondition.findMany({
+        select: {
+          ConditionID: true,
+          ConditionName: true,
+        },
+        orderBy: {
+          ConditionID: 'asc',
+        },
+      }),
+    ]);
+
+    res.json({
+      categories: categories.map((category) => ({
+        categoryId: category.CategoryID,
+        categoryName: category.CategoryName,
+      })),
+      conditions: conditions.map((condition) => ({
+        conditionId: condition.ConditionID,
+        conditionName: condition.ConditionName,
+      })),
+    });
+  } catch (error) {
+    next(error);
+  }
+}
+
 async function getListings(req, res, next) {
   try {
     const where = {
@@ -256,6 +304,8 @@ async function getListingById(req, res, next) {
 
 async function createListing(req, res, next) {
   try {
+    const uploadedPhotoUrl = resolveUploadedPhotoUrl(req);
+
     await ensureConditionExists(req.body.conditionId);
     await ensureCategoryExists(req.body.categoryId);
 
@@ -274,7 +324,7 @@ async function createListing(req, res, next) {
         Price: req.body.price,
         ConditionID: req.body.conditionId,
         StatusID: statusId,
-        PhotoURL: req.body.photoUrl ?? null,
+        PhotoURL: uploadedPhotoUrl || req.body.photoUrl || null,
         Location: req.body.location ?? null,
         IsActive: true,
       },
@@ -285,6 +335,16 @@ async function createListing(req, res, next) {
       listing: serializeListing(listing, false),
     });
   } catch (error) {
+    if (error instanceof multer.MulterError) {
+      if (error.code === 'LIMIT_FILE_SIZE') {
+        next(createHttpError(400, 'Imagem excede o limite máximo de 5MB'));
+        return;
+      }
+
+      next(createHttpError(400, 'Falha no upload da imagem'));
+      return;
+    }
+
     next(error);
   }
 }
@@ -311,6 +371,7 @@ async function getMyListings(req, res, next) {
 
 async function updateListing(req, res, next) {
   try {
+    const uploadedPhotoUrl = resolveUploadedPhotoUrl(req);
     const listingId = req.params.id;
     const existing = await prisma.marketplaceItem.findUnique({
       where: {
@@ -361,7 +422,9 @@ async function updateListing(req, res, next) {
       updateData.CategoryID = req.body.categoryId;
     }
 
-    if (req.body.photoUrl !== undefined) {
+    if (uploadedPhotoUrl) {
+      updateData.PhotoURL = uploadedPhotoUrl;
+    } else if (req.body.photoUrl !== undefined) {
       updateData.PhotoURL = req.body.photoUrl;
     }
 
@@ -381,6 +444,16 @@ async function updateListing(req, res, next) {
       listing: serializeListing(updated, false),
     });
   } catch (error) {
+    if (error instanceof multer.MulterError) {
+      if (error.code === 'LIMIT_FILE_SIZE') {
+        next(createHttpError(400, 'Imagem excede o limite máximo de 5MB'));
+        return;
+      }
+
+      next(createHttpError(400, 'Falha no upload da imagem'));
+      return;
+    }
+
     next(error);
   }
 }
@@ -434,6 +507,7 @@ async function deleteListing(req, res, next) {
 }
 
 module.exports = {
+  getMarketplaceOptions,
   getListings,
   getListingById,
   createListing,

@@ -3,6 +3,7 @@ require('dotenv').config();
 const crypto = require('node:crypto');
 const express = require('express');
 const http = require('node:http');
+const path = require('node:path');
 const session = require('express-session');
 const MSSQLStore = require('connect-mssql-v2');
 const cors = require('cors');
@@ -315,6 +316,7 @@ app.use((req, res, next) => {
 });
 app.use(express.json());
 app.use(morgan('dev'));
+app.use('/uploads', express.static(path.resolve(__dirname, '..', 'uploads')));
 if (parseBoolean(process.env.TRUST_PROXY, false)) {
   app.set('trust proxy', 1);
 }
@@ -355,11 +357,11 @@ app.use((err, req, res, next) => {
 const httpServer = http.createServer(app);
 
 const io = initSocket(httpServer, sessionMiddleware);
-  app.set('io', io);
+app.set('io', io);
 
 if (require.main === module) {
   const port = Number(process.env.PORT) || 3001;
-    httpServer.listen(port, () => {
+  httpServer.listen(port, () => {
     logger.info(`API running on http://localhost:${port}`);
   });
 }

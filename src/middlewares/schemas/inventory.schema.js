@@ -55,6 +55,12 @@ const inventoryItemIdParamSchema = [
 ];
 
 const listInventoryItemsQuerySchema = [
+  query('category')
+    .optional()
+    .trim()
+    .isLength({ min: 1, max: 50 }).withMessage('Categoria inválida')
+    .escape(),
+  query('onlyAvailable')
   query('categoryId')
     .optional()
     .isInt({ min: 1 }).withMessage('Categoria inválida')

@@ -31,7 +31,7 @@ function buildCategoryFilter(rawCategory) {
     return null;
   }
 
-  const maybeId = Number.parseInt(category, 10);
+const maybeId = Number.parseInt(category, 10);
 
   if (!Number.isNaN(maybeId) && maybeId > 0 && String(maybeId) === category) {
     return {
@@ -277,8 +277,30 @@ async function createRental(req, res, next) {
   }
 }
 
+async function getRentals(req, res, next) {
+  try {
+    const renterId = Number(req.session?.userId);
+
+    if (!Number.isInteger(renterId) || renterId <= 0) {
+      throw createHttpError(401, 'Unauthorized');
+    }
+
+    const role = normalizeString(req.session?.role);
+    if (role !== 'student' && role !== 'teacher') {
+      throw createHttpError(403, 'Forbidden');
+    }
+
+    const rentals = await inventoryService.listRentalsByRenterId(renterId);
+
+    res.json({ rentals });
+  } catch (error) {
+    next(error);
+  }
+}
+
 module.exports = {
   getItems,
   getItemById,
   createRental,
+  getRentals,
 };

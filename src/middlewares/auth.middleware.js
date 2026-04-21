@@ -9,25 +9,6 @@ const requireAuth = (req, res, next) => {
 
 const requireSessionAuth = requireAuth;
 
-const requireRole = (requiredRole) => (req, res, next) => {
-  if (!req.session || !req.session.userId) {
-    return res.status(401).json({ error: 'Not authenticated' });
-  }
-
-  const role = String(req.session?.role || '')
-    .trim()
-    .toLowerCase();
-  const expectedRole = String(requiredRole || '')
-    .trim()
-    .toLowerCase();
-
-  if (!expectedRole || role !== expectedRole) {
-    return res.status(403).json({ error: 'Forbidden' });
-  }
-
-  next();
-};
-
 function normalizeRole(value) {
   return String(value || '')
     .trim()
@@ -55,7 +36,10 @@ const requireRoles = (allowedRoles) => {
   };
 };
 
-const requireAdminRole = requireRole('admin');
+// Backward-compatible alias used by older routes.
+const requireRole = requireRoles;
+
+const requireAdminRole = requireRoles('admin');
 
 const secureTokenEquals = (providedToken, configuredToken) => {
   if (String(providedToken || '').length !== String(configuredToken || '').length) {

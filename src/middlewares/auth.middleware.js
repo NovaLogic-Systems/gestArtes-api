@@ -2,7 +2,7 @@ const crypto = require('crypto');
 
 const requireAuth = (req, res, next) => {
   if (!req.session || !req.session.userId) {
-    return res.status(401).json({ error: 'Unauthorized' });
+    return res.status(401).json({ error: 'Not authenticated' });
   }
   next();
 };
@@ -38,19 +38,30 @@ const requireRoles = (allowedRoles) => {
 
 const requireAdminRole = (req, res, next) => {
   if (!req.session || !req.session.userId) {
-    return res.status(401).json({ error: 'Unauthorized' });
+    return res.status(401).json({ error: 'Not authenticated' });
   }
 
-  const role = String(req.session?.role || '').trim().toLowerCase();
+  const role = String(req.session?.role || '')
+    .trim()
+    .toLowerCase();
+  const expectedRole = String(requiredRole || '')
+    .trim()
+    .toLowerCase();
 
-  if (role !== 'admin') {
+  if (!expectedRole || role !== expectedRole) {
     return res.status(403).json({ error: 'Forbidden' });
   }
 
   next();
 };
 
+const requireAdminRole = requireRole('admin');
+
 const secureTokenEquals = (providedToken, configuredToken) => {
+  if (String(providedToken || '').length !== String(configuredToken || '').length) {
+    return false;
+  }
+
   const configuredHash = crypto.createHash('sha256').update(configuredToken, 'utf8').digest();
   const providedHash = crypto.createHash('sha256').update(providedToken, 'utf8').digest();
   return crypto.timingSafeEqual(configuredHash, providedHash);

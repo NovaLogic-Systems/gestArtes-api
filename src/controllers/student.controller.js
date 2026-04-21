@@ -51,53 +51,97 @@ function toStudentCode(studentAccountId) {
   return `ST-${String(studentAccountId).padStart(4, '0')}`;
 }
 
+function getAuthenticatedStudentUserId(req, res) {
+  const userId = Number(req.session?.userId);
+  const role = String(req.session?.role || '')
+    .trim()
+    .toLowerCase();
+
+  if (!Number.isInteger(userId) || userId <= 0) {
+    res.status(401).json({ error: 'Not authenticated' });
+    return null;
+  }
+
+  if (role !== 'student') {
+    res.status(403).json({ error: 'Forbidden' });
+    return null;
+  }
+
+  return userId;
+}
+
+async function loadStudentProfile(userId) {
+  const profileRows = await prisma.$queryRaw`
+    SELECT
+      u.UserID AS userId,
+      u.AuthUID AS authUid,
+      u.FirstName AS firstName,
+      u.LastName AS lastName,
+      u.Email AS email,
+      u.PhoneNumber AS phoneNumber,
+      u.Photo AS photoUrl,
+      u.CreatedAt AS accountCreatedAt,
+      u.UpdatedAt AS accountUpdatedAt,
+      sa.StudentAccountID AS studentAccountId,
+      sa.BirthDate AS birthDate,
+      sa.GuardianName AS guardianName,
+      sa.GuardianPhone AS guardianPhone
+    FROM [User] AS u
+    INNER JOIN [StudentAccount] AS sa ON sa.UserID = u.UserID
+    WHERE u.UserID = ${userId}
+      AND u.IsActive = 1
+      AND u.DeletedAt IS NULL
+  `;
+
+  const profileRow = profileRows[0];
+
+  if (!profileRow) {
+    return null;
+  }
+
+  return {
+    profileRow,
+    studentAccountId: toInteger(profileRow.studentAccountId),
+  };
+}
+
+function mapNotificationRow(row) {
+  return {
+    id: toInteger(row.notificationId),
+    title: row.title,
+    message: row.message,
+    read: Boolean(row.isRead),
+    createdAt: row.createdAt,
+  };
+}
+
+function mapScheduleRow(row) {
+  return {
+    sessionId: toInteger(row.sessionId),
+    date: row.sessionDate,
+    time: row.sessionTime,
+    teacher: row.teacherName,
+    studio: row.studioName,
+    status: row.sessionStatus,
+  };
+}
+
 async function getProfile(req, res, next) {
   try {
-    const userId = Number(req.session?.userId);
-    const role = String(req.session?.role || '')
-      .trim()
-      .toLowerCase();
+    const userId = getAuthenticatedStudentUserId(req, res);
 
-    if (!Number.isInteger(userId) || userId <= 0) {
-      res.status(401).json({ error: 'Not authenticated' });
+    if (!userId) {
       return;
     }
 
-    if (role !== 'student') {
-      res.status(403).json({ error: 'Forbidden' });
-      return;
-    }
+    const student = await loadStudentProfile(userId);
 
-    const profileRows = await prisma.$queryRaw`
-      SELECT
-        u.UserID AS userId,
-        u.AuthUID AS authUid,
-        u.FirstName AS firstName,
-        u.LastName AS lastName,
-        u.Email AS email,
-        u.PhoneNumber AS phoneNumber,
-        u.Photo AS photoUrl,
-        u.CreatedAt AS accountCreatedAt,
-        u.UpdatedAt AS accountUpdatedAt,
-        sa.StudentAccountID AS studentAccountId,
-        sa.BirthDate AS birthDate,
-        sa.GuardianName AS guardianName,
-        sa.GuardianPhone AS guardianPhone
-      FROM [User] AS u
-      INNER JOIN [StudentAccount] AS sa ON sa.UserID = u.UserID
-      WHERE u.UserID = ${userId}
-        AND u.IsActive = 1
-        AND u.DeletedAt IS NULL
-    `;
-
-    const profileRow = profileRows[0];
-
-    if (!profileRow) {
+    if (!student) {
       res.status(404).json({ error: 'Student account not found' });
       return;
     }
 
-    const studentAccountId = toInteger(profileRow.studentAccountId);
+    const { profileRow, studentAccountId } = student;
 
     const [
       sessionStatsRows,
@@ -239,6 +283,100 @@ async function getProfile(req, res, next) {
   }
 }
 
+async function getDashboard(req, res, next) {
+  try {
+    const userId = getAuthenticatedStudentUserId(req, res);
+
+    if (!userId) {
+      return;
+    }
+
+    const student = await loadStudentProfile(userId);
+
+    if (!student) {
+      res.status(404).json({ error: 'Student account not found' });
+      return;
+    }
+
+    const { studentAccountId } = student;
+
+    const [upcomingSessionsRows, pendingValidationsRows, reviewRequestsRows, notificationsRows, scheduleRows] =
+      await Promise.all([
+        prisma.$queryRaw`
+          SELECT COUNT(1) AS upcomingSessions
+          FROM [SessionStudent] AS ss
+          INNER JOIN [CoachingSession] AS cs ON cs.SessionID = ss.SessionID
+          WHERE ss.StudentAccountID = ${studentAccountId}
+            AND cs.StartTime >= SYSUTCDATETIME()
+        `,
+        prisma.$queryRaw`
+          SELECT COUNT(DISTINCT sv.SessionID) AS pendingValidations
+          FROM [SessionValidation] AS sv
+          INNER JOIN [ValidationStep] AS vs ON vs.StepID = sv.ValidationStepID
+          INNER JOIN [SessionStudent] AS ss ON ss.SessionID = sv.SessionID
+          WHERE ss.StudentAccountID = ${studentAccountId}
+            AND (
+              LOWER(vs.StepName) LIKE '%pending%'
+              OR LOWER(vs.StepName) LIKE '%finalization%'
+            )
+        `,
+        prisma.$queryRaw`
+          SELECT COUNT(1) AS reviewRequests
+          FROM [CoachingJoinRequest] AS cjr
+          INNER JOIN [CoachingJoinRequestStatus] AS cjrs ON cjrs.StatusID = cjr.StatusID
+          WHERE cjr.StudentAccountID = ${studentAccountId}
+            AND LOWER(cjrs.StatusName) LIKE '%pend%'
+        `,
+        prisma.$queryRaw`
+          SELECT TOP (5)
+            n.NotificationID AS notificationId,
+            n.Title AS title,
+            n.Message AS message,
+            n.IsRead AS isRead,
+            n.CreatedAt AS createdAt
+          FROM [Notification] AS n
+          WHERE n.UserID = ${userId}
+          ORDER BY n.CreatedAt DESC, n.NotificationID DESC
+        `,
+        prisma.$queryRaw`
+          SELECT TOP (5)
+            cs.SessionID AS sessionId,
+            CONVERT(char(10), cs.StartTime, 23) AS sessionDate,
+            CONVERT(char(5), cs.StartTime, 108) AS sessionTime,
+            COALESCE(teacher.teacherName, 'Por atribuir') AS teacherName,
+            st.StudioName AS studioName,
+            sst.StatusName AS sessionStatus
+          FROM [SessionStudent] AS ss
+          INNER JOIN [CoachingSession] AS cs ON cs.SessionID = ss.SessionID
+          INNER JOIN [Studio] AS st ON st.StudioID = cs.StudioID
+          INNER JOIN [SessionStatus] AS sst ON sst.StatusID = cs.StatusID
+          OUTER APPLY (
+            SELECT TOP (1)
+              CONCAT(u.FirstName, ' ', u.LastName) AS teacherName
+            FROM [SessionTeacher] AS stt
+            INNER JOIN [User] AS u ON u.UserID = stt.TeacherID
+            WHERE stt.SessionID = cs.SessionID
+            ORDER BY stt.AssignmentRoleID ASC, stt.TeacherID ASC
+          ) AS teacher
+          WHERE ss.StudentAccountID = ${studentAccountId}
+            AND cs.StartTime >= SYSUTCDATETIME()
+          ORDER BY cs.StartTime ASC, cs.SessionID ASC
+        `,
+      ]);
+
+    res.json({
+      upcomingSessions: toInteger(upcomingSessionsRows[0]?.upcomingSessions),
+      pendingValidations: toInteger(pendingValidationsRows[0]?.pendingValidations),
+      reviewRequests: toInteger(reviewRequestsRows[0]?.reviewRequests),
+      notifications: notificationsRows.map(mapNotificationRow),
+      schedule: scheduleRows.map(mapScheduleRow),
+    });
+  } catch (error) {
+    next(error);
+  }
+}
+
 module.exports = {
   getProfile,
+  getDashboard,
 };

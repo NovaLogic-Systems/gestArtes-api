@@ -9,5 +9,6 @@ router.get('/:id', requireAuth, notificationController.getById);
 router.patch('/:id/read', requireAuth, notificationController.markAsRead);
 router.delete('/:id', requireAuth, notificationController.remove);
 router.post('/', requireInternalToken, notificationController.create); // chamado internamente
+router.post('/broadcast', requireInternalToken, notificationController.broadcastNotification); // broadcast geral
 
 module.exports = router;

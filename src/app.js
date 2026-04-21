@@ -200,6 +200,8 @@ function safeDecode(value) {
     return String(value);
   }
 }
+
+function buildMssqlSessionConfig() {
   const rawConnectionString = sanitizeConnectionString(
     process.env.DATABASE_URL
   );
@@ -269,6 +271,7 @@ function safeDecode(value) {
       ),
     },
   };
+}
 
 const sessionStore = new MSSQLStore(buildMssqlSessionConfig(), {
   table: SESSION_TABLE_NAME,

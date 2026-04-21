@@ -29,6 +29,17 @@ function initSocket(httpServer, sessionMiddleware) {
   io.on('connection', (socket) => {
     // Adiciona o Socket a uma Sala Especifica do User para Enviar Notificacoes em Tempo Real
     socket.join(`user:${socket.userId}`);
+    
+    // Adiciona à sala de broadcast geral
+    socket.join('broadcast');
+    
+    // Adiciona à sala de broadcast específica da role (se existir)
+    const userRole = socket.request.session?.role;
+    if (userRole) {
+      const normalizedRole = String(userRole).trim().toLowerCase();
+      socket.join(`broadcast:${normalizedRole}`);
+    }
+    
     socket.on('disconnect', () => {});
   });
 

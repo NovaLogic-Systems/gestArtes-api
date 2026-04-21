@@ -35,9 +35,10 @@ Module._load = function patchedLoad(request, parent, isMain) {
 
 let getProfile;
 let getDashboard;
+let getUpcomingSchedule;
 
 try {
-  ({ getProfile, getDashboard } = require('../../src/controllers/student.controller'));
+  ({ getProfile, getDashboard, getUpcomingSchedule } = require('../../src/controllers/student.controller'));
 } finally {
   Module._load = originalLoad;
 }
@@ -248,3 +249,124 @@ test('student dashboard returns summary, notifications and schedule', async () =
     ],
   });
 });
+
+test('getUpcomingSchedule rejects non-student roles', async () => {
+  resetMockState();
+
+  const req = {
+    session: {
+      userId: 123,
+      role: 'teacher',
+    },
+  };
+  const res = createResponse();
+  let nextCalled = false;
+
+  await getUpcomingSchedule(req, res, () => {
+    nextCalled = true;
+  });
+
+  assert.equal(res.statusCode, 403);
+  assert.deepEqual(res.payload, { error: 'Forbidden' });
+  assert.equal(nextCalled, false);
+});
+
+test('getUpcomingSchedule returns 404 when student profile is missing', async () => {
+  resetMockState();
+
+  mockState.queryRawResults = [
+    [],
+  ];
+
+  const req = {
+    session: {
+      userId: 12,
+      role: 'student',
+    },
+  };
+  const res = createResponse();
+  let nextCalled = false;
+
+  await getUpcomingSchedule(req, res, () => {
+    nextCalled = true;
+  });
+
+  assert.equal(res.statusCode, 404);
+  assert.deepEqual(res.payload, { error: 'Student account not found' });
+  assert.equal(nextCalled, false);
+});
+
+test('getUpcomingSchedule returns schedule with expected payload shape', async () => {
+  resetMockState();
+
+  mockState.queryRawResults = [
+    [
+      {
+        userId: 12,
+        authUid: 'auth-12',
+        firstName: 'Ana',
+        lastName: 'Silva',
+        email: 'ana@example.com',
+        phoneNumber: '999',
+        photoUrl: null,
+        accountCreatedAt: new Date('2026-01-01T10:00:00Z'),
+        accountUpdatedAt: new Date('2026-01-02T10:00:00Z'),
+        studentAccountId: 7,
+        birthDate: new Date('2005-03-04T00:00:00Z'),
+        guardianName: 'Maria',
+        guardianPhone: '123',
+      },
+    ],
+    [
+      {
+        sessionId: 21,
+        sessionDate: '2026-03-27',
+        sessionTime: '18:30',
+        teacherName: 'Ana',
+        studioName: 'Studio A',
+        sessionStatus: 'Scheduled',
+      },
+      {
+        sessionId: 22,
+        sessionDate: '2026-03-28',
+        sessionTime: '19:00',
+        teacherName: 'João',
+        studioName: 'Studio B',
+        sessionStatus: 'Scheduled',
+      },
+    ],
+  ];
+
+  const req = {
+    session: {
+      userId: 12,
+      role: 'student',
+    },
+  };
+  const res = createResponse();
+
+  await getUpcomingSchedule(req, res, () => {
+    throw new Error('next() should not be called for a successful request');
+  });
+
+  assert.equal(res.statusCode, null);
+  assert.ok(res.payload.schedule, 'Response should have schedule property');
+  assert.ok(Array.isArray(res.payload.schedule), 'schedule should be an array');
+  assert.equal(res.payload.schedule.length, 2, 'schedule should have 2 items');
+  assert.deepEqual(res.payload.schedule[0], {
+    sessionId: 21,
+    date: '2026-03-27',
+    time: '18:30',
+    teacher: 'Ana',
+    studio: 'Studio A',
+    status: 'Scheduled',
+  });
+  assert.deepEqual(res.payload.schedule[1], {
+    sessionId: 22,
+    date: '2026-03-28',
+    time: '19:00',
+    teacher: 'João',
+    studio: 'Studio B',
+    status: 'Scheduled',
+  });
+})

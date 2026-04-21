@@ -11,6 +11,7 @@ const morgan = require('morgan');
 const adminRoutes = require('./routes/admin.routes');
 const authRoutes = require('./routes/auth.routes');
 const studentRoutes = require('./routes/student.routes');
+const teacherRoutes = require('./routes/teacher.routes');
 const lostFoundRoutes = require('./routes/lostFound.routes');
 const marketplaceRoutes = require('./routes/marketplace.routes');
 const inventoryRoutes = require('./routes/inventory.routes');
@@ -340,6 +341,7 @@ app.use(apiRateLimiter);
 // Routes
 app.use('/auth', authRoutes);
 app.use('/student', studentRoutes);
+app.use('/teacher', teacherRoutes);
 app.use('/', lostFoundRoutes);
 app.use('/marketplace', marketplaceRoutes);
 app.use('/inventory', inventoryRoutes);

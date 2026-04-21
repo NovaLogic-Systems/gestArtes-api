@@ -76,7 +76,10 @@ const broadcastNotification = async (req, res) => {
 
 const getAll = async (req, res) => {
     try {
-        const notifications = await notificationService.getAllByUser(req.session.userId);
+        const previewRequested = String(req.query?.preview || '').trim().toLowerCase() === 'true';
+        const notifications = previewRequested
+            ? await notificationService.getPreviewByUser(req.session.userId, 5)
+            : await notificationService.getAllByUser(req.session.userId);
         res.json(notifications);
     } catch (err) {
         res.status(500).json({ error: err.message });

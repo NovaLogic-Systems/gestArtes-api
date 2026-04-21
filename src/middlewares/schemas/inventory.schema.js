@@ -60,14 +60,14 @@ const listInventoryItemsQuerySchema = [
     .trim()
     .isLength({ min: 1, max: 50 }).withMessage('Categoria inválida')
     .escape(),
-  query('categoryId')
-    .optional()
-    .isInt({ min: 1 }).withMessage('Categoria inválida')
-    .toInt(),
   query('onlyAvailable')
     .optional()
     .isBoolean().withMessage('Filtro de disponibilidade inválido')
     .toBoolean(),
+  query('categoryId')
+    .optional()
+    .isInt({ min: 1 }).withMessage('Categoria inválida')
+    .toInt(),
   query('search')
     .optional()
     .trim()

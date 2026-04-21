@@ -2,17 +2,25 @@ require('dotenv').config();
 
 const crypto = require('node:crypto');
 const express = require('express');
+const http = require('node:http');
+const path = require('node:path');
 const session = require('express-session');
 const MSSQLStore = require('connect-mssql-v2');
 const cors = require('cors');
+const helmet = require('helmet');
 const morgan = require('morgan');
-
+const adminRoutes = require('./routes/admin.routes');
 const authRoutes = require('./routes/auth.routes');
+const studentRoutes = require('./routes/student.routes');
+const lostFoundRoutes = require('./routes/lostFound.routes');
 const marketplaceRoutes = require('./routes/marketplace.routes');
+const inventoryRoutes = require('./routes/inventory.routes');
+const notificationRoutes = require('./routes/notification.routes');
 const apiRateLimiter = require('./middlewares/rateLimit.middleware');
 const errorHandler = require('./middlewares/error.middleware');
 const { setupSwagger } = require('./config/swagger');
 const logger = require('./utils/logger');
+const { initSocket } = require('./socket');
 
 const app = express();
 
@@ -22,7 +30,13 @@ const SESSION_TABLE_NAME = 'Sessions';
 const SESSION_AUTO_REMOVE_INTERVAL_MS = 1000 * 60 * 10;
 const SESSION_STORE_RETRIES = 1;
 const SESSION_STORE_RETRY_DELAY_MS = 1000;
+const CSP_NONCE_BYTE_LENGTH = 16;
 const IS_PRODUCTION = process.env.NODE_ENV === 'production';
+const CORS_ALLOW_NO_ORIGIN = parseBoolean(
+  process.env.CORS_ALLOW_NO_ORIGIN,
+  true
+);
+const CORS_ORIGINS = buildCorsAllowList();
 const SESSION_CROSS_SITE = parseBoolean(
   process.env.SESSION_COOKIE_CROSS_SITE,
   false
@@ -40,6 +54,16 @@ if (IS_PRODUCTION && !HAS_SESSION_SECRET) {
 
 if (!HAS_SESSION_SECRET) {
   logger.warn('SESSION_SECRET not set; using an ephemeral development secret');
+}
+
+if (IS_PRODUCTION && CORS_ORIGINS.length === 0) {
+  throw new Error(
+    'At least one CORS origin is required in production (CORS_ORIGINS or CLIENT_URL)'
+  );
+}
+
+if (!IS_PRODUCTION && CORS_ORIGINS.length === 0) {
+  logger.warn('No CORS origins configured; allowing all origins in non-production');
 }
 
 function parseBoolean(value, fallback) {
@@ -63,6 +87,94 @@ function parseBoolean(value, fallback) {
 
   return fallback;
 }
+
+function parseCsv(value) {
+  if (value === undefined || value === null || value === '') {
+    return [];
+  }
+
+  return String(value)
+    .split(',')
+    .map((entry) => entry.trim())
+    .filter(Boolean);
+}
+
+function normalizeOrigin(value) {
+  return String(value || '')
+    .trim()
+    .replace(/\/+$/, '');
+}
+
+function buildCorsAllowList() {
+  return Array.from(
+    new Set([
+      ...parseCsv(process.env.CORS_ORIGINS).map(normalizeOrigin),
+      ...parseCsv(process.env.CLIENT_URL).map(normalizeOrigin),
+    ])
+  );
+}
+
+function createCorsOriginValidator(allowedOrigins) {
+  const allowList = new Set(allowedOrigins);
+
+  return (origin, callback) => {
+    if (!origin) {
+      return callback(null, CORS_ALLOW_NO_ORIGIN);
+    }
+
+    if (allowList.size === 0 || allowList.has(origin)) {
+      return callback(null, true);
+    }
+
+    return callback(null, false);
+  };
+}
+
+function buildCspNonceSource(req, res) {
+  return `'nonce-${res.locals.cspNonce}'`;
+}
+
+function attachCspNonce(req, res, next) {
+  res.locals.cspNonce = crypto
+    .randomBytes(CSP_NONCE_BYTE_LENGTH)
+    .toString('hex');
+  next();
+}
+
+const apiCspMiddleware = helmet.contentSecurityPolicy({
+  useDefaults: true,
+  directives: {
+    defaultSrc: ["'self'"],
+    baseUri: ["'self'"],
+    objectSrc: ["'none'"],
+    frameAncestors: ["'none'"],
+    scriptSrc: ["'self'"],
+    styleSrc: ["'self'"],
+    imgSrc: ["'self'", 'data:'],
+    connectSrc: ["'self'"],
+    fontSrc: ["'self'", 'data:'],
+    formAction: ["'self'"],
+    upgradeInsecureRequests: IS_PRODUCTION ? [] : null,
+  },
+});
+
+const docsCspMiddleware = helmet.contentSecurityPolicy({
+  useDefaults: true,
+  directives: {
+    defaultSrc: ["'self'"],
+    baseUri: ["'self'"],
+    objectSrc: ["'none'"],
+    frameAncestors: ["'none'"],
+    scriptSrc: ["'self'", buildCspNonceSource],
+    styleSrc: ["'self'", buildCspNonceSource],
+    styleSrcAttr: ["'none'"],
+    imgSrc: ["'self'", 'data:'],
+    connectSrc: ["'self'"],
+    fontSrc: ["'self'", 'data:'],
+    formAction: ["'self'"],
+    upgradeInsecureRequests: IS_PRODUCTION ? [] : null,
+  },
+});
 
 function sanitizeConnectionString(value) {
   if (!value) {
@@ -180,9 +292,31 @@ sessionStore.on('sessionError', (error, method) => {
   logger.error(`Session store method error (${method}): ${error.message}`);
 });
 
-app.use(cors({ origin: process.env.CLIENT_URL, credentials: true }));
+app.use(
+  cors({
+    origin: createCorsOriginValidator(CORS_ORIGINS),
+    credentials: true,
+    optionsSuccessStatus: 204,
+  })
+);
+app.use(
+  helmet({
+    contentSecurityPolicy: false,
+    frameguard: { action: 'deny' },
+    referrerPolicy: { policy: 'no-referrer' },
+  })
+);
+app.use(attachCspNonce);
+app.use((req, res, next) => {
+  if (req.path.startsWith('/docs')) {
+    return docsCspMiddleware(req, res, next);
+  }
+
+  return apiCspMiddleware(req, res, next);
+});
 app.use(express.json());
 app.use(morgan('dev'));
+app.use('/uploads', express.static(path.resolve(__dirname, '..', 'uploads')));
 if (parseBoolean(process.env.TRUST_PROXY, false)) {
   app.set('trust proxy', 1);
 }
@@ -193,33 +327,41 @@ app.set('sessionCookieOptions', {
   sameSite: SESSION_COOKIE_SAMESITE,
   maxAge: SESSION_TTL_MS,
 });
-app.use(
-  session({
-    name: SESSION_COOKIE_NAME,
-    store: sessionStore,
-    secret: SESSION_SECRET,
-    resave: false,
-    saveUninitialized: false,
-    cookie: app.get('sessionCookieOptions'),
-  })
-);
+const sessionMiddleware = session({
+  name: SESSION_COOKIE_NAME,
+  store: sessionStore,
+  secret: SESSION_SECRET,
+  resave: false,
+  saveUninitialized: false,
+  cookie: app.get('sessionCookieOptions'),
+});
+
+app.use(sessionMiddleware);
 app.use(apiRateLimiter);
 
 // Routes
 app.use('/auth', authRoutes);
+app.use('/student', studentRoutes);
+app.use('/', lostFoundRoutes);
 app.use('/marketplace', marketplaceRoutes);
-
+app.use('/inventory', inventoryRoutes);
+app.use('/notifications', notificationRoutes);
 app.get('/health', (req, res) => res.json({ status: 'ok' }));
-
+app.use('/admin', adminRoutes);
 setupSwagger(app);
 
 app.use((err, req, res, next) => {
   errorHandler(err, req, res, next);
 });
 
+const httpServer = http.createServer(app);
+
+const io = initSocket(httpServer, sessionMiddleware);
+app.set('io', io);
+
 if (require.main === module) {
   const port = Number(process.env.PORT) || 3001;
-  app.listen(port, () => {
+  httpServer.listen(port, () => {
     logger.info(`API running on http://localhost:${port}`);
   });
 }

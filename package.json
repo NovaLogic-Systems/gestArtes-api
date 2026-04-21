@@ -21,16 +21,9 @@
   "author": "",
   "license": "ISC",
   "type": "commonjs",
-  "engines": {
-    "node": "^20.19.0 || >=22.12.0"
-  },
-  "bugs": {
-    "url": "https://github.com/NovaLogic-Systems/gestArtes-api/issues"
-  },
-  "homepage": "https://github.com/NovaLogic-Systems/gestArtes-api#readme",
   "dependencies": {
     "@prisma/adapter-mssql": "^7.7.0",
-    "@prisma/client": "^7.6.0",
+    "@prisma/client": "^7.7.0",
     "bcrypt": "^6.0.0",
     "connect-mssql-v2": "^6.0.0",
     "cors": "^2.8.6",
@@ -39,7 +32,12 @@
     "express-rate-limit": "^8.3.2",
     "express-session": "^1.19.0",
     "express-validator": "^7.3.2",
+    "helmet": "^8.1.0",
+    "multer": "^2.0.2",
     "morgan": "^1.10.1",
+    "mssql": "^12.3.1",
+    "node-cron": "^4.2.1",
+    "socket.io": "^4.8.3",
     "swagger-jsdoc": "^6.2.8",
     "swagger-ui-express": "^5.0.1",
     "winston": "^3.19.0"

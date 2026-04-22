@@ -126,6 +126,37 @@ function mapScheduleRow(row) {
   };
 }
 
+async function listUpcomingSchedule(studentAccountId, limit = 5) {
+  const safeLimit = Number.isInteger(limit) && limit > 0 ? limit : 5;
+
+  const scheduleRows = await prisma.$queryRaw`
+    SELECT TOP (${safeLimit})
+      cs.SessionID AS sessionId,
+      CONVERT(char(10), cs.StartTime, 23) AS sessionDate,
+      CONVERT(char(5), cs.StartTime, 108) AS sessionTime,
+      COALESCE(teacher.teacherName, 'Por atribuir') AS teacherName,
+      st.StudioName AS studioName,
+      sst.StatusName AS sessionStatus
+    FROM [SessionStudent] AS ss
+    INNER JOIN [CoachingSession] AS cs ON cs.SessionID = ss.SessionID
+    INNER JOIN [Studio] AS st ON st.StudioID = cs.StudioID
+    INNER JOIN [SessionStatus] AS sst ON sst.StatusID = cs.StatusID
+    OUTER APPLY (
+      SELECT TOP (1)
+        CONCAT(u.FirstName, ' ', u.LastName) AS teacherName
+      FROM [SessionTeacher] AS stt
+      INNER JOIN [User] AS u ON u.UserID = stt.TeacherID
+      WHERE stt.SessionID = cs.SessionID
+      ORDER BY stt.AssignmentRoleID ASC, stt.TeacherID ASC
+    ) AS teacher
+    WHERE ss.StudentAccountID = ${studentAccountId}
+      AND cs.StartTime >= SYSUTCDATETIME()
+    ORDER BY cs.StartTime ASC, cs.SessionID ASC
+  `;
+
+  return scheduleRows.map(mapScheduleRow);
+}
+
 async function getProfile(req, res, next) {
   try {
     const userId = getAuthenticatedStudentUserId(req, res);
@@ -300,7 +331,7 @@ async function getDashboard(req, res, next) {
 
     const { studentAccountId } = student;
 
-    const [upcomingSessionsRows, pendingValidationsRows, reviewRequestsRows, notificationsRows, scheduleRows] =
+    const [upcomingSessionsRows, pendingValidationsRows, reviewRequestsRows, externalPaymentsRows, notificationsRows, schedule] =
       await Promise.all([
         prisma.$queryRaw`
           SELECT COUNT(1) AS upcomingSessions
@@ -328,6 +359,19 @@ async function getDashboard(req, res, next) {
             AND LOWER(cjrs.StatusName) LIKE '%pend%'
         `,
         prisma.$queryRaw`
+          SELECT COUNT(DISTINCT cs.SessionID) AS externalPayments
+          FROM [CoachingSession] AS cs
+          INNER JOIN [SessionStudent] AS ss ON ss.SessionID = cs.SessionID
+          INNER JOIN [SessionStatus] AS sst ON sst.StatusID = cs.StatusID
+          WHERE ss.StudentAccountID = ${studentAccountId}
+            AND cs.IsExternal = 1
+            AND cs.StartTime >= SYSUTCDATETIME()
+            AND (
+              LOWER(sst.StatusName) NOT LIKE '%completed%'
+              AND LOWER(sst.StatusName) NOT LIKE '%cancelled%'
+            )
+        `,
+        prisma.$queryRaw`
           SELECT TOP (5)
             n.NotificationID AS notificationId,
             n.Title AS title,
@@ -338,39 +382,39 @@ async function getDashboard(req, res, next) {
           WHERE n.UserID = ${userId}
           ORDER BY n.CreatedAt DESC, n.NotificationID DESC
         `,
-        prisma.$queryRaw`
-          SELECT TOP (5)
-            cs.SessionID AS sessionId,
-            CONVERT(char(10), cs.StartTime, 23) AS sessionDate,
-            CONVERT(char(5), cs.StartTime, 108) AS sessionTime,
-            COALESCE(teacher.teacherName, 'Por atribuir') AS teacherName,
-            st.StudioName AS studioName,
-            sst.StatusName AS sessionStatus
-          FROM [SessionStudent] AS ss
-          INNER JOIN [CoachingSession] AS cs ON cs.SessionID = ss.SessionID
-          INNER JOIN [Studio] AS st ON st.StudioID = cs.StudioID
-          INNER JOIN [SessionStatus] AS sst ON sst.StatusID = cs.StatusID
-          OUTER APPLY (
-            SELECT TOP (1)
-              CONCAT(u.FirstName, ' ', u.LastName) AS teacherName
-            FROM [SessionTeacher] AS stt
-            INNER JOIN [User] AS u ON u.UserID = stt.TeacherID
-            WHERE stt.SessionID = cs.SessionID
-            ORDER BY stt.AssignmentRoleID ASC, stt.TeacherID ASC
-          ) AS teacher
-          WHERE ss.StudentAccountID = ${studentAccountId}
-            AND cs.StartTime >= SYSUTCDATETIME()
-          ORDER BY cs.StartTime ASC, cs.SessionID ASC
-        `,
+        listUpcomingSchedule(studentAccountId, 5),
       ]);
 
     res.json({
       upcomingSessions: toInteger(upcomingSessionsRows[0]?.upcomingSessions),
       pendingValidations: toInteger(pendingValidationsRows[0]?.pendingValidations),
       reviewRequests: toInteger(reviewRequestsRows[0]?.reviewRequests),
+      externalPaymentsInProgress: toInteger(externalPaymentsRows[0]?.externalPayments),
       notifications: notificationsRows.map(mapNotificationRow),
-      schedule: scheduleRows.map(mapScheduleRow),
+      schedule,
     });
+  } catch (error) {
+    next(error);
+  }
+}
+
+async function getUpcomingSchedule(req, res, next) {
+  try {
+    const userId = getAuthenticatedStudentUserId(req, res);
+
+    if (!userId) {
+      return;
+    }
+
+    const student = await loadStudentProfile(userId);
+
+    if (!student) {
+      res.status(404).json({ error: 'Student account not found' });
+      return;
+    }
+
+    const schedule = await listUpcomingSchedule(student.studentAccountId, 5);
+    res.json({ schedule });
   } catch (error) {
     next(error);
   }
@@ -379,4 +423,5 @@ async function getDashboard(req, res, next) {
 module.exports = {
   getProfile,
   getDashboard,
+  getUpcomingSchedule,
 };

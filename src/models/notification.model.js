@@ -37,6 +37,18 @@ const findByUser = async (userId) => {
     return rows.map(mapNotification);
 };
 
+const findPreviewByUser = async (userId, limit = 5) => {
+    const safeLimit = Number.isInteger(limit) && limit > 0 ? limit : 5;
+
+    const rows = await prisma.notification.findMany({
+        where: { UserID: toInt(userId, 'userId') },
+        orderBy: { CreatedAt: 'desc' },
+        take: safeLimit,
+    });
+
+    return rows.map(mapNotification);
+};
+
 const findByIdAndUser = async (id, userId) => {
     const row = await prisma.notification.findFirst({
         where: {
@@ -82,4 +94,4 @@ const insert = async (userId, message) => {
     return mapNotification(row);
 };
 
-module.exports = { findByUser, findByIdAndUser, markRead, delete: deleteNotif, insert };
+module.exports = { findByUser, findPreviewByUser, findByIdAndUser, markRead, delete: deleteNotif, insert };

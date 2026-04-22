@@ -16,6 +16,8 @@ const lostFoundRoutes = require('./routes/lostFound.routes');
 const marketplaceRoutes = require('./routes/marketplace.routes');
 const inventoryRoutes = require('./routes/inventory.routes');
 const notificationRoutes = require('./routes/notification.routes');
+const financeRoutes = require('./routes/finance.routes');
+const auditRoutes = require('./routes/audit.routes');
 const apiRateLimiter = require('./middlewares/rateLimit.middleware');
 const errorHandler = require('./middlewares/error.middleware');
 const { setupSwagger } = require('./config/swagger');
@@ -347,6 +349,8 @@ app.use('/marketplace', marketplaceRoutes);
 app.use('/inventory', inventoryRoutes);
 app.use('/notifications', notificationRoutes);
 app.get('/health', (req, res) => res.json({ status: 'ok' }));
+app.use('/', financeRoutes);
+app.use('/', auditRoutes);
 app.use('/admin', adminRoutes);
 setupSwagger(app);
 

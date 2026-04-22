@@ -1,3 +1,5 @@
+const { logAudit, AUDIT_ACTIONS, AUDIT_MODULES, AUDIT_RESULTS } = require('../utils/audit');
+
 const OUTSIDE_HOURS_MULTIPLIER = 1.5; // BR-18
 // TODO BR-18: exact external multiplier not yet documented
 const EXTERNAL_MULTIPLIER = 1.0;
@@ -66,7 +68,7 @@ function createPricingService(prismaClient) {
 
       const summary = await _findOrCreateMonthSummary(tx, userId);
 
-      return tx.financialEntry.create({
+      const entry = await tx.financialEntry.create({
         data: {
           SessionID: sessionId,
           Amount: finalPrice,
@@ -76,6 +78,18 @@ function createPricingService(prismaClient) {
           IsExported: false,
         },
       });
+
+      logAudit({
+        userId,
+        action: AUDIT_ACTIONS.NOSHOW_PENALTY_APPLIED,
+        module: AUDIT_MODULES.FINANCE,
+        targetType: 'FinancialEntry',
+        targetId: entry.EntryID,
+        result: AUDIT_RESULTS.SUCCESS,
+        detail: `Penalty ${finalPrice}€ for session ${sessionId}`,
+      });
+
+      return entry;
     });
   }
 
@@ -104,6 +118,16 @@ function createPricingService(prismaClient) {
       await tx.coachingSession.update({
         where: { SessionID: sessionId },
         data: { FinalPrice: finalPrice },
+      });
+
+      logAudit({
+        userId,
+        action: AUDIT_ACTIONS.SESSION_FINALIZED,
+        module: AUDIT_MODULES.FINANCE,
+        targetType: 'FinancialEntry',
+        targetId: entry.EntryID,
+        result: AUDIT_RESULTS.SUCCESS,
+        detail: `Session ${sessionId} finalized at ${finalPrice}€`,
       });
 
       return entry;

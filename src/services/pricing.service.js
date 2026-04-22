@@ -1,5 +1,3 @@
-const prisma = require('../config/prisma');
-
 const OUTSIDE_HOURS_MULTIPLIER = 1.5; // BR-18
 // TODO BR-18: exact external multiplier not yet documented
 const EXTERNAL_MULTIPLIER = 1.0;
@@ -115,5 +113,4 @@ function createPricingService(prismaClient) {
   return { calculateFinalPrice, applyNoShowPenalty, generateFinancialEntryOnFinalization };
 }
 
-module.exports = createPricingService(prisma);
-module.exports.createPricingService = createPricingService;
+module.exports = { createPricingService };

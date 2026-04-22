@@ -133,6 +133,8 @@ model FinancialSummary {
   FinancialEntry     FinancialEntry[]
   User               User             @relation(fields: [GeneratedByUserID], references: [UserID], onUpdate: NoAction, map: "FKFinancialS483396")
   AcademicYear       AcademicYear     @relation(fields: [AcademicYearID], references: [AcademicYearID], onUpdate: NoAction, map: "FKFinancialS977589")
+
+  @@unique([PeriodStart, PeriodEnd], map: "UQ_FinancialSummary_Period")
 }
 
 model InventoryItem {

@@ -172,8 +172,8 @@ function createFinanceService(prismaClient) {
     const rows = await prismaClient.$queryRaw(Prisma.sql`
       SELECT
         MONTH(fe.CreatedAt) AS month,
-        CAST(SUM(CASE WHEN fet.TypeName = 'SESSION' THEN fe.Amount ELSE 0 END) AS FLOAT) AS revenue,
-        CAST(SUM(CASE WHEN fet.TypeName IN ('NOSHOWPENALTY', 'CANCELLATIONFEE') THEN fe.Amount ELSE 0 END) AS FLOAT) AS penalties,
+        CAST(SUM(CASE WHEN fet.TypeName = 'SESSION' THEN fe.Amount ELSE 0 END) AS DECIMAL(18,2)) AS revenue,
+        CAST(SUM(CASE WHEN fet.TypeName IN ('NOSHOWPENALTY', 'CANCELLATIONFEE') THEN fe.Amount ELSE 0 END) AS DECIMAL(18,2)) AS penalties,
         COUNT(CASE WHEN fet.TypeName = 'SESSION' THEN 1 ELSE NULL END) AS sessionCount
       FROM FinancialEntry fe
       INNER JOIN FinancialEntryType fet ON fet.EntryTypeID = fe.EntryTypeID

@@ -117,7 +117,7 @@ function createFinanceService(prismaClient) {
       SELECT
         fet.TypeName AS typeName,
         COUNT(*) AS cnt,
-        CAST(SUM(fe.Amount) AS FLOAT) AS total,
+        CAST(SUM(fe.Amount) AS DECIMAL(18,2)) AS total,
         SUM(CASE WHEN fe.IsExported = 1 THEN 1 ELSE 0 END) AS exportedCount,
         SUM(CASE WHEN fe.IsExported = 0 THEN 1 ELSE 0 END) AS unexportedCount
       FROM FinancialEntry fe

@@ -137,3 +137,21 @@ test('getSummary: auditedActionsLast24h counts only recent events', async (t) =>
   const result = await svc.getSummary({});
   assert.equal(result.auditedActionsLast24h, 1);
 });
+
+test('getSummary: auditedActionsLast24h is consistent with period filter', async (t) => {
+  // Two events both within last 24h, but one is outside the supplied periodEnd.
+  // After the fix, auditedActionsLast24h must exclude the out-of-period event.
+  const withinTs = new Date(Date.now() - 60_000).toISOString();       // 1 min ago
+  const outsideTs = new Date(Date.now() - 30 * 60 * 1000).toISOString(); // 30 min ago
+
+  const periodEnd = new Date(Date.now() - 15 * 60 * 1000); // 15 min ago (cuts out 30-min event)
+
+  patchFsWithEvents(t, [
+    makeEvent({ auditTimestamp: withinTs }),
+    makeEvent({ auditTimestamp: outsideTs }),
+  ]);
+  const svc = createAuditService();
+  const result = await svc.getSummary({ periodEnd });
+  assert.equal(result.total, 1);
+  assert.equal(result.auditedActionsLast24h, 1);
+});

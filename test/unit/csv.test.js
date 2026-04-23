@@ -65,3 +65,27 @@ test('toCsv: Date values are serialized via toISOString', () => {
   const csv = toCsv([{ date: d }], [{ header: 'Date', key: 'date' }]);
   assert.ok(csv.includes('2026-04-22T10:00:00.000Z'));
 });
+
+test('toCsv: formula injection — = prefix is neutralized with leading single quote', () => {
+  const csv = toCsv([{ val: '=SUM(A1:A5)' }], [{ header: 'Val', key: 'val' }]);
+  const lines = csv.trimEnd().split('\r\n');
+  assert.equal(lines[1], "'=SUM(A1:A5)");
+});
+
+test('toCsv: formula injection — + prefix is neutralized', () => {
+  const csv = toCsv([{ val: '+cmd|ls' }], [{ header: 'Val', key: 'val' }]);
+  const lines = csv.trimEnd().split('\r\n');
+  assert.equal(lines[1], "'+cmd|ls");
+});
+
+test('toCsv: formula injection — - prefix is neutralized', () => {
+  const csv = toCsv([{ val: '-2+3' }], [{ header: 'Val', key: 'val' }]);
+  const lines = csv.trimEnd().split('\r\n');
+  assert.equal(lines[1], "'-2+3");
+});
+
+test('toCsv: formula injection — @ prefix is neutralized', () => {
+  const csv = toCsv([{ val: '@SUM(A1)' }], [{ header: 'Val', key: 'val' }]);
+  const lines = csv.trimEnd().split('\r\n');
+  assert.equal(lines[1], "'@SUM(A1)");
+});

@@ -5,7 +5,7 @@ const path = require('node:path');
 const LOG_FILE_PATH = path.join(process.cwd(), 'logs', 'audit.log');
 
 function createAuditService() {
-  async function _readAllEvents() {
+  async function _readAllEvents(predicate = null) {
     return new Promise((resolve, reject) => {
       if (!fs.existsSync(LOG_FILE_PATH)) {
         return resolve([]);
@@ -20,7 +20,9 @@ function createAuditService() {
         if (!trimmed) return;
         try {
           const parsed = JSON.parse(trimmed);
-          if (parsed.category === 'audit') events.push(parsed);
+          if (parsed.category === 'audit' && (!predicate || predicate(parsed))) {
+            events.push(parsed);
+          }
         } catch {
           // skip malformed lines
         }
@@ -41,12 +43,10 @@ function createAuditService() {
     limit = 100,
     offset = 0,
   } = {}) {
-    const all = await _readAllEvents();
-
     const start = periodStart ? new Date(periodStart) : null;
     const end = periodEnd ? new Date(periodEnd) : null;
 
-    const filtered = all.filter((e) => {
+    const predicate = (e) => {
       const ts = new Date(e.auditTimestamp);
       if (start && ts < start) return false;
       if (end && ts > end) return false;
@@ -55,8 +55,9 @@ function createAuditService() {
       if (userId !== undefined && e.userId !== userId) return false;
       if (result && e.result !== result) return false;
       return true;
-    });
+    };
 
+    const filtered = await _readAllEvents(predicate);
     filtered.sort((a, b) => new Date(b.auditTimestamp) - new Date(a.auditTimestamp));
 
     const total = filtered.length;
@@ -77,20 +78,22 @@ function createAuditService() {
   }
 
   async function getSummary({ periodStart, periodEnd } = {}) {
-    const all = await _readAllEvents();
-
-    const yesterday = new Date(Date.now() - 24 * 60 * 60 * 1000);
     const start = periodStart ? new Date(periodStart) : null;
     const end = periodEnd ? new Date(periodEnd) : null;
 
-    const filtered = all.filter((e) => {
-      const ts = new Date(e.auditTimestamp);
-      if (start && ts < start) return false;
-      if (end && ts > end) return false;
-      return true;
-    });
+    const periodPredicate = start || end
+      ? (e) => {
+          const ts = new Date(e.auditTimestamp);
+          if (start && ts < start) return false;
+          if (end && ts > end) return false;
+          return true;
+        }
+      : null;
 
-    const last24h = all.filter((e) => new Date(e.auditTimestamp) >= yesterday).length;
+    const filtered = await _readAllEvents(periodPredicate);
+
+    const yesterday = new Date(Date.now() - 24 * 60 * 60 * 1000);
+    const last24h = filtered.filter((e) => new Date(e.auditTimestamp) >= yesterday).length;
 
     const byModule = {};
     const byResult = { success: 0, failure: 0 };

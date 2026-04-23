@@ -358,7 +358,7 @@ test('inventory endpoints require authentication', async () => {
   assert.equal(response.status, 401);
 
   const body = await response.json();
-  assert.equal(body.error, 'Unauthorized');
+  assert.equal(body.error, 'Not authenticated');
 });
 
 test('teacher can list and filter inventory items', async () => {

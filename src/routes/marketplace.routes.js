@@ -2,7 +2,7 @@ const express = require('express');
 const router = express.Router();
 
 const marketplaceController = require('../controllers/marketplace.controller');
-const { requireAuth } = require('../middlewares/auth.middleware');
+const { APP_ROLES, requireAuth, requireRole } = require('../middlewares/auth.middleware');
 const validateRequest = require('../middlewares/validate.middleware');
 const {
   createMarketplaceItemSchema,
@@ -11,10 +11,11 @@ const {
   listMarketplaceListingsQuerySchema,
 } = require('../middlewares/schemas/marketplace.schema');
 
-router.use(requireAuth);
+const marketplaceAccess = [requireAuth, requireRole(APP_ROLES)];
 
 router.get(
   '/listings',
+  ...marketplaceAccess,
   ...listMarketplaceListingsQuerySchema,
   validateRequest,
   marketplaceController.getListings
@@ -22,6 +23,7 @@ router.get(
 
 router.get(
   '/listings/:id',
+  ...marketplaceAccess,
   ...marketplaceListingIdParamSchema,
   validateRequest,
   marketplaceController.getListingById
@@ -29,15 +31,17 @@ router.get(
 
 router.post(
   '/listings',
+  ...marketplaceAccess,
   ...createMarketplaceItemSchema,
   validateRequest,
   marketplaceController.createListing
 );
 
-router.get('/my-listings', marketplaceController.getMyListings);
+router.get('/my-listings', ...marketplaceAccess, marketplaceController.getMyListings);
 
 router.patch(
   '/listings/:id',
+  ...marketplaceAccess,
   ...marketplaceListingIdParamSchema,
   ...updateMarketplaceItemSchema,
   validateRequest,
@@ -46,6 +50,7 @@ router.patch(
 
 router.delete(
   '/listings/:id',
+  ...marketplaceAccess,
   ...marketplaceListingIdParamSchema,
   validateRequest,
   marketplaceController.deleteListing

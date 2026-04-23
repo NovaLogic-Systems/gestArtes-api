@@ -1,5 +1,7 @@
 const crypto = require('crypto');
 
+const APP_ROLES = Object.freeze(['student', 'teacher', 'admin']);
+
 const requireAuth = (req, res, next) => {
   if (!req.session || !req.session.userId) {
     return res.status(401).json({ error: 'Not authenticated' });
@@ -15,9 +17,13 @@ function normalizeRole(value) {
     .toLowerCase();
 }
 
-const requireRoles = (allowedRoles) => {
+function getSessionRole(session) {
+  return normalizeRole(session?.user?.role);
+}
+
+const requireRole = (rolesArray) => {
   const normalizedAllowedRoles = new Set(
-    (Array.isArray(allowedRoles) ? allowedRoles : [allowedRoles])
+    (Array.isArray(rolesArray) ? rolesArray : [rolesArray])
       .map(normalizeRole)
       .filter(Boolean)
   );
@@ -27,8 +33,8 @@ const requireRoles = (allowedRoles) => {
       return res.status(401).json({ error: 'Unauthorized' });
     }
 
-    const currentRole = normalizeRole(req.session.role);
-    if (!normalizedAllowedRoles.has(currentRole)) {
+    const currentRole = getSessionRole(req.session);
+    if (!currentRole || !normalizedAllowedRoles.has(currentRole)) {
       return res.status(403).json({ error: 'Forbidden' });
     }
 
@@ -36,10 +42,9 @@ const requireRoles = (allowedRoles) => {
   };
 };
 
-// Backward-compatible alias used by older routes.
-const requireRole = requireRoles;
+const requireRoles = requireRole;
 
-const requireAdminRole = requireRoles('admin');
+const requireAdminRole = requireRole(['admin']);
 
 const secureTokenEquals = (providedToken, configuredToken) => {
   if (String(providedToken || '').length !== String(configuredToken || '').length) {
@@ -66,6 +71,8 @@ const requireInternalToken = (req, res, next) => {
 };
 
 module.exports = {
+  APP_ROLES,
+  getSessionRole,
   requireAuth,
   requireSessionAuth,
   requireRole,

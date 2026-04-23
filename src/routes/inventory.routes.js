@@ -2,7 +2,7 @@ const express = require('express');
 
 const inventoryController = require('../controllers/inventory.controller');
 const validateRequest = require('../middlewares/validate.middleware');
-const { requireRoles } = require('../middlewares/auth.middleware');
+const { requireAuth, requireRole } = require('../middlewares/auth.middleware');
 const {
   createInventoryTransactionSchema,
   inventoryItemIdParamSchema,
@@ -10,11 +10,11 @@ const {
 } = require('../middlewares/schemas/inventory.schema');
 
 const router = express.Router();
-
-router.use(requireRoles(['student', 'teacher']));
+const inventoryAccess = [requireAuth, requireRole(['STUDENT', 'TEACHER'])];
 
 router.get(
   '/items',
+  ...inventoryAccess,
   ...listInventoryItemsQuerySchema,
   validateRequest,
   inventoryController.getItems
@@ -22,6 +22,7 @@ router.get(
 
 router.get(
   '/items/:id',
+  ...inventoryAccess,
   ...inventoryItemIdParamSchema,
   validateRequest,
   inventoryController.getItemById
@@ -29,11 +30,12 @@ router.get(
 
 router.post(
   '/rentals',
+  ...inventoryAccess,
   ...createInventoryTransactionSchema,
   validateRequest,
   inventoryController.createRental
 );
 
-router.get('/rentals', inventoryController.getRentals);
+router.get('/rentals', ...inventoryAccess, inventoryController.getRentals);
 
 module.exports = router;

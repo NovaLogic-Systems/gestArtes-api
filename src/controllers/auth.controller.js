@@ -165,6 +165,7 @@ async function me(req, res, next) {
 
     const role = req.session.role || getPrimaryRole(user);
     const sessionUser = serializeUser(user, role);
+    req.session.role = role;
     req.session.user = sessionUser;
 
     res.json({

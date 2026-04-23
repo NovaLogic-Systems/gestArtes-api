@@ -1,6 +1,7 @@
 const { Prisma } = require('@prisma/client');
 const prisma = require('../config/prisma');
 const inventoryService = require('../services/inventory.service');
+const { getSessionRole } = require('../middlewares/auth.middleware');
 
 function createHttpError(status, message) {
   const error = new Error(message);
@@ -193,7 +194,7 @@ async function createRental(req, res, next) {
       throw createHttpError(401, 'Unauthorized');
     }
 
-    const role = normalizeString(req.session?.role);
+    const role = getSessionRole(req.session);
     if (role !== 'student' && role !== 'teacher') {
       throw createHttpError(403, 'Forbidden');
     }
@@ -285,7 +286,7 @@ async function getRentals(req, res, next) {
       throw createHttpError(401, 'Unauthorized');
     }
 
-    const role = normalizeString(req.session?.role);
+    const role = getSessionRole(req.session);
     if (role !== 'student' && role !== 'teacher') {
       throw createHttpError(403, 'Forbidden');
     }

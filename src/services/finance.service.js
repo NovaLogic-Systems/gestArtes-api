@@ -236,7 +236,10 @@ function createFinanceService(prismaClient) {
 
       if (entries.length > 0) {
         await tx.financialEntry.updateMany({
-          where: { EntryID: { in: entries.map((e) => e.EntryID) } },
+          where: {
+            EntryID: { in: entries.map((e) => e.EntryID) },
+            IsExported: false,
+          },
           data: { IsExported: true, ExportedByUserID: userId },
         });
       }

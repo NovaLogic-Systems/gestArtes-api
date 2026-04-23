@@ -345,6 +345,7 @@ app.use('/teacher', teacherRoutes);
 app.use('/', lostFoundRoutes);
 app.use('/marketplace', marketplaceRoutes);
 app.use('/inventory', inventoryRoutes);
+app.use('/teacher/inventory', inventoryRoutes);
 app.use('/notifications', notificationRoutes);
 app.get('/health', (req, res) => res.json({ status: 'ok' }));
 app.use('/admin', adminRoutes);

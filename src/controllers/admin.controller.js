@@ -39,4 +39,31 @@ async function resetUserPassword(req, res, next) {
     }
 }
 
-module.exports = { resetUserPassword };
+const { createSessionWithBusinessRules } = require('../services/session.service');
+
+async function createSession(req, res, next) {
+try {
+    const requestedByUserId = Number(req.session?.userId);
+        if (!Number.isInteger(requestedByUserId) || requestedByUserId <= 0) {
+            return res.status(401).json({ error: 'Not authenticated' });
+        }
+
+    const result = await createSessionWithBusinessRules(req.body, requestedByUserId);
+
+    return res.status(201).json({
+        sessionId: result.SessionID,
+        message: 'Sessão criada com sucesso',
+    });
+    } catch (error) {
+        if (error && error.status) {
+            return res.status(error.status).json({
+            error: error.message,
+            details: error.details || null,
+            });
+        }   
+
+        return next(error);
+    }
+}
+
+module.exports = { resetUserPassword, createSession };

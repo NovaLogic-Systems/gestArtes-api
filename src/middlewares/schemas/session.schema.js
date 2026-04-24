@@ -23,6 +23,8 @@ function validateEndAfterStart(startField, message) {
   };
 }
 
+
+
 const createSessionSchema = [
   body('studioId')
     .isInt({ min: 1 }).withMessage('Studio inválido')
@@ -40,6 +42,17 @@ const createSessionSchema = [
   body('pricingRateId')
     .isInt({ min: 1 }).withMessage('Tabela de preço inválida')
     .toInt(),
+  body('statusId')
+    .isInt({ min: 1 }).withMessage('Estado da sessão inválido')
+    .toInt(),
+  body('teacherIds')
+    .isArray({ min: 1 }).withMessage('Lista de professores inválida')
+    .custom((teacherIds) => teacherIds.every((id) => Number.isInteger(Number(id)) && Number(id) > 0))
+    .withMessage('Lista de professores inválida'),
+  body('assignmentRoleId')
+    .optional()
+    .isInt({ min: 1 }).withMessage('Papel de atribuição inválido')
+    .toInt(),
   body('maxParticipants')
     .optional()
     .isInt({ min: 1, max: 50 }).withMessage('Capacidade inválida')
@@ -52,10 +65,10 @@ const createSessionSchema = [
     .optional()
     .isBoolean().withMessage('Indicador fora de horário inválido')
     .toBoolean(),
-  body('cancellationReason')
+  body('reviewNotes')
     .optional()
     .trim()
-    .isLength({ max: 255 }).withMessage('Motivo inválido')
+    .isLength({ max: 255 }).withMessage('Notas inválidas')
     .escape(),
 ];
 

@@ -16,8 +16,14 @@ function toMoney(value) {
   return Number(value);
 }
 
+function normalizeString(value) {
+  return String(value || '')
+    .trim()
+    .toLowerCase();
+}
+
 function buildSearchFilter(rawSearch) {
-  if (!rawSearch) {
+  if (rawSearch === undefined || rawSearch === null) {
     return null;
   }
 
@@ -37,6 +43,16 @@ function buildSearchFilter(rawSearch) {
       {
         Description: {
           contains: search,
+        },
+      },
+      {
+        ItemCategory: {
+          is: {
+            IsActive: true,
+            CategoryName: {
+              contains: search,
+            },
+          },
         },
       },
     ],
@@ -59,8 +75,16 @@ function toRentalStatus(record) {
   return 'pending';
 }
 
+function buildRentalReference(transactionId, startDate) {
+  const year = new Date(startDate).getUTCFullYear();
+  return `INV-R-${year}-${String(transactionId).padStart(4, '0')}`;
+}
+
 function serializeItem(item, activeRentalsCount) {
-  const availableQuantity = Math.max(0, item.TotalQuantity - activeRentalsCount);
+  const totalQuantity = Number(item.TotalQuantity || 0);
+  const reservedQuantity = Math.max(Number(activeRentalsCount || 0), 0);
+  const availableQuantity = Math.max(0, totalQuantity - reservedQuantity);
+  const isAvailable = availableQuantity > 0;
 
   return {
     itemId: item.InventoryItemID,
@@ -68,9 +92,11 @@ function serializeItem(item, activeRentalsCount) {
     description: item.Description,
     photoUrl: item.PhotoURL,
     symbolicFee: toMoney(item.SymbolicFee),
-    totalQuantity: item.TotalQuantity,
+    totalQuantity,
+    reservedQuantity,
     availableQuantity,
-    isAvailable: availableQuantity > 0,
+    status: isAvailable ? 'available' : 'reserved',
+    isAvailable,
     category: item.ItemCategory
       ? {
         categoryId: item.ItemCategory.CategoryID,
@@ -82,10 +108,11 @@ function serializeItem(item, activeRentalsCount) {
 
 function serializeRental(record) {
   const symbolicFee = toMoney(record.InventoryItem.SymbolicFee) || 0;
+  const reference = buildRentalReference(record.TransactionID, record.StartDate);
 
   return {
     rentalId: record.TransactionID,
-    reference: `INV-R-${record.StartDate.getUTCFullYear()}-${String(record.TransactionID).padStart(4, '0')}`,
+    reference,
     status: toRentalStatus(record),
     startDate: record.StartDate,
     endDate: record.EndDate,
@@ -103,15 +130,68 @@ function serializeRental(record) {
   };
 }
 
-async function listItems(filters = {}) {
+function buildCategoryFilter(rawCategory, rawCategoryId) {
+  const normalizedCategoryId = Number.parseInt(rawCategoryId, 10);
+
+  if (Number.isInteger(normalizedCategoryId) && normalizedCategoryId > 0) {
+    return {
+      CategoryID: normalizedCategoryId,
+    };
+  }
+
+  if (rawCategory === undefined || rawCategory === null) {
+    return null;
+  }
+
+  const category = String(rawCategory).trim();
+
+  if (!category) {
+    return null;
+  }
+
+  const maybeId = Number.parseInt(category, 10);
+
+  if (!Number.isNaN(maybeId) && maybeId > 0 && String(maybeId) === category) {
+    return {
+      CategoryID: maybeId,
+    };
+  }
+
+  return {
+    ItemCategory: {
+      is: {
+        IsActive: true,
+        CategoryName: category,
+      },
+    },
+  };
+}
+
+function buildInventoryInclude() {
+  return {
+    ItemCategory: {
+      select: {
+        CategoryID: true,
+        CategoryName: true,
+        IsActive: true,
+      },
+    },
+  };
+}
+
+function buildInventoryWhere(filters = {}) {
   const where = {
     ItemCategory: {
-      IsActive: true,
+      is: {
+        IsActive: true,
+      },
     },
   };
 
-  if (filters.categoryId) {
-    where.CategoryID = filters.categoryId;
+  const categoryFilter = buildCategoryFilter(filters.category, filters.categoryId);
+
+  if (categoryFilter) {
+    Object.assign(where, categoryFilter);
   }
 
   const searchFilter = buildSearchFilter(filters.search);
@@ -120,28 +200,24 @@ async function listItems(filters = {}) {
     Object.assign(where, searchFilter);
   }
 
-  const items = await prisma.inventoryItem.findMany({
-    where,
-    include: {
-      ItemCategory: {
-        select: {
-          CategoryID: true,
-          CategoryName: true,
-          IsActive: true,
-        },
-      },
-    },
-    orderBy: {
-      InventoryItemID: 'desc',
-    },
-  });
+  return where;
+}
 
-  if (items.length === 0) {
-    return [];
+function shouldOnlyReturnAvailable(filters = {}) {
+  return (
+    filters.availableOnly === true
+    || normalizeString(filters.availableOnly) === 'true'
+    || filters.onlyAvailable === true
+    || normalizeString(filters.onlyAvailable) === 'true'
+  );
+}
+
+async function loadReservedQuantities(db, itemIds) {
+  if (itemIds.length === 0) {
+    return new Map();
   }
 
-  const itemIds = items.map((item) => item.InventoryItemID);
-  const activeRentals = await prisma.inventoryTransaction.groupBy({
+  const activeRentals = await db.inventoryTransaction.groupBy({
     by: ['InventoryItemID'],
     where: {
       InventoryItemID: {
@@ -154,16 +230,33 @@ async function listItems(filters = {}) {
     },
   });
 
-  const activeRentalsByItem = new Map(
-    activeRentals.map((row) => [row.InventoryItemID, row._count._all])
+  return new Map(
+    activeRentals.map((row) => [row.InventoryItemID, Number(row._count?._all || 0)])
   );
+}
+
+async function listItems(filters = {}) {
+  const items = await prisma.inventoryItem.findMany({
+    where: buildInventoryWhere(filters),
+    include: buildInventoryInclude(),
+    orderBy: {
+      ItemName: 'asc',
+    },
+  });
+
+  if (items.length === 0) {
+    return [];
+  }
+
+  const itemIds = items.map((item) => item.InventoryItemID);
+  const activeRentalsByItem = await loadReservedQuantities(prisma, itemIds);
 
   const result = items.map((item) => {
     const activeRentalsCount = activeRentalsByItem.get(item.InventoryItemID) || 0;
     return serializeItem(item, activeRentalsCount);
   });
 
-  if (filters.availableOnly) {
+  if (shouldOnlyReturnAvailable(filters)) {
     return result.filter((item) => item.isAvailable);
   }
 
@@ -171,25 +264,14 @@ async function listItems(filters = {}) {
 }
 
 async function getItemById(itemId) {
-  const item = await prisma.inventoryItem.findFirst({
+  const item = await prisma.inventoryItem.findUnique({
     where: {
       InventoryItemID: itemId,
-      ItemCategory: {
-        IsActive: true,
-      },
     },
-    include: {
-      ItemCategory: {
-        select: {
-          CategoryID: true,
-          CategoryName: true,
-          IsActive: true,
-        },
-      },
-    },
+    include: buildInventoryInclude(),
   });
 
-  if (!item) {
+  if (!item || item.ItemCategory?.IsActive === false) {
     return null;
   }
 
@@ -203,61 +285,78 @@ async function getItemById(itemId) {
   return serializeItem(item, activeRentalsCount);
 }
 
-async function ensurePaymentMethodExists(db, paymentMethodId) {
+async function ensureActivePaymentMethod(db, paymentMethodId) {
   const paymentMethod = await db.paymentMethod.findUnique({
     where: {
       PaymentMethodID: paymentMethodId,
     },
     select: {
       PaymentMethodID: true,
+      MethodName: true,
+      IsActive: true,
     },
   });
 
-  if (!paymentMethod) {
+  if (!paymentMethod || !paymentMethod.IsActive) {
     throw createHttpError(400, 'Método de pagamento inválido');
   }
+
+  return paymentMethod;
 }
 
-async function ensureItemCanBeRented(db, itemId) {
-  const item = await db.inventoryItem.findFirst({
+async function lockInventoryItemRow(db, inventoryItemId) {
+  const lockedItems = await db.$queryRaw`
+    SELECT TOP (1)
+      InventoryItemID,
+      ItemName,
+      SymbolicFee,
+      TotalQuantity
+    FROM InventoryItem WITH (UPDLOCK, HOLDLOCK, ROWLOCK)
+    WHERE InventoryItemID = ${inventoryItemId}
+  `;
+
+  return lockedItems[0] ?? null;
+}
+
+async function loadRentableItem(db, itemId) {
+  const item = await db.inventoryItem.findUnique({
     where: {
       InventoryItemID: itemId,
-      ItemCategory: {
-        IsActive: true,
-      },
     },
-    include: {
-      ItemCategory: {
-        select: {
-          CategoryID: true,
-          CategoryName: true,
-        },
-      },
-    },
+    include: buildInventoryInclude(),
   });
 
-  if (!item) {
+  if (!item || item.ItemCategory?.IsActive === false) {
     throw createHttpError(404, 'Artigo não encontrado');
-  }
-
-  const activeRentalsCount = await db.inventoryTransaction.count({
-    where: {
-      InventoryItemID: itemId,
-      IsCompleted: false,
-    },
-  });
-
-  if (activeRentalsCount >= item.TotalQuantity) {
-    throw createHttpError(400, 'Artigo indisponível para aluguer');
   }
 
   return item;
 }
 
+async function ensureItemCanBeRented(db, item) {
+  const activeRentalsCount = await db.inventoryTransaction.count({
+    where: {
+      InventoryItemID: item.InventoryItemID,
+      IsCompleted: false,
+    },
+  });
+
+  if (activeRentalsCount >= Number(item.TotalQuantity || 0)) {
+    throw createHttpError(409, 'Artigo sem stock disponível para aluguer');
+  }
+}
+
 async function createRental(data, renterId) {
   return prisma.$transaction(async (tx) => {
-    const item = await ensureItemCanBeRented(tx, data.inventoryItemId);
-    await ensurePaymentMethodExists(tx, data.paymentMethodId);
+    const lockedItem = await lockInventoryItemRow(tx, data.inventoryItemId);
+
+    if (!lockedItem) {
+      throw createHttpError(404, 'Artigo não encontrado');
+    }
+
+    const item = await loadRentableItem(tx, data.inventoryItemId);
+    const paymentMethod = await ensureActivePaymentMethod(tx, data.paymentMethodId);
+    await ensureItemCanBeRented(tx, lockedItem);
 
     const created = await tx.inventoryTransaction.create({
       data: {
@@ -270,30 +369,32 @@ async function createRental(data, renterId) {
         ConditionChecked: false,
         ReturnVerified: false,
       },
-      include: {
-        InventoryItem: {
-          select: {
-            InventoryItemID: true,
-            ItemName: true,
-            PhotoURL: true,
-            SymbolicFee: true,
-          },
-        },
-        PaymentMethod: {
-          select: {
-            PaymentMethodID: true,
-            MethodName: true,
-          },
-        },
-      },
     });
 
     const symbolicFee = toMoney(item.SymbolicFee) || 0;
+    const reference = buildRentalReference(created.TransactionID, created.StartDate);
+    const rentalStatus = 'pending_validation';
 
     return {
-      rental: serializeRental(created),
+      rental: {
+        rentalId: created.TransactionID,
+        itemId: item.InventoryItemID,
+        itemName: item.ItemName,
+        renterId: created.RenterID,
+        startDate: created.StartDate,
+        endDate: created.EndDate,
+        symbolicFee,
+        status: rentalStatus,
+        paymentMethod: {
+          paymentMethodId: paymentMethod.PaymentMethodID,
+          methodName: paymentMethod.MethodName,
+        },
+        isCompleted: created.IsCompleted,
+        conditionChecked: created.ConditionChecked,
+        returnVerified: created.ReturnVerified,
+      },
       checkoutSummary: {
-        reference: `INV-R-${created.StartDate.getUTCFullYear()}-${String(created.TransactionID).padStart(4, '0')}`,
+        reference,
         item: {
           itemId: item.InventoryItemID,
           itemName: item.ItemName,
@@ -304,8 +405,8 @@ async function createRental(data, renterId) {
         },
         symbolicFee,
         estimatedTotal: symbolicFee,
-        status: 'pending',
-        paymentMethodName: created.PaymentMethod.MethodName,
+        status: rentalStatus,
+        paymentMethodName: paymentMethod.MethodName,
         paymentFlow: 'offline',
       },
     };

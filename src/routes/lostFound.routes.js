@@ -3,7 +3,7 @@ const lostFoundController = require('../controllers/lostFound.controller');
 const validateRequest = require('../middlewares/validate.middleware');
 const {
   requireSessionAuth,
-  requireAdminRole,
+  requireRole,
 } = require('../middlewares/auth.middleware');
 const {
   createLostAndFoundItemSchema,
@@ -14,14 +14,14 @@ const {
 } = require('../middlewares/schemas/lostFound.schema');
 
 const router = express.Router();
+const adminLostFoundAccess = [requireSessionAuth, requireRole(['ADMIN'])];
 
 router.get('/lostfound', lostFoundController.listPublic);
 router.get('/lostfound/:id', ...itemIdParamSchema, validateRequest, lostFoundController.getPublicById);
 
 router.post(
   '/admin/lostfound',
-  requireSessionAuth,
-  requireAdminRole,
+  ...adminLostFoundAccess,
   ...createLostAndFoundItemSchema,
   validateRequest,
   lostFoundController.create
@@ -29,8 +29,7 @@ router.post(
 
 router.patch(
   '/admin/lostfound/:id',
-  requireSessionAuth,
-  requireAdminRole,
+  ...adminLostFoundAccess,
   ...itemIdParamSchema,
   ...updateLostAndFoundItemSchema,
   validateRequest,
@@ -39,8 +38,7 @@ router.patch(
 
 router.delete(
   '/admin/lostfound/:id',
-  requireSessionAuth,
-  requireAdminRole,
+  ...adminLostFoundAccess,
   ...itemIdParamSchema,
   validateRequest,
   lostFoundController.remove
@@ -48,8 +46,7 @@ router.delete(
 
 router.patch(
   '/admin/lostfound/:id/claim',
-  requireSessionAuth,
-  requireAdminRole,
+  ...adminLostFoundAccess,
   ...itemIdParamSchema,
   ...claimLostAndFoundItemSchema,
   validateRequest,
@@ -58,8 +55,7 @@ router.patch(
 
 router.patch(
   '/admin/lostfound/:id/archive',
-  requireSessionAuth,
-  requireAdminRole,
+  ...adminLostFoundAccess,
   ...itemIdParamSchema,
   ...archiveLostAndFoundItemSchema,
   validateRequest,

@@ -213,4 +213,60 @@ if (!shouldRun) {
         assert.equal(dbRow.Message, message);
         assert.equal(dbRow.IsRead, false);
     });
+
+    test('GET /notifications?preview=true devolve apenas preview limitado ao user logado', async (t) => {
+        const otherUser = await prisma.user.findFirst({
+            where: {
+                UserID: { not: loggedUserId },
+                IsActive: true,
+            },
+            orderBy: { UserID: 'asc' },
+        });
+
+        if (!otherUser) {
+            t.skip('Nao existe outro utilizador ativo para validar isolamento por userId');
+            return;
+        }
+
+        // Criar várias notificações para o user logado
+        const notifications = [];
+        for (let i = 0; i < 7; i++) {
+            const n = await createTrackedNotification(
+                loggedUserId,
+                `INT-PREVIEW-${Date.now()}-${i}`
+            );
+            notifications.push(n);
+        }
+
+        // Criar notificações para outro user
+        const foreignNotification = await createTrackedNotification(
+            otherUser.UserID,
+            `INT-PREVIEW-foreign-${Date.now()}`
+        );
+
+        // Chamar com preview=true
+        const response = await request('/notifications?preview=true');
+        assert.equal(response.status, 200, 'GET /notifications?preview=true deve devolver 200');
+
+        const previewNotifications = await response.json();
+        assert.ok(Array.isArray(previewNotifications), 'Resposta deve ser array');
+
+        // Validar que são apenas do user logado
+        assert.ok(
+            previewNotifications.every((n) => n.userId === loggedUserId),
+            'Todas as notificacoes devolvidas devem pertencer ao utilizador autenticado'
+        );
+
+        // Validar que a resposta está limitada a 5
+        assert.ok(
+            previewNotifications.length <= 5,
+            `Preview deve devolver no máximo 5 notificacoes; obtive ${previewNotifications.length}`
+        );
+
+        // Validar que notificações do outro user não aparecem
+        assert.ok(
+            !previewNotifications.some((n) => n.id === foreignNotification.id),
+            'Notificacoes de outros utilizadores nao devem aparecer'
+        );
+    });
 }

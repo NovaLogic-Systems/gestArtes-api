@@ -5,8 +5,8 @@ const ALLOWED_NOTIFICATION_TYPES = new Set([
     'coaching',
     'schedule',
     'system',
-    'penalties',
-    'join_requests',
+    'penalty',
+    'join_request',
 ]);
 
 const sendNotification = async (req, { userId, type, message }) => {
@@ -76,7 +76,10 @@ const broadcastNotification = async (req, res) => {
 
 const getAll = async (req, res) => {
     try {
-        const notifications = await notificationService.getAllByUser(req.session.userId);
+        const previewRequested = String(req.query?.preview || '').trim().toLowerCase() === 'true';
+        const notifications = previewRequested
+            ? await notificationService.getPreviewByUser(req.session.userId, 5)
+            : await notificationService.getAllByUser(req.session.userId);
         res.json(notifications);
     } catch (err) {
         res.status(500).json({ error: err.message });
@@ -114,7 +117,6 @@ const remove = async (req, res) => {
 const create = async (req, res) => {
     try {
         const { userId, type, message } = req.body;
-
         const notification = await sendNotification(req, { userId, type, message });
         res.status(201).json(notification);
         

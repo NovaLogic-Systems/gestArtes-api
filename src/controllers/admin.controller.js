@@ -1,7 +1,173 @@
+const crypto = require('node:crypto');
 const bcrypt = require('bcrypt');
 const prisma = require('../config/prisma');
+const {
+    ROLE_HIERARCHY,
+    ROLE_LABELS,
+    getPrimaryRoleFromUser,
+    toAppRole,
+} = require('../utils/roles');
 
 const BCRYPT_ROUNDS = Number(process.env.BCRYPT_SALT_ROUNDS) || 12;
+
+function serializeAdminUser(user) {
+    const role = getPrimaryRoleFromUser(user);
+
+    return {
+        userId: user.UserID,
+        firstName: user.FirstName,
+        lastName: user.LastName,
+        email: user.Email,
+        phoneNumber: user.PhoneNumber,
+        isActive: Boolean(user.IsActive),
+        createdAt: user.CreatedAt,
+        role,
+        roleLabel: ROLE_LABELS[role] || role,
+        roleLevel: ROLE_HIERARCHY[role] || 0,
+    };
+}
+
+async function resolveRoleRecord(tx, requestedRole) {
+    const appRole = toAppRole(requestedRole);
+
+    if (!appRole) {
+        return null;
+    }
+
+    const roles = await tx.role.findMany({
+        select: {
+            RoleID: true,
+            RoleName: true,
+        },
+        orderBy: {
+            RoleID: 'asc',
+        },
+    });
+
+    return roles.find((role) => toAppRole(role.RoleName) === appRole) || null;
+}
+
+async function listUsers(req, res, next) {
+    try {
+        const users = await prisma.user.findMany({
+            where: {
+                DeletedAt: null,
+            },
+            include: {
+                UserRole: {
+                    include: {
+                        Role: true,
+                    },
+                },
+            },
+            orderBy: {
+                CreatedAt: 'desc',
+            },
+        });
+
+        return res.json({
+            users: users.map(serializeAdminUser),
+        });
+    } catch (error) {
+        return next(error);
+    }
+}
+
+async function createUser(req, res, next) {
+    try {
+        const firstName = String(req.body?.firstName || '').trim();
+        const lastName = String(req.body?.lastName || '').trim() || null;
+        const email = String(req.body?.email || '').trim().toLowerCase();
+        const phoneNumber = String(req.body?.phoneNumber || '').trim() || null;
+        const password = String(req.body?.password || '');
+        const requestedRole = String(req.body?.role || '').trim();
+        const appRole = toAppRole(requestedRole);
+        const birthDate = req.body?.birthDate ? new Date(req.body.birthDate) : null;
+        const guardianName = String(req.body?.guardianName || '').trim() || null;
+        const guardianPhone = String(req.body?.guardianPhone || '').trim() || null;
+
+        if (!appRole) {
+            return res.status(400).json({ error: 'Invalid role' });
+        }
+
+        if (appRole === 'student' && !(birthDate instanceof Date && !Number.isNaN(birthDate.getTime()))) {
+            return res.status(400).json({ error: 'Birth date is required for student users' });
+        }
+
+        const existingUser = await prisma.user.findUnique({
+            where: { Email: email },
+            select: { UserID: true },
+        });
+
+        if (existingUser) {
+            return res.status(409).json({ error: 'Email already in use' });
+        }
+
+        const passwordHash = await bcrypt.hash(password, BCRYPT_ROUNDS);
+        const now = new Date();
+
+        const createdUser = await prisma.$transaction(async (tx) => {
+            const roleRecord = await resolveRoleRecord(tx, appRole);
+
+            if (!roleRecord) {
+                const error = new Error('Role not configured');
+                error.status = 500;
+                throw error;
+            }
+
+            const user = await tx.user.create({
+                data: {
+                    FirstName: firstName,
+                    LastName: lastName,
+                    Email: email,
+                    PhoneNumber: phoneNumber,
+                    PasswordHash: passwordHash,
+                    AuthUID: `local-${crypto.randomUUID()}`,
+                    CreatedAt: now,
+                    UpdatedAt: now,
+                    IsActive: true,
+                },
+            });
+
+            await tx.userRole.create({
+                data: {
+                    UserID: user.UserID,
+                    RoleID: roleRecord.RoleID,
+                },
+            });
+
+            if (appRole === 'student') {
+                await tx.studentAccount.create({
+                    data: {
+                        UserID: user.UserID,
+                        BirthDate: birthDate,
+                        GuardianName: guardianName,
+                        GuardianPhone: guardianPhone,
+                    },
+                });
+            }
+
+            return tx.user.findUnique({
+                where: {
+                    UserID: user.UserID,
+                },
+                include: {
+                    UserRole: {
+                        include: {
+                            Role: true,
+                        },
+                    },
+                },
+            });
+        });
+
+        return res.status(201).json({
+            user: serializeAdminUser(createdUser),
+        });
+    } catch (error) {
+        return next(error);
+    }
+}
 
 async function resetUserPassword(req, res, next) {
     try {
@@ -39,4 +205,8 @@ async function resetUserPassword(req, res, next) {
     }
 }
 
-module.exports = { resetUserPassword };
+module.exports = {
+    createUser,
+    listUsers,
+    resetUserPassword,
+};

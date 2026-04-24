@@ -3,8 +3,9 @@ const { requireAuth, requireRole } = require('../middlewares/auth.middleware');
 const teacherController = require('../controllers/teacher.controller');
 
 const router = express.Router();
+const teacherAccess = [requireAuth, requireRole(['TEACHER'])];
 
-router.get('/dashboard', requireAuth, requireRole('teacher'), teacherController.getDashboard);
-router.get('/schedule/today', requireAuth, requireRole('teacher'), teacherController.getTodaySchedule);
+router.get('/dashboard', ...teacherAccess, teacherController.getDashboard);
+router.get('/schedule/today', ...teacherAccess, teacherController.getTodaySchedule);
 
 module.exports = router;

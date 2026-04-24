@@ -1,5 +1,8 @@
 const prisma = require('../config/prisma');
-const { getSessionRole } = require('../middlewares/auth.middleware');
+
+const DEFAULT_NOTIFICATION_TYPE_ID = 1;
+const TEACHER_APPROVED_STATUS = 'TEACHER_APPROVED';
+const TEACHER_REJECTED_STATUS = 'TEACHER_REJECTED';
 
 const DEFAULT_NOTIFICATION_TYPE_ID = 1;
 const TEACHER_APPROVED_STATUS = 'TEACHER_APPROVED';
@@ -14,9 +17,15 @@ function toInteger(value) {
   return Number.isFinite(parsed) ? parsed : 0;
 }
 
+function normalizeString(value) {
+  return String(value || '')
+    .trim()
+    .toLowerCase();
+}
+
 function getAuthenticatedTeacherUserId(req, res) {
   const userId = Number(req.session?.userId);
-  const role = getSessionRole(req.session);
+  const role = normalizeString(req.session?.role);
 
   if (!Number.isInteger(userId) || userId <= 0) {
     res.status(401).json({ error: 'Not authenticated' });

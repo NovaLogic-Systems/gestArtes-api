@@ -9,6 +9,7 @@ const cors = require('cors');
 const helmet = require('helmet');
 const morgan = require('morgan');
 const adminRoutes = require('./routes/admin.routes');
+const adminMarketplaceRoutes = require('./routes/admin.marketplace.routes');
 const adminStudiosRoutes = require('./routes/admin.studios.routes');
 const authRoutes = require('./routes/auth.routes');
 const studentRoutes = require('./routes/student.routes');
@@ -350,6 +351,7 @@ app.use('/teacher/inventory', inventoryRoutes);
 app.use('/notifications', notificationRoutes);
 app.get('/health', (req, res) => res.json({ status: 'ok' }));
 app.use('/admin', adminRoutes);
+app.use('/admin/marketplace', adminMarketplaceRoutes);
 app.use('/admin/studios', adminStudiosRoutes);
 setupSwagger(app);
 

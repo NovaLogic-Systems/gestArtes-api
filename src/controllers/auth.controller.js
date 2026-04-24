@@ -1,47 +1,6 @@
 const bcrypt = require('bcrypt');
 const prisma = require('../config/prisma');
-
-const allowedRoles = new Set(['student', 'teacher', 'admin']);
-
-function toAppRole(roleName) {
-  const normalized = String(roleName || '')
-    .trim()
-    .toLowerCase();
-
-  if (allowedRoles.has(normalized)) {
-    return normalized;
-  }
-
-  if (normalized.includes('admin')) {
-    return 'admin';
-  }
-
-  if (normalized.includes('teacher') || normalized.includes('prof')) {
-    return 'teacher';
-  }
-
-  if (normalized.includes('student') || normalized.includes('aluno')) {
-    return 'student';
-  }
-
-  return null;
-}
-
-function getPrimaryRole(user) {
-  const roleNames = (user?.UserRole || [])
-    .map((entry) => toAppRole(entry?.Role?.RoleName))
-    .filter(Boolean);
-
-  // Priority from highest privilege to lowest.
-  const priorityOrder = ['admin', 'teacher', 'student'];
-  for (const candidate of priorityOrder) {
-    if (roleNames.includes(candidate)) {
-      return candidate;
-    }
-  }
-
-  return 'student';
-}
+const { getPrimaryRoleFromUser } = require('../utils/roles');
 
 function serializeUser(user, role) {
   return {
@@ -130,7 +89,7 @@ async function login(req, res, next) {
 
     await regenerateSession(req);
 
-    const role = getPrimaryRole(user);
+    const role = getPrimaryRoleFromUser(user);
     const sessionUser = serializeUser(user, role);
 
     req.session.userId = user.UserID;
@@ -163,8 +122,9 @@ async function me(req, res, next) {
       return;
     }
 
-    const role = req.session.role || getPrimaryRole(user);
+    const role = req.session.role || getPrimaryRoleFromUser(user);
     const sessionUser = serializeUser(user, role);
+    req.session.role = role;
     req.session.user = sessionUser;
 
     res.json({

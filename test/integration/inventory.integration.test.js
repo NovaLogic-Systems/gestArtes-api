@@ -16,6 +16,7 @@ const BASE_INVENTORY_ITEMS = [
     ItemCategory: {
       CategoryID: 1,
       CategoryName: 'Figurino',
+      IsActive: true,
     },
   },
   {
@@ -29,6 +30,7 @@ const BASE_INVENTORY_ITEMS = [
     ItemCategory: {
       CategoryID: 2,
       CategoryName: 'Cenario',
+      IsActive: true,
     },
   },
 ];
@@ -128,12 +130,26 @@ function normalizeString(value) {
   return String(value || '').trim().toLowerCase();
 }
 
+function includesNormalized(source, target) {
+  return normalizeString(source).includes(normalizeString(target));
+}
+
 function matchesInventoryItemWhere(item, where = {}) {
+  const categoryFilter = where.ItemCategory?.is || where.ItemCategory;
+
   if (where.CategoryID !== undefined && item.CategoryID !== where.CategoryID) {
     return false;
   }
 
-  const categoryNameFilter = where.ItemCategory?.CategoryName;
+  if (categoryFilter?.IsActive !== undefined) {
+    const categoryIsActive = item.ItemCategory?.IsActive !== false;
+
+    if (Boolean(categoryFilter.IsActive) !== categoryIsActive) {
+      return false;
+    }
+  }
+
+  const categoryNameFilter = categoryFilter?.CategoryName;
   if (categoryNameFilter) {
     const itemCategoryName = normalizeString(item.ItemCategory?.CategoryName);
     if (itemCategoryName !== normalizeString(categoryNameFilter)) {
@@ -141,10 +157,26 @@ function matchesInventoryItemWhere(item, where = {}) {
     }
   }
 
+  if (where.ItemName?.contains && !includesNormalized(item.ItemName, where.ItemName.contains)) {
+    return false;
+  }
+
+  if (where.Description?.contains && !includesNormalized(item.Description, where.Description.contains)) {
+    return false;
+  }
+
+  if (Array.isArray(where.OR) && !where.OR.some((condition) => matchesInventoryItemWhere(item, condition))) {
+    return false;
+  }
+
   return true;
 }
 
 function matchesInventoryTransactionWhere(transaction, where = {}) {
+  if (where.RenterID !== undefined && transaction.RenterID !== where.RenterID) {
+    return false;
+  }
+
   if (where.IsCompleted !== undefined && transaction.IsCompleted !== where.IsCompleted) {
     return false;
   }
@@ -164,6 +196,22 @@ function matchesInventoryTransactionWhere(transaction, where = {}) {
   }
 
   return true;
+}
+
+function buildIncludedTransaction(transaction, include = {}) {
+  const result = cloneInventoryTransaction(transaction);
+
+  if (include.InventoryItem) {
+    const item = inventoryItems.find((entry) => entry.InventoryItemID === transaction.InventoryItemID);
+    result.InventoryItem = item ? pickSelectedFields(cloneInventoryItem(item), include.InventoryItem.select) : null;
+  }
+
+  if (include.PaymentMethod) {
+    const method = paymentMethods.find((entry) => entry.PaymentMethodID === transaction.PaymentMethodID);
+    result.PaymentMethod = method ? pickSelectedFields(clonePaymentMethod(method), include.PaymentMethod.select) : null;
+  }
+
+  return result;
 }
 
 const fakePrisma = {
@@ -244,7 +292,24 @@ const fakePrisma = {
     count: async ({ where = {} } = {}) => {
       return inventoryTransactions.filter((transaction) => matchesInventoryTransactionWhere(transaction, where)).length;
     },
-    create: async ({ data }) => {
+    findMany: async ({ where = {}, include = {}, orderBy } = {}) => {
+      const sorted = [...inventoryTransactions]
+        .filter((transaction) => matchesInventoryTransactionWhere(transaction, where))
+        .sort((a, b) => {
+          if (orderBy?.TransactionID === 'desc') {
+            return b.TransactionID - a.TransactionID;
+          }
+
+          if (orderBy?.TransactionID === 'asc') {
+            return a.TransactionID - b.TransactionID;
+          }
+
+          return 0;
+        });
+
+      return sorted.map((transaction) => buildIncludedTransaction(transaction, include));
+    },
+    create: async ({ data, include = {} }) => {
       const created = {
         TransactionID: nextTransactionId,
         InventoryItemID: data.InventoryItemID,
@@ -260,7 +325,7 @@ const fakePrisma = {
       nextTransactionId += 1;
       inventoryTransactions.push(created);
 
-      return cloneInventoryTransaction(created);
+      return buildIncludedTransaction(created, include);
     },
   },
 };
@@ -308,6 +373,7 @@ app.use((req, res, next) => {
   next();
 });
 app.use('/inventory', inventoryRoutes);
+app.use('/teacher/inventory', inventoryRoutes);
 app.use((err, req, res, next) => {
   errorHandler(err, req, res, next);
 });
@@ -379,6 +445,22 @@ test('teacher can list and filter inventory items', async () => {
   assert.equal(body.items[0].availableQuantity, 1);
 });
 
+test('teacher inventory alias reuses the shared inventory router', async () => {
+  const response = await request('/teacher/inventory/items?availableOnly=true', {
+    headers: {
+      'x-test-user-id': '210',
+      'x-test-role': 'teacher',
+    },
+  });
+
+  assert.equal(response.status, 200);
+
+  const body = await response.json();
+  assert.ok(Array.isArray(body.items));
+  assert.equal(body.items.length, 1);
+  assert.equal(body.items[0].itemId, 1);
+});
+
 test('teacher can read inventory item detail', async () => {
   const response = await request('/inventory/items/2', {
     headers: {
@@ -418,11 +500,30 @@ test('teacher can create a symbolic checkout rental', async () => {
   assert.equal(body.rental.renterId, 212);
   assert.equal(body.rental.symbolicFee, 5);
   assert.equal(body.rental.status, 'pending_validation');
+  assert.equal(body.checkoutSummary.paymentFlow, 'offline');
+  assert.ok(body.checkoutSummary.reference);
 
   const activeForItemOne = inventoryTransactions.filter(
     (transaction) => transaction.InventoryItemID === 1 && transaction.IsCompleted === false
   );
   assert.equal(activeForItemOne.length, 2);
+});
+
+test('teacher can list their own rental history', async () => {
+  const response = await request('/inventory/rentals', {
+    headers: {
+      'x-test-user-id': '71',
+      'x-test-role': 'teacher',
+    },
+  });
+
+  assert.equal(response.status, 200);
+
+  const body = await response.json();
+  assert.ok(Array.isArray(body.rentals));
+  assert.equal(body.rentals.length, 1);
+  assert.equal(body.rentals[0].rentalId, 500);
+  assert.equal(body.rentals[0].item.itemId, 1);
 });
 
 test('symbolic checkout serializes concurrent reservations for the same item', async () => {

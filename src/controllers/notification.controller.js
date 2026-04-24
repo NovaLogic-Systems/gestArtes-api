@@ -5,8 +5,8 @@ const ALLOWED_NOTIFICATION_TYPES = new Set([
     'coaching',
     'schedule',
     'system',
-    'penalties',
-    'join_requests',
+    'penalty',
+    'join_request',
 ]);
 
 const sendNotification = async (req, { userId, type, message }) => {
@@ -117,7 +117,6 @@ const remove = async (req, res) => {
 const create = async (req, res) => {
     try {
         const { userId, type, message } = req.body;
-
         const notification = await sendNotification(req, { userId, type, message });
         res.status(201).json(notification);
         

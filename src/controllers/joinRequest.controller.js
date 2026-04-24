@@ -227,6 +227,24 @@ async function adminReject(req, res, next) {
   }
 }
 
+async function getStudentRequests(req, res, next) {
+  try {
+    const studentUserId = toPositiveInt(req.session?.userId);
+
+    if (!studentUserId) {
+      return res.status(401).json({ error: 'Não autenticado' });
+    }
+
+    const requests = await joinRequestService.listStudentRequests({
+      studentUserId,
+    });
+
+    return res.json({ requests });
+  } catch (error) {
+    return next(error);
+  }
+}
+
 module.exports = {
   createJoinRequest,
   listBySession,
@@ -236,4 +254,5 @@ module.exports = {
   getAdminPending,
   adminApprove,
   adminReject,
+  getStudentRequests,
 };

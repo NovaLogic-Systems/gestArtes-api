@@ -55,4 +55,10 @@ router.patch(
   joinRequestController.adminReject
 );
 
+router.get(
+  '/coaching/join-requests/my',
+  requireRoles('student'),
+  joinRequestController.getStudentRequests
+);
+
 module.exports = router;

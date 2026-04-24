@@ -89,13 +89,17 @@ async function getStudentAccountIdByUserId(db, userId) {
     where: {
       UserID: userId,
     },
-    select: {
-      StudentAccountID: true,
+    include: {
+      User: true,
     },
   });
 
   if (!student) {
     throw createHttpError(404, 'Conta de aluno não encontrada');
+  }
+
+  if (!student.User.IsActive || student.User.DeletedAt) {
+    throw createHttpError(403, 'Conta de aluno inativa ou removida');
   }
 
   return student.StudentAccountID;
@@ -144,11 +148,11 @@ function mapJoinRequest(record) {
     status: record.CoachingJoinRequestStatus?.StatusName || null,
     student: record.StudentAccount
       ? {
-        userId: record.StudentAccount.User?.UserID || null,
-        firstName: record.StudentAccount.User?.FirstName || null,
-        lastName: record.StudentAccount.User?.LastName || null,
-        email: record.StudentAccount.User?.Email || null,
-      }
+          userId: record.StudentAccount.User?.UserID || null,
+          firstName: record.StudentAccount.User?.FirstName || null,
+          lastName: record.StudentAccount.User?.LastName || null,
+          email: record.StudentAccount.User?.Email || null,
+        }
       : null,
   };
 }
@@ -605,6 +609,37 @@ async function adminReject({ joinRequestId, adminUserId }) {
   });
 }
 
+async function listStudentRequests({ studentUserId }) {
+  const studentAccountId = await getStudentAccountIdByUserId(prisma, studentUserId);
+
+  const requests = await prisma.coachingJoinRequest.findMany({
+    where: {
+      StudentAccountID: studentAccountId,
+    },
+    include: {
+      CoachingJoinRequestStatus: true,
+      CoachingSession: {
+        select: {
+          SessionID: true,
+          StartTime: true,
+          EndTime: true,
+          StatusID: true,
+        },
+      },
+      StudentAccount: {
+        include: {
+          User: true,
+        },
+      },
+    },
+    orderBy: {
+      RequestedAt: 'desc',
+    },
+  });
+
+  return requests.map(mapJoinRequest);
+}
+
 module.exports = {
   createJoinRequest,
   listJoinRequestsBySession,
@@ -614,4 +649,5 @@ module.exports = {
   listAdminPendingRequests,
   adminApprove,
   adminReject,
+  listStudentRequests,
 };

@@ -27,7 +27,7 @@ async function getStatusIdByKey(db, key) {
 
   const statusId = statusMap.get(normalizeStatusName(key));
   if (!statusId) {
-    throw createHttpError(500, `Join request status '${key}' is not configured`);
+    throw createHttpError(500, `O estado de pedido de adesão '${key}' não está configurado`);
   }
 
   return statusId;
@@ -58,7 +58,7 @@ async function getDefaultAttendanceStatusId(db) {
 
   const fallback = attendanceStatuses[0];
   if (!fallback) {
-    throw createHttpError(500, 'No attendance status configured');
+    throw createHttpError(500, 'Nenhum estado de presença configurado');
   }
 
   return fallback.AttendanceStatusID;
@@ -66,7 +66,7 @@ async function getDefaultAttendanceStatusId(db) {
 
 async function assertSessionHasCapacity(db, session) {
   if (!session) {
-    throw createHttpError(404, 'Session not found');
+    throw createHttpError(404, 'Sessão não encontrada');
   }
 
   if (!Number.isInteger(session.MaxParticipants) || session.MaxParticipants <= 0) {
@@ -80,7 +80,7 @@ async function assertSessionHasCapacity(db, session) {
   });
 
   if (enrolledCount >= session.MaxParticipants) {
-    throw createHttpError(409, 'Session has no available spots');
+    throw createHttpError(409, 'A sessão não tem vagas disponíveis');
   }
 }
 
@@ -95,7 +95,7 @@ async function getStudentAccountIdByUserId(db, userId) {
   });
 
   if (!student) {
-    throw createHttpError(404, 'Student account not found');
+    throw createHttpError(404, 'Conta de aluno não encontrada');
   }
 
   return student.StudentAccountID;
@@ -182,7 +182,7 @@ async function createJoinRequest({ sessionId, requesterUserId }) {
     });
 
     if (alreadyEnrolled) {
-      throw createHttpError(409, 'Student is already enrolled in this session');
+      throw createHttpError(409, 'O aluno já está inscrito nesta sessão');
     }
 
     const pendingTeacherStatusId = await getStatusIdByKey(db, 'PendingTeacher');
@@ -202,7 +202,7 @@ async function createJoinRequest({ sessionId, requesterUserId }) {
     });
 
     if (existingOpenRequest) {
-      throw createHttpError(409, 'There is already a pending join request for this session');
+      throw createHttpError(409, 'Já existe um pedido de adesão pendente para esta sessão');
     }
 
     const created = await db.coachingJoinRequest.create({
@@ -246,7 +246,7 @@ async function listJoinRequestsBySession({ sessionId, requesterUserId, requester
     });
 
     if (!teacherOwnsSession) {
-      throw createHttpError(403, 'Forbidden');
+      throw createHttpError(403, 'Acesso proibido');
     }
   }
 
@@ -326,11 +326,11 @@ async function teacherApprove({ joinRequestId, teacherUserId }) {
     });
 
     if (!request) {
-      throw createHttpError(404, 'Join request not found');
+      throw createHttpError(404, 'Pedido de adesão não encontrado');
     }
 
     if (request.StatusID !== pendingTeacherStatusId) {
-      throw createHttpError(409, 'Join request is not pending teacher approval');
+      throw createHttpError(409, 'O pedido de adesão não está pendente de aprovação do professor');
     }
 
     const teacherOwnsSession = await db.sessionTeacher.findFirst({
@@ -344,7 +344,7 @@ async function teacherApprove({ joinRequestId, teacherUserId }) {
     });
 
     if (!teacherOwnsSession) {
-      throw createHttpError(403, 'Forbidden');
+      throw createHttpError(403, 'Acesso proibido');
     }
 
     await assertSessionHasCapacity(db, request.CoachingSession);
@@ -396,11 +396,11 @@ async function teacherReject({ joinRequestId, teacherUserId }) {
     });
 
     if (!request) {
-      throw createHttpError(404, 'Join request not found');
+      throw createHttpError(404, 'Pedido de adesão não encontrado');
     }
 
     if (request.StatusID !== pendingTeacherStatusId) {
-      throw createHttpError(409, 'Join request is not pending teacher approval');
+      throw createHttpError(409, 'O pedido de adesão não está pendente de aprovação do professor');
     }
 
     const teacherOwnsSession = await db.sessionTeacher.findFirst({
@@ -414,7 +414,7 @@ async function teacherReject({ joinRequestId, teacherUserId }) {
     });
 
     if (!teacherOwnsSession) {
-      throw createHttpError(403, 'Forbidden');
+      throw createHttpError(403, 'Acesso proibido');
     }
 
     const updated = await db.coachingJoinRequest.update({
@@ -491,11 +491,11 @@ async function adminApprove({ joinRequestId, adminUserId }) {
     });
 
     if (!request) {
-      throw createHttpError(404, 'Join request not found');
+      throw createHttpError(404, 'Pedido de adesão não encontrado');
     }
 
     if (request.StatusID !== pendingAdminStatusId) {
-      throw createHttpError(409, 'Join request is not pending admin approval');
+      throw createHttpError(409, 'O pedido de adesão não está pendente de aprovação da gestão');
     }
 
     await assertSessionHasCapacity(db, request.CoachingSession);
@@ -513,7 +513,7 @@ async function adminApprove({ joinRequestId, adminUserId }) {
     });
 
     if (alreadyEnrolled) {
-      throw createHttpError(409, 'Student is already enrolled in this session');
+      throw createHttpError(409, 'O aluno já está inscrito nesta sessão');
     }
 
     const attendanceStatusId = await getDefaultAttendanceStatusId(db);
@@ -572,11 +572,11 @@ async function adminReject({ joinRequestId, adminUserId }) {
     });
 
     if (!request) {
-      throw createHttpError(404, 'Join request not found');
+      throw createHttpError(404, 'Pedido de adesão não encontrado');
     }
 
     if (request.StatusID !== pendingAdminStatusId) {
-      throw createHttpError(409, 'Join request is not pending admin approval');
+      throw createHttpError(409, 'O pedido de adesão não está pendente de aprovação da gestão');
     }
 
     const updated = await db.coachingJoinRequest.update({

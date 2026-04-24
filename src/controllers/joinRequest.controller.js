@@ -21,13 +21,13 @@ async function createJoinRequest(req, res, next) {
     const sessionId = toPositiveInt(req.params.id);
 
     if (!sessionId) {
-      return res.status(400).json({ error: 'Invalid session id' });
+      return res.status(400).json({ error: 'ID de sessão inválido' });
     }
 
     const requesterUserId = toPositiveInt(req.session?.userId);
 
     if (!requesterUserId) {
-      return res.status(401).json({ error: 'Unauthorized' });
+      return res.status(401).json({ error: 'Não autenticado' });
     }
 
     const result = await joinRequestService.createJoinRequest({
@@ -38,7 +38,7 @@ async function createJoinRequest(req, res, next) {
     await notifyUsers(
       req,
       result.teacherUserIds,
-      `New join request for session #${sessionId} is pending your approval.`
+      `Novo pedido de adesão à sessão #${sessionId} pendente da sua aprovação.`
     );
 
     return res.status(201).json(result.joinRequest);
@@ -52,14 +52,14 @@ async function listBySession(req, res, next) {
     const sessionId = toPositiveInt(req.params.id);
 
     if (!sessionId) {
-      return res.status(400).json({ error: 'Invalid session id' });
+      return res.status(400).json({ error: 'ID de sessão inválido' });
     }
 
     const requesterUserId = toPositiveInt(req.session?.userId);
     const requesterRole = String(req.session?.role || '').trim().toLowerCase();
 
     if (!requesterUserId) {
-      return res.status(401).json({ error: 'Unauthorized' });
+      return res.status(401).json({ error: 'Não autenticado' });
     }
 
     const requests = await joinRequestService.listJoinRequestsBySession({
@@ -79,7 +79,7 @@ async function getTeacherPending(req, res, next) {
     const teacherUserId = toPositiveInt(req.session?.userId);
 
     if (!teacherUserId) {
-      return res.status(401).json({ error: 'Unauthorized' });
+      return res.status(401).json({ error: 'Não autenticado' });
     }
 
     const requests = await joinRequestService.listTeacherPendingRequests({
@@ -98,11 +98,11 @@ async function teacherApprove(req, res, next) {
     const teacherUserId = toPositiveInt(req.session?.userId);
 
     if (!joinRequestId) {
-      return res.status(400).json({ error: 'Invalid join request id' });
+      return res.status(400).json({ error: 'ID de pedido de adesão inválido' });
     }
 
     if (!teacherUserId) {
-      return res.status(401).json({ error: 'Unauthorized' });
+      return res.status(401).json({ error: 'Não autenticado' });
     }
 
     const result = await joinRequestService.teacherApprove({
@@ -113,7 +113,7 @@ async function teacherApprove(req, res, next) {
     await notifyUsers(
       req,
       result.adminUserIds,
-      `Join request #${joinRequestId} was approved by teacher and is pending admin approval.`
+      `O pedido de adesão #${joinRequestId} foi aprovado pelo professor e aguarda aprovação da gestão.`
     );
 
     return res.json(result.joinRequest);
@@ -128,11 +128,11 @@ async function teacherReject(req, res, next) {
     const teacherUserId = toPositiveInt(req.session?.userId);
 
     if (!joinRequestId) {
-      return res.status(400).json({ error: 'Invalid join request id' });
+      return res.status(400).json({ error: 'ID de pedido de adesão inválido' });
     }
 
     if (!teacherUserId) {
-      return res.status(401).json({ error: 'Unauthorized' });
+      return res.status(401).json({ error: 'Não autenticado' });
     }
 
     const result = await joinRequestService.teacherReject({
@@ -144,7 +144,7 @@ async function teacherReject(req, res, next) {
       await sendNotification(req, {
         userId: result.studentUserId,
         type: 'join_request',
-        message: `Your join request #${joinRequestId} was rejected by teacher.`,
+        message: `O seu pedido de adesão #${joinRequestId} foi rejeitado pelo professor.`,
       });
     }
 
@@ -169,11 +169,11 @@ async function adminApprove(req, res, next) {
     const adminUserId = toPositiveInt(req.session?.userId);
 
     if (!joinRequestId) {
-      return res.status(400).json({ error: 'Invalid join request id' });
+      return res.status(400).json({ error: 'ID de pedido de adesão inválido' });
     }
 
     if (!adminUserId) {
-      return res.status(401).json({ error: 'Unauthorized' });
+      return res.status(401).json({ error: 'Não autenticado' });
     }
 
     const result = await joinRequestService.adminApprove({
@@ -185,7 +185,7 @@ async function adminApprove(req, res, next) {
       await sendNotification(req, {
         userId: result.studentUserId,
         type: 'join_request',
-        message: `Your join request #${joinRequestId} was approved. You are now enrolled in the session.`,
+        message: `O seu pedido de adesão #${joinRequestId} foi aprovado. Já está inscrito na sessão.`,
       });
     }
 
@@ -201,11 +201,11 @@ async function adminReject(req, res, next) {
     const adminUserId = toPositiveInt(req.session?.userId);
 
     if (!joinRequestId) {
-      return res.status(400).json({ error: 'Invalid join request id' });
+      return res.status(400).json({ error: 'ID de pedido de adesão inválido' });
     }
 
     if (!adminUserId) {
-      return res.status(401).json({ error: 'Unauthorized' });
+      return res.status(401).json({ error: 'Não autenticado' });
     }
 
     const result = await joinRequestService.adminReject({
@@ -217,7 +217,7 @@ async function adminReject(req, res, next) {
       await sendNotification(req, {
         userId: result.studentUserId,
         type: 'join_request',
-        message: `Your join request #${joinRequestId} was rejected by admin.`,
+        message: `O seu pedido de adesão #${joinRequestId} foi rejeitado pela gestão.`,
       });
     }
 

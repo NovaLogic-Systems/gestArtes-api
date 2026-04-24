@@ -4,10 +4,6 @@ const DEFAULT_NOTIFICATION_TYPE_ID = 1;
 const TEACHER_APPROVED_STATUS = 'TEACHER_APPROVED';
 const TEACHER_REJECTED_STATUS = 'TEACHER_REJECTED';
 
-const DEFAULT_NOTIFICATION_TYPE_ID = 1;
-const TEACHER_APPROVED_STATUS = 'TEACHER_APPROVED';
-const TEACHER_REJECTED_STATUS = 'TEACHER_REJECTED';
-
 function toInteger(value) {
   if (typeof value === 'bigint') {
     return Number(value);

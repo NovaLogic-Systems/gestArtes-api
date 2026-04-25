@@ -2,6 +2,7 @@ const crypto = require('node:crypto');
 const bcrypt = require('bcrypt');
 const prisma = require('../config/prisma');
 const { createSessionWithBusinessRules } = require('../services/session.service');
+const { getAdminDashboardSnapshot } = require('../services/adminDashboard.service');
 const {
     ROLE_HIERARCHY,
     ROLE_LABELS,
@@ -231,9 +232,19 @@ async function createSession(req, res, next) {
     }
 }
 
+async function getDashboard(req, res, next) {
+    try {
+        const dashboard = await getAdminDashboardSnapshot();
+        return res.json(dashboard);
+    } catch (error) {
+        return next(error);
+    }
+}
+
 module.exports = {
     createUser,
     listUsers,
     resetUserPassword,
     createSession,
+    getDashboard,
 };

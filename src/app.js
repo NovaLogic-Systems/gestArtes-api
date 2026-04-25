@@ -1,6 +1,7 @@
 require('dotenv').config();
 
 const crypto = require('node:crypto');
+const path = require('node:path');
 const express = require('express');
 const http = require('node:http');
 const session = require('express-session');
@@ -317,6 +318,14 @@ app.use((req, res, next) => {
   return apiCspMiddleware(req, res, next);
 });
 app.use(express.json());
+const uploadsStaticPath = path.resolve(__dirname, '..', 'uploads');
+const uploadsStaticOptions = {
+  setHeaders: (res) => {
+    res.setHeader('Cross-Origin-Resource-Policy', 'cross-origin');
+  },
+};
+app.use('/uploads', express.static(uploadsStaticPath, uploadsStaticOptions));
+app.use('/api/uploads', express.static(uploadsStaticPath, uploadsStaticOptions));
 app.use(morgan('dev'));
 if (parseBoolean(process.env.TRUST_PROXY, false)) {
   app.set('trust proxy', 1);

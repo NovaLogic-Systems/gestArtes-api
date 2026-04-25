@@ -2,6 +2,9 @@
 const { Server } = require('socket.io');
 const { bindSessionToSocket } = require('./middlewares/socket.io.handshake');
 const { getSessionRole } = require('./middlewares/auth.middleware');
+const {
+  emitAdminDashboardUpdate,
+} = require('./services/adminDashboard.service');
 
 function normalizeOrigin(value) {
   return String(value || '')
@@ -27,6 +30,19 @@ function initSocket(httpServer, sessionMiddleware) {
     next();
   });
 
+  const adminDashboardIntervalMs = Number(process.env.ADMIN_DASHBOARD_RT_INTERVAL_MS) || 30000;
+
+  setInterval(async () => {
+    try {
+      const adminRoomSize = io.sockets.adapter.rooms.get('broadcast:admin')?.size || 0;
+      if (adminRoomSize > 0) {
+        await emitAdminDashboardUpdate(io);
+      }
+    } catch (_error) {
+      // Keep socket server alive if dashboard broadcasting fails for one cycle.
+    }
+  }, adminDashboardIntervalMs);
+
   io.on('connection', (socket) => {
     // Adiciona o Socket a uma Sala Especifica do User para Enviar Notificacoes em Tempo Real
     socket.join(`user:${socket.userId}`);
@@ -38,6 +54,10 @@ function initSocket(httpServer, sessionMiddleware) {
     const userRole = getSessionRole(socket.request.session);
     if (userRole) {
       socket.join(`broadcast:${userRole}`);
+
+      if (userRole === 'admin') {
+        emitAdminDashboardUpdate(io).catch(() => {});
+      }
     }
     
     socket.on('disconnect', () => {});

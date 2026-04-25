@@ -72,8 +72,10 @@ async function ensureNoTeacherDoubleBooking(tx, teacherIds, startTime, endTime) 
     where: {
       TeacherID: { in: teacherIds },
       CoachingSession: {
-        StartTime: { lt: endTime },
-        EndTime: { gt: startTime },
+        is: {
+          StartTime: { lt: endTime },
+          EndTime: { gt: startTime },
+        },
       },
     },
     select: { TeacherID: true },
@@ -83,6 +85,64 @@ async function ensureNoTeacherDoubleBooking(tx, teacherIds, startTime, endTime) 
     const teacherSet = [...new Set(conflicts.map((item) => item.TeacherID))];
     throw createHttpError(409, 'Professor ja tem sessao nesse horario', {
       teacherIds: teacherSet,
+    });
+  }
+}
+
+async function ensureStatusExists(tx, statusId) {
+  const status = await tx.sessionStatus.findUnique({
+    where: { StatusID: statusId },
+    select: { StatusID: true },
+  });
+
+  if (!status) {
+    throw createHttpError(422, 'Estado da sessao invalido');
+  }
+}
+
+async function ensurePricingRateExists(tx, pricingRateId) {
+  const pricingRate = await tx.sessionPricingRate.findUnique({
+    where: { PricingRateID: pricingRateId },
+    select: { PricingRateID: true },
+  });
+
+  if (!pricingRate) {
+    throw createHttpError(422, 'Tabela de preco invalida');
+  }
+}
+
+async function ensureAssignmentRoleExists(tx, assignmentRoleId) {
+  const assignmentRole = await tx.teacherAssignmentRole.findUnique({
+    where: { AssignmentRoleID: assignmentRoleId },
+    select: { AssignmentRoleID: true },
+  });
+
+  if (!assignmentRole) {
+    throw createHttpError(422, 'Papel de atribuicao invalido');
+  }
+}
+
+async function ensureTeachersExistAndHaveTeacherRole(tx, teacherIds) {
+  const teachers = await tx.user.findMany({
+    where: {
+      UserID: { in: teacherIds },
+      UserRole: {
+        some: {
+          Role: {
+            RoleName: 'teacher',
+          },
+        },
+      },
+    },
+    select: { UserID: true },
+  });
+
+  const existingTeacherIds = new Set(teachers.map((teacher) => teacher.UserID));
+  const invalidTeacherIds = teacherIds.filter((teacherId) => !existingTeacherIds.has(teacherId));
+
+  if (invalidTeacherIds.length > 0) {
+    throw createHttpError(422, 'Lista de professores invalida', {
+      teacherIds: invalidTeacherIds,
     });
   }
 }
@@ -142,6 +202,14 @@ async function ensureTeacherHasAvailability(tx, teacherId, startTime, endTime) {
 
 async function createSessionWithBusinessRules(input, requestedByUserId) {
   const teacherIds = normalizeTeacherIds(input.teacherIds);
+  const hasAssignmentRoleId = input.assignmentRoleId !== undefined && input.assignmentRoleId !== null;
+  const parsedAssignmentRoleId = Number(input.assignmentRoleId);
+  const assignmentRoleId = hasAssignmentRoleId ? parsedAssignmentRoleId : 1;
+
+  if (hasAssignmentRoleId && (!Number.isInteger(parsedAssignmentRoleId) || parsedAssignmentRoleId <= 0)) {
+    throw createHttpError(422, 'Papel de atribuicao invalido');
+  }
+
   if (teacherIds.length === 0) {
     throw createHttpError(400, 'Lista de professores invalida');
   }
@@ -167,6 +235,10 @@ async function createSessionWithBusinessRules(input, requestedByUserId) {
       throw createHttpError(409, 'Capacidade da sessao excede capacidade do estudio');
     }
 
+    await ensureStatusExists(tx, input.statusId);
+    await ensurePricingRateExists(tx, input.pricingRateId);
+    await ensureAssignmentRoleExists(tx, assignmentRoleId);
+    await ensureTeachersExistAndHaveTeacherRole(tx, teacherIds);
     await ensureStudioModalityCompatibility(tx, input.studioId, input.modalityId);
     await ensureNoStudioOverlap(tx, input.studioId, startTime, endTime);
     await ensureNoTeacherDoubleBooking(tx, teacherIds, startTime, endTime);
@@ -197,7 +269,7 @@ async function createSessionWithBusinessRules(input, requestedByUserId) {
       data: teacherIds.map((teacherId) => ({
         SessionID: created.SessionID,
         TeacherID: teacherId,
-        AssignmentRoleID: input.assignmentRoleId || 1,
+        AssignmentRoleID: assignmentRoleId,
       })),
     });
 

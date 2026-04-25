@@ -23,8 +23,6 @@ function validateEndAfterStart(startField, message) {
   };
 }
 
-
-
 const createSessionSchema = [
   body('studioId')
     .isInt({ min: 1 }).withMessage('Studio inválido')
@@ -47,6 +45,7 @@ const createSessionSchema = [
     .toInt(),
   body('teacherIds')
     .isArray({ min: 1 }).withMessage('Lista de professores inválida')
+    .bail()
     .custom((teacherIds) => teacherIds.every((id) => Number.isInteger(Number(id)) && Number(id) > 0))
     .withMessage('Lista de professores inválida'),
   body('assignmentRoleId')

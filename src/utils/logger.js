@@ -8,6 +8,8 @@ if (!fs.existsSync(logsDir)) {
   fs.mkdirSync(logsDir, { recursive: true });
 }
 
+const auditOnly = format((info) => (info.category === 'audit' ? info : false))();
+
 const logger = createLogger({
   level: process.env.LOG_LEVEL || 'info',
   format: format.combine(format.timestamp(), format.errors({ stack: true }), format.json()),
@@ -15,6 +17,11 @@ const logger = createLogger({
   transports: [
     new transports.File({ filename: path.join(logsDir, 'error.log'), level: 'error' }),
     new transports.File({ filename: path.join(logsDir, 'combined.log') }),
+    new transports.File({
+      filename: path.join(logsDir, 'audit.log'),
+      level: 'info',
+      format: format.combine(auditOnly, format.timestamp(), format.json()),
+    }),
   ],
 });
 

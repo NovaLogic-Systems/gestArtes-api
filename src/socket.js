@@ -1,6 +1,7 @@
 // server/socket.js
 const { Server } = require('socket.io');
 const { bindSessionToSocket } = require('./middlewares/socket.io.handshake');
+const { getSessionRole } = require('./middlewares/auth.middleware');
 
 function normalizeOrigin(value) {
   return String(value || '')
@@ -34,10 +35,9 @@ function initSocket(httpServer, sessionMiddleware) {
     socket.join('broadcast');
     
     // Adiciona à sala de broadcast específica da role (se existir)
-    const userRole = socket.request.session?.role;
+    const userRole = getSessionRole(socket.request.session);
     if (userRole) {
-      const normalizedRole = String(userRole).trim().toLowerCase();
-      socket.join(`broadcast:${normalizedRole}`);
+      socket.join(`broadcast:${userRole}`);
     }
     
     socket.on('disconnect', () => {});

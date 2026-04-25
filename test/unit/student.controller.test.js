@@ -71,7 +71,9 @@ test('student dashboard rejects sessions without a student role', async () => {
   const req = {
     session: {
       userId: 123,
-      role: 'teacher',
+      user: {
+        role: 'teacher',
+      },
     },
   };
   const res = createResponse();
@@ -149,7 +151,9 @@ test('student profile returns profile and statistics payloads', async () => {
   const req = {
     session: {
       userId: 12,
-      role: 'student',
+      user: {
+        role: 'student',
+      },
     },
   };
   const res = createResponse();
@@ -190,6 +194,7 @@ test('student dashboard returns summary, notifications and schedule', async () =
     [{ upcomingSessions: 2 }],
     [{ pendingValidations: 1 }],
     [{ reviewRequests: 0 }],
+    [{ externalPayments: 0 }],
     [
       {
         notificationId: 1,
@@ -214,7 +219,9 @@ test('student dashboard returns summary, notifications and schedule', async () =
   const req = {
     session: {
       userId: 12,
-      role: 'student',
+      user: {
+        role: 'student',
+      },
     },
   };
   const res = createResponse();
@@ -224,14 +231,15 @@ test('student dashboard returns summary, notifications and schedule', async () =
   });
 
   assert.equal(res.statusCode, null);
-  assert.deepEqual(res.payload, {
-    upcomingSessions: 2,
-    pendingValidations: 1,
-    reviewRequests: 0,
-    notifications: [
-      {
-        id: 1,
-        title: 'Session confirmed',
+    assert.deepEqual(res.payload, {
+      upcomingSessions: 2,
+      pendingValidations: 1,
+      reviewRequests: 0,
+      externalPaymentsInProgress: 0,
+      notifications: [
+        {
+          id: 1,
+          title: 'Session confirmed',
         message: 'Session confirmed',
         read: false,
         createdAt: new Date('2026-03-20T09:00:00Z'),
@@ -256,7 +264,9 @@ test('getUpcomingSchedule rejects non-student roles', async () => {
   const req = {
     session: {
       userId: 123,
-      role: 'teacher',
+      user: {
+        role: 'teacher',
+      },
     },
   };
   const res = createResponse();
@@ -281,7 +291,9 @@ test('getUpcomingSchedule returns 404 when student profile is missing', async ()
   const req = {
     session: {
       userId: 12,
-      role: 'student',
+      user: {
+        role: 'student',
+      },
     },
   };
   const res = createResponse();
@@ -340,7 +352,9 @@ test('getUpcomingSchedule returns schedule with expected payload shape', async (
   const req = {
     session: {
       userId: 12,
-      role: 'student',
+      user: {
+        role: 'student',
+      },
     },
   };
   const res = createResponse();

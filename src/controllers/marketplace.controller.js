@@ -21,6 +21,20 @@ function toMoney(value) {
   return Number(value);
 }
 
+function normalizePhotoUrl(value) {
+  if (value === null || value === undefined) {
+    return null;
+  }
+
+  return String(value)
+    .replace(/&#x2F;/gi, '/')
+    .replace(/&quot;/gi, '"')
+    .replace(/&#x27;/gi, "'")
+    .replace(/&amp;/gi, '&')
+    .replace(/&lt;/gi, '<')
+    .replace(/&gt;/gi, '>');
+}
+
 function serializeListing(record, includeSellerContact = false) {
   const seller = record.User
     ? {
@@ -61,7 +75,7 @@ function serializeListing(record, includeSellerContact = false) {
         statusName: record.MarketplaceItemStatus.StatusName,
       }
       : null,
-    photoUrl: record.PhotoURL,
+    photoUrl: normalizePhotoUrl(record.PhotoURL),
     location: record.Location,
     createdAt: record.CreatedAt,
     isActive: record.IsActive,
@@ -185,6 +199,47 @@ function buildListingInclude(includeSellerContact = false) {
       },
     },
   };
+}
+
+async function getMarketplaceOptions(req, res, next) {
+  try {
+    const [categories, conditions] = await Promise.all([
+      prisma.itemCategory.findMany({
+        where: {
+          IsActive: true,
+        },
+        select: {
+          CategoryID: true,
+          CategoryName: true,
+        },
+        orderBy: {
+          CategoryName: 'asc',
+        },
+      }),
+      prisma.marketplaceItemCondition.findMany({
+        select: {
+          ConditionID: true,
+          ConditionName: true,
+        },
+        orderBy: {
+          ConditionName: 'asc',
+        },
+      }),
+    ]);
+
+    res.json({
+      categories: categories.map((entry) => ({
+        categoryId: entry.CategoryID,
+        categoryName: entry.CategoryName,
+      })),
+      conditions: conditions.map((entry) => ({
+        conditionId: entry.ConditionID,
+        conditionName: entry.ConditionName,
+      })),
+    });
+  } catch (error) {
+    next(error);
+  }
 }
 
 async function getListings(req, res, next) {
@@ -454,6 +509,7 @@ async function deleteListing(req, res, next) {
 }
 
 module.exports = {
+  getMarketplaceOptions,
   getListings,
   getListingById,
   createListing,

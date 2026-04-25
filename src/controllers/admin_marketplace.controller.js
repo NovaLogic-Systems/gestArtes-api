@@ -23,6 +23,20 @@ function toMoney(value) {
   return Number(value);
 }
 
+function normalizePhotoUrl(value) {
+  if (value === null || value === undefined) {
+    return null;
+  }
+
+  return String(value)
+    .replace(/&#x2F;/gi, '/')
+    .replace(/&quot;/gi, '"')
+    .replace(/&#x27;/gi, "'")
+    .replace(/&amp;/gi, '&')
+    .replace(/&lt;/gi, '<')
+    .replace(/&gt;/gi, '>');
+}
+
 function serializeListing(record, includeSellerContact = true) {
   const seller = record.User
     ? {
@@ -63,7 +77,7 @@ function serializeListing(record, includeSellerContact = true) {
           statusName: record.MarketplaceItemStatus.StatusName,
         }
       : null,
-    photoUrl: record.PhotoURL,
+    photoUrl: normalizePhotoUrl(record.PhotoURL),
     location: record.Location,
     createdAt: record.CreatedAt,
     isActive: record.IsActive,

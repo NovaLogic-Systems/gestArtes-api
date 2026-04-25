@@ -23,8 +23,7 @@ const createMarketplaceItemSchema = [
   body('photoUrl')
     .optional({ nullable: true })
     .trim()
-    .isLength({ min: 1, max: 255 }).withMessage('Foto inválida')
-    .escape(),
+    .isLength({ min: 1, max: 255 }).withMessage('Foto inválida'),
   body('location')
     .optional({ nullable: true })
     .trim()
@@ -58,8 +57,7 @@ const updateMarketplaceItemSchema = [
   body('photoUrl')
     .optional({ nullable: true })
     .trim()
-    .isLength({ min: 1, max: 255 }).withMessage('Foto inválida')
-    .escape(),
+    .isLength({ min: 1, max: 255 }).withMessage('Foto inválida'),
   body('location')
     .optional({ nullable: true })
     .trim()

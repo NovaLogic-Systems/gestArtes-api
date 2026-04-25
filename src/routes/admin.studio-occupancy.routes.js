@@ -1,0 +1,47 @@
+const express = require('express');
+const validateRequest = require('../middlewares/validate.middleware');
+const { requireSessionAuth, requireRole } = require('../middlewares/auth.middleware');
+const studioController = require('../controllers/studio.controller');
+const {
+  getStudioOccupancySchema,
+  getStudioOccupancyForecastSchema,
+  blockStudioSchema,
+  updateStudioStatusSchema,
+} = require('../middlewares/schemas/studioOccupancy.schema');
+
+const router = express.Router();
+const adminAccess = [requireSessionAuth, requireRole(['ADMIN'])];
+
+router.get(
+  '/real-time',
+  ...adminAccess,
+  ...getStudioOccupancySchema,
+  validateRequest,
+  studioController.getStudioOccupancy
+);
+
+router.get(
+  '/forecast',
+  ...adminAccess,
+  ...getStudioOccupancyForecastSchema,
+  validateRequest,
+  studioController.getStudioOccupancyForecast
+);
+
+router.post(
+  '/block',
+  ...adminAccess,
+  ...blockStudioSchema,
+  validateRequest,
+  studioController.blockStudio
+);
+
+router.patch(
+  '/:studioId/status',
+  ...adminAccess,
+  ...updateStudioStatusSchema,
+  validateRequest,
+  studioController.updateStudioOccupancyStatus
+);
+
+module.exports = router;

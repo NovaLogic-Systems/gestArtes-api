@@ -79,18 +79,18 @@ function createPricingService(prismaClient) {
     });
   }
 
-  async function generateFinancialEntryOnFinalization(sessionId, userId) {
-    return prismaClient.$transaction(async (tx) => {
-      const finalPrice = await calculateFinalPrice(sessionId, tx);
+  async function generateFinancialEntryOnFinalization(sessionId, userId, client = prismaClient) {
+    const run = async (db) => {
+      const finalPrice = await calculateFinalPrice(sessionId, db);
 
-      const entryType = await tx.financialEntryType.findUnique({
+      const entryType = await db.financialEntryType.findUnique({
         where: { TypeName: 'SESSION' },
       });
       if (!entryType) throw new Error("FinancialEntryType 'SESSION' not found");
 
-      const summary = await _findOrCreateMonthSummary(tx, userId);
+      const summary = await _findOrCreateMonthSummary(db, userId);
 
-      const entry = await tx.financialEntry.create({
+      const entry = await db.financialEntry.create({
         data: {
           SessionID: sessionId,
           Amount: finalPrice,
@@ -101,13 +101,19 @@ function createPricingService(prismaClient) {
         },
       });
 
-      await tx.coachingSession.update({
+      await db.coachingSession.update({
         where: { SessionID: sessionId },
         data: { FinalPrice: finalPrice },
       });
 
       return entry;
-    });
+    };
+
+    if (client === prismaClient) {
+      return prismaClient.$transaction((tx) => run(tx));
+    }
+
+    return run(client);
   }
 
   return { calculateFinalPrice, applyNoShowPenalty, generateFinancialEntryOnFinalization };

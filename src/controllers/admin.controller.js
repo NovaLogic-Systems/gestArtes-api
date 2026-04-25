@@ -2,6 +2,10 @@ const crypto = require('node:crypto');
 const bcrypt = require('bcrypt');
 const prisma = require('../config/prisma');
 const {
+    finalizeSessionValidation,
+    listPostSessionValidations,
+} = require('../services/adminValidation.service');
+const {
     ROLE_HIERARCHY,
     ROLE_LABELS,
     getPrimaryRoleFromUser,
@@ -205,8 +209,45 @@ async function resetUserPassword(req, res, next) {
     }
 }
 
+async function getPostSessionValidations(req, res, next) {
+    try {
+        return res.json({
+            sessions: await listPostSessionValidations(),
+        });
+    } catch (error) {
+        return next(error);
+    }
+}
+
+async function finalizeValidation(req, res, next) {
+    try {
+        const sessionId = Number(req.params.id);
+        const adminUserId = Number(req.session?.userId);
+
+        if (!Number.isInteger(sessionId) || sessionId <= 0) {
+            return res.status(400).json({ error: 'Invalid session id' });
+        }
+
+        if (!Number.isInteger(adminUserId) || adminUserId <= 0) {
+            return res.status(401).json({ error: 'Unauthorized' });
+        }
+
+        const result = await finalizeSessionValidation(sessionId, adminUserId);
+
+        return res.json({
+            sessionId: result.session.SessionID,
+            financialEntryId: result.financialEntry.EntryID,
+            finalPrice: Number(result.financialEntry.Amount),
+        });
+    } catch (error) {
+        return next(error);
+    }
+}
+
 module.exports = {
     createUser,
+    finalizeValidation,
+    getPostSessionValidations,
     listUsers,
     resetUserPassword,
 };

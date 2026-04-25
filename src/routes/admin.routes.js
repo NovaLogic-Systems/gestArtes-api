@@ -6,6 +6,7 @@ const {
     resetUserPasswordSchema,
 } = require('../middlewares/schemas/admin.schema');
 const adminController = require('../controllers/admin.controller');
+const { createSessionSchema } = require('../middlewares/schemas/session.schema');
 
 const router = express.Router();
 const adminAccess = [requireSessionAuth, requireRole(['ADMIN'])];
@@ -30,6 +31,14 @@ router.patch(
     ...resetUserPasswordSchema,
     validateRequest,
     adminController.resetUserPassword
+);
+
+router.post(
+    '/sessions',
+    ...adminAccess,
+    ...createSessionSchema,
+    validateRequest,
+    adminController.createSession
 );
 
 module.exports = router;

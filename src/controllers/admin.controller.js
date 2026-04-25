@@ -1,6 +1,7 @@
 const crypto = require('node:crypto');
 const bcrypt = require('bcrypt');
 const prisma = require('../config/prisma');
+const adminService = require('../services/admin.service');
 const {
     ROLE_HIERARCHY,
     ROLE_LABELS,
@@ -205,8 +206,65 @@ async function resetUserPassword(req, res, next) {
     }
 }
 
+function toPositiveInteger(value) {
+    const parsed = Number(value);
+    return Number.isInteger(parsed) && parsed > 0 ? parsed : null;
+}
+
+async function getPostSessionValidations(req, res, next) {
+    try {
+        const sessions = await adminService.listPostSessionValidationQueue();
+
+        return res.json({
+            sessions,
+        });
+    } catch (error) {
+        return next(error);
+    }
+}
+
+async function finalizeSessionValidation(req, res, next) {
+    try {
+        const sessionId = toPositiveInteger(req.params.id);
+        const adminUserId = toPositiveInteger(req.session?.userId);
+
+        if (!sessionId) {
+            return res.status(400).json({ error: 'Invalid session id' });
+        }
+
+        if (!adminUserId) {
+            return res.status(401).json({ error: 'Not authenticated' });
+        }
+
+        const result = await adminService.finalizeSessionValidation({
+            sessionId,
+            adminUserId,
+        });
+
+        return res.json(result);
+    } catch (error) {
+        return next(error);
+    }
+}
+
+async function getStudioOccupancy(req, res, next) {
+    try {
+        const occupancy = await adminService.getStudioOccupancy({
+            from: req.query.from,
+            to: req.query.to,
+        });
+
+        return res.json(occupancy);
+    } catch (error) {
+        return next(error);
+    }
+}
+
 module.exports = {
     createUser,
+    finalizeSessionValidation,
+    getPostSessionValidations,
+    getStudioOccupancy,
     listUsers,
     resetUserPassword,
 };

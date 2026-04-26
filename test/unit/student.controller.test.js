@@ -3,18 +3,38 @@ const assert = require('node:assert/strict');
 const Module = require('node:module');
 
 const mockState = {
-  queryRawResults: [],
+  user: null,
+  sessionStudentCounts: [],
+  sessionStudentFindMany: [],
+  validationSessions: [],
+  notifications: [],
   counts: {
     coachingJoinRequest: 0,
+    coachingSession: 0,
     inventoryTransaction: 0,
     marketplaceTransaction: 0,
   },
 };
 
 const fakePrisma = {
-  $queryRaw: async () => mockState.queryRawResults.shift() ?? [],
+  user: {
+    findFirst: async () => mockState.user,
+  },
+  sessionStudent: {
+    count: async () => mockState.sessionStudentCounts.shift() ?? 0,
+    findMany: async () => mockState.sessionStudentFindMany.shift() ?? [],
+  },
+  sessionValidation: {
+    findMany: async () => mockState.validationSessions,
+  },
   coachingJoinRequest: {
     count: async () => mockState.counts.coachingJoinRequest,
+  },
+  coachingSession: {
+    count: async () => mockState.counts.coachingSession,
+  },
+  notification: {
+    findMany: async () => mockState.notifications,
   },
   inventoryTransaction: {
     count: async () => mockState.counts.inventoryTransaction,
@@ -58,9 +78,35 @@ function createResponse() {
   };
 }
 
+function makeUser(overrides = {}) {
+  return {
+    UserID: 12,
+    AuthUID: 'auth-12',
+    FirstName: 'Ana',
+    LastName: 'Silva',
+    Email: 'ana@example.com',
+    PhoneNumber: '999',
+    Photo: null,
+    CreatedAt: new Date('2026-01-01T10:00:00Z'),
+    UpdatedAt: new Date('2026-01-02T10:00:00Z'),
+    StudentAccount: {
+      StudentAccountID: 7,
+      BirthDate: new Date('2005-03-04T00:00:00Z'),
+      GuardianName: 'Maria',
+      GuardianPhone: '123',
+    },
+    ...overrides,
+  };
+}
+
 function resetMockState() {
-  mockState.queryRawResults = [];
+  mockState.user = null;
+  mockState.sessionStudentCounts = [];
+  mockState.sessionStudentFindMany = [];
+  mockState.validationSessions = [];
+  mockState.notifications = [];
   mockState.counts.coachingJoinRequest = 0;
+  mockState.counts.coachingSession = 0;
   mockState.counts.inventoryTransaction = 0;
   mockState.counts.marketplaceTransaction = 0;
 }
@@ -111,37 +157,35 @@ test('student profile rejects sessions without a student role', async () => {
 test('student profile returns profile and statistics payloads', async () => {
   resetMockState();
 
-  mockState.queryRawResults = [
+  mockState.user = makeUser();
+
+  // totalSessionsEnrolled=4, upcomingSessions=2, completedSessions=1
+  mockState.sessionStudentCounts = [4, 2, 1];
+
+  mockState.sessionStudentFindMany = [
+    // attendance (sessionStudentsWithStatus)
+    [
+      { AttendanceStatus: { StatusName: 'attended' } },
+      { AttendanceStatus: { StatusName: 'attended' } },
+    ],
+    // nextSessions (nextSessionsRaw)
     [
       {
-        userId: 12,
-        authUid: 'auth-12',
-        firstName: 'Ana',
-        lastName: 'Silva',
-        email: 'ana@example.com',
-        phoneNumber: '999',
-        photoUrl: null,
-        accountCreatedAt: new Date('2026-01-01T10:00:00Z'),
-        accountUpdatedAt: new Date('2026-01-02T10:00:00Z'),
-        studentAccountId: 7,
-        birthDate: new Date('2005-03-04T00:00:00Z'),
-        guardianName: 'Maria',
-        guardianPhone: '123',
+        CoachingSession: {
+          SessionID: 99,
+          StartTime: new Date('2026-03-27T18:30:00Z'),
+          EndTime: new Date('2026-03-27T19:30:00Z'),
+          Modality: { ModalityName: 'Ballet' },
+          Studio: { StudioName: 'Studio A' },
+          SessionStatus: { StatusName: 'Scheduled' },
+        },
       },
     ],
-    [{ totalSessionsEnrolled: 4, upcomingSessions: 2, completedSessions: 1 }],
-    [{ statusName: 'attended', total: 2 }],
+    // sessionModalityRaw
     [
-      {
-        sessionId: 99,
-        startTime: new Date('2026-03-27T18:30:00Z'),
-        endTime: new Date('2026-03-27T19:30:00Z'),
-        modalityName: 'Ballet',
-        studioName: 'Studio A',
-        sessionStatus: 'Scheduled',
-      },
+      { CoachingSession: { Modality: { ModalityName: 'Ballet' } } },
+      { CoachingSession: { Modality: { ModalityName: 'Ballet' } } },
     ],
-    [{ modalityName: 'Ballet', sessions: 2 }],
   ];
 
   mockState.counts.coachingJoinRequest = 1;
@@ -173,45 +217,38 @@ test('student profile returns profile and statistics payloads', async () => {
 test('student dashboard returns summary, notifications and schedule', async () => {
   resetMockState();
 
-  mockState.queryRawResults = [
+  mockState.user = makeUser();
+
+  // upcomingSessions count
+  mockState.sessionStudentCounts = [2];
+
+  // pendingValidations: 1 distinct session
+  mockState.validationSessions = [{ SessionID: 10 }];
+
+  // reviewRequests via coachingJoinRequest.count: 0 (default)
+  // externalPayments via coachingSession.count: 0 (default)
+
+  mockState.notifications = [
+    {
+      NotificationID: 1,
+      Title: 'Session confirmed',
+      Message: 'Session confirmed',
+      IsRead: false,
+      CreatedAt: new Date('2026-03-20T09:00:00Z'),
+    },
+  ];
+
+  // schedule via listUpcomingSchedule → sessionStudent.findMany
+  mockState.sessionStudentFindMany = [
     [
       {
-        userId: 12,
-        authUid: 'auth-12',
-        firstName: 'Ana',
-        lastName: 'Silva',
-        email: 'ana@example.com',
-        phoneNumber: '999',
-        photoUrl: null,
-        accountCreatedAt: new Date('2026-01-01T10:00:00Z'),
-        accountUpdatedAt: new Date('2026-01-02T10:00:00Z'),
-        studentAccountId: 7,
-        birthDate: new Date('2005-03-04T00:00:00Z'),
-        guardianName: 'Maria',
-        guardianPhone: '123',
-      },
-    ],
-    [{ upcomingSessions: 2 }],
-    [{ pendingValidations: 1 }],
-    [{ reviewRequests: 0 }],
-    [{ externalPayments: 0 }],
-    [
-      {
-        notificationId: 1,
-        title: 'Session confirmed',
-        message: 'Session confirmed',
-        isRead: false,
-        createdAt: new Date('2026-03-20T09:00:00Z'),
-      },
-    ],
-    [
-      {
-        sessionId: 21,
-        sessionDate: '2026-03-27',
-        sessionTime: '18:30',
-        teacherName: 'Ana',
-        studioName: 'Studio A',
-        sessionStatus: 'Scheduled',
+        CoachingSession: {
+          SessionID: 21,
+          StartTime: new Date('2026-03-27T18:30:00Z'),
+          Studio: { StudioName: 'Studio A' },
+          SessionStatus: { StatusName: 'Scheduled' },
+          SessionTeacher: [{ User: { FirstName: 'Ana', LastName: null } }],
+        },
       },
     ],
   ];
@@ -284,9 +321,8 @@ test('getUpcomingSchedule rejects non-student roles', async () => {
 test('getUpcomingSchedule returns 404 when student profile is missing', async () => {
   resetMockState();
 
-  mockState.queryRawResults = [
-    [],
-  ];
+  // user.findFirst returns null → profile not found → 404
+  mockState.user = null;
 
   const req = {
     session: {
@@ -311,40 +347,27 @@ test('getUpcomingSchedule returns 404 when student profile is missing', async ()
 test('getUpcomingSchedule returns schedule with expected payload shape', async () => {
   resetMockState();
 
-  mockState.queryRawResults = [
+  mockState.user = makeUser();
+
+  mockState.sessionStudentFindMany = [
     [
       {
-        userId: 12,
-        authUid: 'auth-12',
-        firstName: 'Ana',
-        lastName: 'Silva',
-        email: 'ana@example.com',
-        phoneNumber: '999',
-        photoUrl: null,
-        accountCreatedAt: new Date('2026-01-01T10:00:00Z'),
-        accountUpdatedAt: new Date('2026-01-02T10:00:00Z'),
-        studentAccountId: 7,
-        birthDate: new Date('2005-03-04T00:00:00Z'),
-        guardianName: 'Maria',
-        guardianPhone: '123',
-      },
-    ],
-    [
-      {
-        sessionId: 21,
-        sessionDate: '2026-03-27',
-        sessionTime: '18:30',
-        teacherName: 'Ana',
-        studioName: 'Studio A',
-        sessionStatus: 'Scheduled',
+        CoachingSession: {
+          SessionID: 21,
+          StartTime: new Date('2026-03-27T18:30:00Z'),
+          Studio: { StudioName: 'Studio A' },
+          SessionStatus: { StatusName: 'Scheduled' },
+          SessionTeacher: [{ User: { FirstName: 'Ana', LastName: null } }],
+        },
       },
       {
-        sessionId: 22,
-        sessionDate: '2026-03-28',
-        sessionTime: '19:00',
-        teacherName: 'João',
-        studioName: 'Studio B',
-        sessionStatus: 'Scheduled',
+        CoachingSession: {
+          SessionID: 22,
+          StartTime: new Date('2026-03-28T19:00:00Z'),
+          Studio: { StudioName: 'Studio B' },
+          SessionStatus: { StatusName: 'Scheduled' },
+          SessionTeacher: [{ User: { FirstName: 'João', LastName: null } }],
+        },
       },
     ],
   ];

@@ -18,11 +18,6 @@ function toInteger(value) {
   return Number.isFinite(parsed) ? parsed : 0;
 }
 
-function toDecimal(value) {
-  const parsed = Number(value);
-  return Number.isFinite(parsed) ? Number(parsed.toFixed(2)) : 0;
-}
-
 function normalizeKey(value) {
   return String(value || '')
     .trim()
@@ -59,26 +54,6 @@ function mapPostSessionRow(row) {
     teacherCount: toInteger(row.teacherCount),
     studentCount: toInteger(row.studentCount),
     lastConfirmationAt: row.lastConfirmationAt,
-  };
-}
-
-function mapStudioOccupancyRow(row) {
-  const totalSessions = toInteger(row.totalSessions);
-  const capacity = toInteger(row.capacity);
-  const totalParticipants = toInteger(row.totalParticipants);
-  const occupancyRate =
-    capacity > 0 && totalSessions > 0
-      ? Number(((totalParticipants / (capacity * totalSessions)) * 100).toFixed(2))
-      : 0;
-
-  return {
-    studioId: toInteger(row.studioId),
-    studioName: row.studioName,
-    capacity,
-    totalSessions,
-    bookedHours: toDecimal(row.bookedHours),
-    totalParticipants,
-    occupancyRate,
   };
 }
 
@@ -148,40 +123,51 @@ async function listPostSessionValidationQueue() {
 }
 
 async function assertSessionIsReadyForFinalValidation(sessionId) {
-  const rows = await prisma.$queryRaw`
-    SELECT
-      MAX(CASE WHEN LOWER(r.RoleName) = 'teacher' THEN 1 ELSE 0 END) AS hasTeacherConfirmation,
-      MAX(CASE WHEN LOWER(r.RoleName) = 'student' THEN 1 ELSE 0 END) AS hasStudentConfirmation,
-      MAX(
-        CASE
-          WHEN LOWER(r.RoleName) = 'admin'
-            AND (
-              LOWER(vs.StepName) LIKE '%admin%'
-              OR LOWER(vs.StepName) LIKE '%final%'
-              OR LOWER(vs.StepName) LIKE '%gest%'
-              OR LOWER(vs.StepName) LIKE '%manag%'
-            )
-          THEN 1
-          ELSE 0
-        END
-      ) AS hasAdminFinalValidation
-    FROM [SessionValidation] AS sv
-    INNER JOIN [ValidationStep] AS vs ON vs.StepID = sv.ValidationStepID
-    INNER JOIN [UserRole] AS ur ON ur.UserID = sv.ValidatedByUserID
-    INNER JOIN [Role] AS r ON r.RoleID = ur.RoleID
-    WHERE sv.SessionID = ${sessionId}
-  `;
+  const validations = await prisma.sessionValidation.findMany({
+    where: { SessionID: sessionId },
+    select: {
+      ValidatedByUserID: true,
+      ValidationStep: { select: { StepName: true } },
+      User: {
+        select: {
+          UserRole: {
+            select: { Role: { select: { RoleName: true } } },
+          },
+        },
+      },
+    },
+  });
 
-  const row = rows[0] || {};
+  let hasTeacherConfirmation = false;
+  let hasStudentConfirmation = false;
+  let hasAdminFinalValidation = false;
 
-  if (!toInteger(row.hasTeacherConfirmation) || !toInteger(row.hasStudentConfirmation)) {
+  for (const sv of validations) {
+    const stepName = (sv.ValidationStep.StepName || '').toLowerCase();
+    for (const ur of sv.User.UserRole) {
+      const roleName = (ur.Role.RoleName || '').toLowerCase();
+      if (roleName === 'teacher') hasTeacherConfirmation = true;
+      if (roleName === 'student') hasStudentConfirmation = true;
+      if (
+        roleName === 'admin' &&
+        (stepName.includes('admin') ||
+          stepName.includes('final') ||
+          stepName.includes('gest') ||
+          stepName.includes('manag'))
+      ) {
+        hasAdminFinalValidation = true;
+      }
+    }
+  }
+
+  if (!hasTeacherConfirmation || !hasStudentConfirmation) {
     throw createHttpError(
       409,
       'Sessão ainda não está pronta para validação final administrativa'
     );
   }
 
-  if (toInteger(row.hasAdminFinalValidation)) {
+  if (hasAdminFinalValidation) {
     throw createHttpError(409, 'Sessão já foi validada pela administração');
   }
 }
@@ -313,35 +299,49 @@ async function getStudioOccupancy({ from, to }) {
     throw createHttpError(400, 'Período inválido: "from" deve ser anterior a "to"');
   }
 
-  const rows = await prisma.$queryRaw`
-    WITH SessionStudentCount AS (
-      SELECT
-        ss.SessionID,
-        COUNT(1) AS studentCount
-      FROM [SessionStudent] AS ss
-      GROUP BY ss.SessionID
-    )
-    SELECT
-      st.StudioID AS studioId,
-      st.StudioName AS studioName,
-      st.Capacity AS capacity,
-      COUNT(DISTINCT cs.SessionID) AS totalSessions,
-      CAST(
-        ISNULL(SUM(CAST(DATEDIFF(MINUTE, cs.StartTime, cs.EndTime) AS decimal(10, 2))), 0) / 60.0
-        AS decimal(10, 2)
-      ) AS bookedHours,
-      ISNULL(SUM(ISNULL(ssc.studentCount, 0)), 0) AS totalParticipants
-    FROM [Studio] AS st
-    LEFT JOIN [CoachingSession] AS cs
-      ON cs.StudioID = st.StudioID
-      AND cs.StartTime >= ${window.from}
-      AND cs.StartTime < ${window.to}
-    LEFT JOIN SessionStudentCount AS ssc ON ssc.SessionID = cs.SessionID
-    GROUP BY st.StudioID, st.StudioName, st.Capacity
-    ORDER BY st.StudioName ASC
-  `;
+  const studioRows = await prisma.studio.findMany({
+    orderBy: { StudioName: 'asc' },
+    select: {
+      StudioID: true,
+      StudioName: true,
+      Capacity: true,
+      CoachingSession: {
+        where: {
+          StartTime: { gte: window.from, lt: window.to },
+        },
+        select: {
+          StartTime: true,
+          EndTime: true,
+          _count: { select: { SessionStudent: true } },
+        },
+      },
+    },
+  });
 
-  const studios = rows.map(mapStudioOccupancyRow);
+  const studios = studioRows.map((studio) => {
+    const sessions = studio.CoachingSession;
+    const totalSessions = sessions.length;
+    const bookedMinutes = sessions.reduce(
+      (sum, cs) => sum + (cs.EndTime.getTime() - cs.StartTime.getTime()) / (1000 * 60),
+      0,
+    );
+    const totalParticipants = sessions.reduce((sum, cs) => sum + cs._count.SessionStudent, 0);
+    const capacity = studio.Capacity;
+    const occupancyRate =
+      capacity > 0 && totalSessions > 0
+        ? Number(((totalParticipants / (capacity * totalSessions)) * 100).toFixed(2))
+        : 0;
+
+    return {
+      studioId: studio.StudioID,
+      studioName: studio.StudioName,
+      capacity,
+      totalSessions,
+      bookedHours: Number((bookedMinutes / 60).toFixed(2)),
+      totalParticipants,
+      occupancyRate,
+    };
+  });
   const totalStudios = studios.length;
   const totalSessions = studios.reduce((sum, studio) => sum + studio.totalSessions, 0);
   const totalBookedHours = Number(

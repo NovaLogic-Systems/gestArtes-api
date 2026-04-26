@@ -52,6 +52,10 @@ const fakePrisma = {
   },
   modality: {
     findMany: async ({ where }) => {
+      const ids = where?.ModalityID?.in;
+      if (ids) {
+        return ids.map((id) => ({ ModalityID: id }));
+      }
       const names = where?.ModalityName?.in || [];
       return names
         .map((name) => mockState.modalitiesByName[name])

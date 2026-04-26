@@ -4,8 +4,8 @@ const { createPricingService } = require('../../src/services/pricing.service');
 
 const FAKE_SUMMARY = { FinancialSummaryID: 1 };
 const FAKE_YEAR = { AcademicYearID: 1 };
-const FAKE_SESSION_TYPE = { EntryTypeID: 2, TypeName: 'SESSION' };
-const FAKE_NOSHOWPENALTY_TYPE = { EntryTypeID: 3, TypeName: 'NOSHOWPENALTY' };
+const FAKE_SESSION_TYPE = { EntryTypeID: 2, TypeName: 'session_revenue' };
+const FAKE_NOSHOWPENALTY_TYPE = { EntryTypeID: 3, TypeName: 'no_show_fee' };
 
 function makeSession({ hourlyRate = 36, durationMs = 3_600_000, isOutside = false, isExternal = false } = {}) {
   const start = new Date('2026-04-18T10:00:00Z');
@@ -23,8 +23,8 @@ function makeFakePrisma(session, { entryCreateThrows = false, summaryExists = tr
   const fakeTx = {
     financialEntryType: {
       findUnique: async ({ where }) => {
-        if (where.TypeName === 'SESSION') return FAKE_SESSION_TYPE;
-        if (where.TypeName === 'NOSHOWPENALTY') return FAKE_NOSHOWPENALTY_TYPE;
+        if (where.TypeName === 'session_revenue') return FAKE_SESSION_TYPE;
+        if (where.TypeName === 'no_show_fee') return FAKE_NOSHOWPENALTY_TYPE;
         return null;
       },
     },

@@ -3,6 +3,7 @@ const router = express.Router();
 
 const marketplaceController = require('../controllers/marketplace.controller');
 const { APP_ROLES, requireAuth, requireRole } = require('../middlewares/auth.middleware');
+const { attachMarketplacePhoto } = require('../middlewares/marketplaceUpload.middleware');
 const validateRequest = require('../middlewares/validate.middleware');
 const {
   createMarketplaceItemSchema,
@@ -12,6 +13,8 @@ const {
 } = require('../middlewares/schemas/marketplace.schema');
 
 const marketplaceAccess = [requireAuth, requireRole(APP_ROLES)];
+
+router.get('/options', ...marketplaceAccess, marketplaceController.getMarketplaceOptions);
 
 router.get(
   '/listings',
@@ -32,6 +35,7 @@ router.get(
 router.post(
   '/listings',
   ...marketplaceAccess,
+  attachMarketplacePhoto,
   ...createMarketplaceItemSchema,
   validateRequest,
   marketplaceController.createListing
@@ -42,6 +46,7 @@ router.get('/my-listings', ...marketplaceAccess, marketplaceController.getMyList
 router.patch(
   '/listings/:id',
   ...marketplaceAccess,
+  attachMarketplacePhoto,
   ...marketplaceListingIdParamSchema,
   ...updateMarketplaceItemSchema,
   validateRequest,

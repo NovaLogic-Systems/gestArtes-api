@@ -203,6 +203,7 @@ model MarketplaceItem {
   CategoryID               Int?
   Title                    String                   @db.VarChar(100)
   Description              String?                  @db.VarChar(255)
+  RejectionReason          String?                  @db.VarChar(255)
   Price                    Decimal                  @db.Decimal(10, 2)
   ConditionID              Int
   StatusID                 Int
@@ -411,7 +412,45 @@ model Studio {
   Capacity        Int
   CoachingSession CoachingSession[]
   SchoolSchedule  SchoolSchedule[]
+  StudioBlock     StudioBlock[]
   StudioModality  StudioModality[]
+  StudioStatusOverride StudioStatusOverride[]
+}
+
+model StudioBlock {
+  StudioBlockID    Int      @id(map: "PK_StudioBlock") @default(autoincrement())
+  StudioID         Int
+  StartsAt         DateTime @db.DateTime
+  EndsAt           DateTime @db.DateTime
+  Reason           String?  @db.VarChar(255)
+  BlockType        String   @db.VarChar(50)
+  CreatedByUserID  Int
+  CreatedAt        DateTime @db.DateTime
+  IsActive         Boolean
+  Studio           Studio   @relation(fields: [StudioID], references: [StudioID], onUpdate: NoAction, map: "FK_StudioBlock_Studio")
+  User             User     @relation(fields: [CreatedByUserID], references: [UserID], onUpdate: NoAction, map: "FK_StudioBlock_User")
+
+  @@index([StudioID, StartsAt, EndsAt], map: "IX_StudioBlock_StudioID_StartsAt_EndsAt")
+  @@index([StudioID, IsActive], map: "IX_StudioBlock_StudioID_IsActive")
+}
+
+model StudioStatusOverride {
+  StudioStatusOverrideID Int      @id(map: "PK_StudioStatusOverride") @default(autoincrement())
+  StudioID              Int
+  Status                String   @db.VarChar(50)
+  Reason                String?  @db.VarChar(255)
+  StartsAt              DateTime @db.DateTime
+  EndsAt                DateTime? @db.DateTime
+  SetByUserID           Int
+  CreatedAt             DateTime @db.DateTime
+  UpdatedAt             DateTime? @db.DateTime
+  IsActive              Boolean
+  Studio                Studio   @relation(fields: [StudioID], references: [StudioID], onUpdate: NoAction, map: "FK_StudioStatusOverride_Studio")
+  User                  User     @relation(fields: [SetByUserID], references: [UserID], onUpdate: NoAction, map: "FK_StudioStatusOverride_User")
+
+  @@index([StudioID, IsActive], map: "IX_StudioStatusOverride_StudioID_IsActive")
+  @@index([Status, IsActive], map: "IX_StudioStatusOverride_Status_IsActive")
+  @@index([StudioID, StartsAt, EndsAt], map: "IX_StudioStatusOverride_StudioID_StartsAt_EndsAt")
 }
 
 model StudioModality {
@@ -535,6 +574,8 @@ model User {
   SchoolEvent                                                    SchoolEvent[]
   SessionTeacher                                                 SessionTeacher[]
   SessionValidation                                              SessionValidation[]
+  StudioBlock                                                    StudioBlock[]
+  StudioStatusOverride                                           StudioStatusOverride[]
   StudentAccount                                                 StudentAccount?
   TeacherAbsence_TeacherAbsence_ReviewedByUserIDToUser           TeacherAbsence[]         @relation("TeacherAbsence_ReviewedByUserIDToUser")
   TeacherAbsence_TeacherAbsence_TeacherIDToUser                  TeacherAbsence[]         @relation("TeacherAbsence_TeacherIDToUser")

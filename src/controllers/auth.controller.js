@@ -1,6 +1,37 @@
 const bcrypt = require('bcrypt');
 const prisma = require('../config/prisma');
 const { getPrimaryRoleFromUser } = require('../utils/roles');
+const logger = require('../utils/logger');
+
+function getClientIp(req) {
+  const forwardedFor = req.headers['x-forwarded-for'];
+
+  if (typeof forwardedFor === 'string' && forwardedFor.trim()) {
+    return forwardedFor.split(',')[0].trim();
+  }
+
+  return req.ip || req.socket?.remoteAddress || 'unknown';
+}
+
+function logLoginAttempt(req, details) {
+  const level = details.success ? 'info' : 'warn';
+  const email = String(details.email || '').trim().toLowerCase();
+
+  logger.log({
+    level,
+    message: details.success
+      ? 'Authentication login succeeded'
+      : 'Authentication login failed',
+    category: 'security',
+    event: 'auth_login_attempt',
+    success: details.success,
+    email,
+    reason: details.reason || null,
+    userId: details.userId || null,
+    ip: getClientIp(req),
+    userAgent: req.get('user-agent') || 'unknown',
+  });
+}
 
 function serializeUser(user, role) {
   return {
@@ -76,6 +107,7 @@ async function login(req, res, next) {
     const user = await findUserByEmail(email);
 
     if (!user || !user.IsActive) {
+      logLoginAttempt(req, { success: false, email, reason: 'invalid_user' });
       res.status(401).json({ error: 'Invalid credentials' });
       return;
     }
@@ -83,6 +115,12 @@ async function login(req, res, next) {
     const validPassword = await bcrypt.compare(password, user.PasswordHash);
 
     if (!validPassword) {
+      logLoginAttempt(req, {
+        success: false,
+        email,
+        userId: user.UserID,
+        reason: 'invalid_password',
+      });
       res.status(401).json({ error: 'Invalid credentials' });
       return;
     }
@@ -95,8 +133,16 @@ async function login(req, res, next) {
     req.session.userId = user.UserID;
     req.session.role = role;
     req.session.user = sessionUser;
+    req.session.cookie.maxAge = req.app.get('sessionCookieOptions')?.maxAge;
 
     await saveSession(req);
+
+    logLoginAttempt(req, {
+      success: true,
+      email,
+      userId: user.UserID,
+      reason: 'authenticated',
+    });
 
     res.json({
       user: sessionUser,
@@ -142,6 +188,8 @@ function logout(req, res, next) {
     return;
   }
 
+  const previousUserId = req.session.userId || null;
+
   req.session.destroy((error) => {
     if (error) {
       next(error);
@@ -153,6 +201,15 @@ function logout(req, res, next) {
     const { maxAge, expires, ...clearCookieOptions } = cookieOptions || {};
 
     res.clearCookie(cookieName, clearCookieOptions);
+
+    logger.info('Authentication logout completed', {
+      category: 'security',
+      event: 'auth_logout',
+      userId: previousUserId,
+      ip: getClientIp(req),
+      userAgent: req.get('user-agent') || 'unknown',
+    });
+
     res.status(204).send();
   });
 }

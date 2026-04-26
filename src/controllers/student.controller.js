@@ -69,38 +69,65 @@ function getAuthenticatedStudentUserId(req, res) {
   return userId;
 }
 
+function toUTCDateString(date) {
+  if (!date) return null;
+  const d = date instanceof Date ? date : new Date(date);
+  return d.toISOString().slice(0, 10);
+}
+
+function toUTCTimeString(date) {
+  if (!date) return null;
+  const d = date instanceof Date ? date : new Date(date);
+  return d.toISOString().slice(11, 16);
+}
+
 async function loadStudentProfile(userId) {
-  const profileRows = await prisma.$queryRaw`
-    SELECT
-      u.UserID AS userId,
-      u.AuthUID AS authUid,
-      u.FirstName AS firstName,
-      u.LastName AS lastName,
-      u.Email AS email,
-      u.PhoneNumber AS phoneNumber,
-      u.Photo AS photoUrl,
-      u.CreatedAt AS accountCreatedAt,
-      u.UpdatedAt AS accountUpdatedAt,
-      sa.StudentAccountID AS studentAccountId,
-      sa.BirthDate AS birthDate,
-      sa.GuardianName AS guardianName,
-      sa.GuardianPhone AS guardianPhone
-    FROM [User] AS u
-    INNER JOIN [StudentAccount] AS sa ON sa.UserID = u.UserID
-    WHERE u.UserID = ${userId}
-      AND u.IsActive = 1
-      AND u.DeletedAt IS NULL
-  `;
+  const user = await prisma.user.findFirst({
+    where: {
+      UserID: userId,
+      IsActive: true,
+      DeletedAt: null,
+    },
+    select: {
+      UserID: true,
+      AuthUID: true,
+      FirstName: true,
+      LastName: true,
+      Email: true,
+      PhoneNumber: true,
+      Photo: true,
+      CreatedAt: true,
+      UpdatedAt: true,
+      StudentAccount: {
+        select: {
+          StudentAccountID: true,
+          BirthDate: true,
+          GuardianName: true,
+          GuardianPhone: true,
+        },
+      },
+    },
+  });
 
-  const profileRow = profileRows[0];
-
-  if (!profileRow) {
-    return null;
-  }
+  if (!user || !user.StudentAccount) return null;
 
   return {
-    profileRow,
-    studentAccountId: toInteger(profileRow.studentAccountId),
+    profileRow: {
+      userId: user.UserID,
+      authUid: user.AuthUID,
+      firstName: user.FirstName,
+      lastName: user.LastName,
+      email: user.Email,
+      phoneNumber: user.PhoneNumber,
+      photoUrl: user.Photo,
+      accountCreatedAt: user.CreatedAt,
+      accountUpdatedAt: user.UpdatedAt,
+      studentAccountId: user.StudentAccount.StudentAccountID,
+      birthDate: user.StudentAccount.BirthDate,
+      guardianName: user.StudentAccount.GuardianName,
+      guardianPhone: user.StudentAccount.GuardianPhone,
+    },
+    studentAccountId: user.StudentAccount.StudentAccountID,
   };
 }
 
@@ -127,33 +154,45 @@ function mapScheduleRow(row) {
 
 async function listUpcomingSchedule(studentAccountId, limit = 5) {
   const safeLimit = Number.isInteger(limit) && limit > 0 ? limit : 5;
+  const now = new Date();
 
-  const scheduleRows = await prisma.$queryRaw`
-    SELECT TOP (${safeLimit})
-      cs.SessionID AS sessionId,
-      CONVERT(char(10), cs.StartTime, 23) AS sessionDate,
-      CONVERT(char(5), cs.StartTime, 108) AS sessionTime,
-      COALESCE(teacher.teacherName, 'Por atribuir') AS teacherName,
-      st.StudioName AS studioName,
-      sst.StatusName AS sessionStatus
-    FROM [SessionStudent] AS ss
-    INNER JOIN [CoachingSession] AS cs ON cs.SessionID = ss.SessionID
-    INNER JOIN [Studio] AS st ON st.StudioID = cs.StudioID
-    INNER JOIN [SessionStatus] AS sst ON sst.StatusID = cs.StatusID
-    OUTER APPLY (
-      SELECT TOP (1)
-        CONCAT(u.FirstName, ' ', u.LastName) AS teacherName
-      FROM [SessionTeacher] AS stt
-      INNER JOIN [User] AS u ON u.UserID = stt.TeacherID
-      WHERE stt.SessionID = cs.SessionID
-      ORDER BY stt.AssignmentRoleID ASC, stt.TeacherID ASC
-    ) AS teacher
-    WHERE ss.StudentAccountID = ${studentAccountId}
-      AND cs.StartTime >= SYSUTCDATETIME()
-    ORDER BY cs.StartTime ASC, cs.SessionID ASC
-  `;
+  const sessionStudents = await prisma.sessionStudent.findMany({
+    where: {
+      StudentAccountID: studentAccountId,
+      CoachingSession: { StartTime: { gte: now } },
+    },
+    include: {
+      CoachingSession: {
+        include: {
+          Studio: { select: { StudioName: true } },
+          SessionStatus: { select: { StatusName: true } },
+          SessionTeacher: {
+            orderBy: [{ AssignmentRoleID: 'asc' }, { TeacherID: 'asc' }],
+            include: {
+              User: { select: { FirstName: true, LastName: true } },
+            },
+          },
+        },
+      },
+    },
+    orderBy: [{ CoachingSession: { StartTime: 'asc' } }, { SessionID: 'asc' }],
+    take: safeLimit,
+  });
 
-  return scheduleRows.map(mapScheduleRow);
+  return sessionStudents.map((ss) => {
+    const cs = ss.CoachingSession;
+    const teacher = cs.SessionTeacher[0];
+    return mapScheduleRow({
+      sessionId: cs.SessionID,
+      sessionDate: toUTCDateString(cs.StartTime),
+      sessionTime: toUTCTimeString(cs.StartTime),
+      teacherName: teacher
+        ? [teacher.User.FirstName, teacher.User.LastName].filter(Boolean).join(' ')
+        : 'Por atribuir',
+      studioName: cs.Studio.StudioName,
+      sessionStatus: cs.SessionStatus.StatusName,
+    });
+  });
 }
 
 async function getProfile(req, res, next) {
@@ -173,106 +212,104 @@ async function getProfile(req, res, next) {
 
     const { profileRow, studentAccountId } = student;
 
+    const now = new Date();
+
     const [
-      sessionStatsRows,
-      attendanceRows,
-      nextSessionsRows,
-      modalityRows,
+      totalSessionsEnrolled,
+      upcomingSessions,
+      completedSessions,
+      sessionStudentsWithStatus,
+      nextSessionsRaw,
+      sessionModalityRaw,
       totalJoinRequests,
       totalInventoryRentals,
       totalMarketplacePurchases,
     ] = await Promise.all([
-      prisma.$queryRaw`
-        SELECT
-          COUNT(1) AS totalSessionsEnrolled,
-          SUM(CASE WHEN cs.StartTime >= SYSUTCDATETIME() THEN 1 ELSE 0 END) AS upcomingSessions,
-          SUM(CASE WHEN cs.EndTime < SYSUTCDATETIME() THEN 1 ELSE 0 END) AS completedSessions
-        FROM [SessionStudent] AS ss
-        INNER JOIN [CoachingSession] AS cs ON cs.SessionID = ss.SessionID
-        WHERE ss.StudentAccountID = ${studentAccountId}
-      `,
-      prisma.$queryRaw`
-        SELECT
-          ast.StatusName AS statusName,
-          COUNT(1) AS total
-        FROM [SessionStudent] AS ss
-        INNER JOIN [AttendanceStatus] AS ast ON ast.AttendanceStatusID = ss.AttendanceStatusID
-        WHERE ss.StudentAccountID = ${studentAccountId}
-        GROUP BY ast.StatusName
-        ORDER BY ast.StatusName ASC
-      `,
-      prisma.$queryRaw`
-        SELECT TOP (5)
-          cs.SessionID AS sessionId,
-          cs.StartTime AS startTime,
-          cs.EndTime AS endTime,
-          m.ModalityName AS modalityName,
-          st.StudioName AS studioName,
-          sst.StatusName AS sessionStatus
-        FROM [SessionStudent] AS ss
-        INNER JOIN [CoachingSession] AS cs ON cs.SessionID = ss.SessionID
-        INNER JOIN [Modality] AS m ON m.ModalityID = cs.ModalityID
-        INNER JOIN [Studio] AS st ON st.StudioID = cs.StudioID
-        INNER JOIN [SessionStatus] AS sst ON sst.StatusID = cs.StatusID
-        WHERE ss.StudentAccountID = ${studentAccountId}
-          AND cs.StartTime >= SYSUTCDATETIME()
-        ORDER BY cs.StartTime ASC
-      `,
-      prisma.$queryRaw`
-        SELECT
-          m.ModalityName AS modalityName,
-          COUNT(1) AS sessions
-        FROM [SessionStudent] AS ss
-        INNER JOIN [CoachingSession] AS cs ON cs.SessionID = ss.SessionID
-        INNER JOIN [Modality] AS m ON m.ModalityID = cs.ModalityID
-        WHERE ss.StudentAccountID = ${studentAccountId}
-        GROUP BY m.ModalityName
-        ORDER BY COUNT(1) DESC, m.ModalityName ASC
-      `,
-      prisma.coachingJoinRequest.count({
+      prisma.sessionStudent.count({ where: { StudentAccountID: studentAccountId } }),
+      prisma.sessionStudent.count({
         where: {
           StudentAccountID: studentAccountId,
+          CoachingSession: { StartTime: { gte: now } },
         },
+      }),
+      prisma.sessionStudent.count({
+        where: {
+          StudentAccountID: studentAccountId,
+          CoachingSession: { EndTime: { lt: now } },
+        },
+      }),
+      prisma.sessionStudent.findMany({
+        where: { StudentAccountID: studentAccountId },
+        select: { AttendanceStatus: { select: { StatusName: true } } },
+      }),
+      prisma.sessionStudent.findMany({
+        where: {
+          StudentAccountID: studentAccountId,
+          CoachingSession: { StartTime: { gte: now } },
+        },
+        select: {
+          CoachingSession: {
+            select: {
+              SessionID: true,
+              StartTime: true,
+              EndTime: true,
+              Modality: { select: { ModalityName: true } },
+              Studio: { select: { StudioName: true } },
+              SessionStatus: { select: { StatusName: true } },
+            },
+          },
+        },
+        orderBy: { CoachingSession: { StartTime: 'asc' } },
+        take: 5,
+      }),
+      prisma.sessionStudent.findMany({
+        where: { StudentAccountID: studentAccountId },
+        select: {
+          CoachingSession: {
+            select: { Modality: { select: { ModalityName: true } } },
+          },
+        },
+      }),
+      prisma.coachingJoinRequest.count({
+        where: { StudentAccountID: studentAccountId },
       }),
       prisma.inventoryTransaction.count({
-        where: {
-          RenterID: userId,
-        },
+        where: { RenterID: userId },
       }),
       prisma.marketplaceTransaction.count({
-        where: {
-          BuyerID: userId,
-        },
+        where: { BuyerID: userId },
       }),
     ]);
 
-    const sessionStats = sessionStatsRows[0] || {};
-
-    const attendanceByStatus = attendanceRows.map((row) => ({
-      statusName: row.statusName,
-      total: toInteger(row.total),
-    }));
+    const statusCounts = new Map();
+    for (const ss of sessionStudentsWithStatus) {
+      const name = ss.AttendanceStatus.StatusName;
+      statusCounts.set(name, (statusCounts.get(name) || 0) + 1);
+    }
+    const attendanceByStatus = [...statusCounts.entries()]
+      .map(([statusName, total]) => ({ statusName, total }))
+      .sort((a, b) => a.statusName.localeCompare(b.statusName));
 
     const totalSessionsAttended = attendanceByStatus.reduce((acc, item) => {
-      if (!isAttendedStatus(item.statusName)) {
-        return acc;
-      }
-
-      return acc + item.total;
+      return isAttendedStatus(item.statusName) ? acc + item.total : acc;
     }, 0);
 
-    const modalityDistribution = modalityRows.map((row) => ({
-      modalityName: row.modalityName,
-      sessions: toInteger(row.sessions),
-    }));
+    const modalityCounts = new Map();
+    for (const ss of sessionModalityRaw) {
+      const name = ss.CoachingSession.Modality.ModalityName;
+      modalityCounts.set(name, (modalityCounts.get(name) || 0) + 1);
+    }
+    const modalityDistribution = [...modalityCounts.entries()]
+      .map(([modalityName, sessions]) => ({ modalityName, sessions }))
+      .sort((a, b) => b.sessions - a.sessions || a.modalityName.localeCompare(b.modalityName));
 
-    const nextSessions = nextSessionsRows.map((row) => ({
-      sessionId: toInteger(row.sessionId),
-      startTime: row.startTime,
-      endTime: row.endTime,
-      modalityName: row.modalityName,
-      studioName: row.studioName,
-      status: row.sessionStatus,
+    const nextSessions = nextSessionsRaw.map((ss) => ({
+      sessionId: ss.CoachingSession.SessionID,
+      startTime: ss.CoachingSession.StartTime,
+      endTime: ss.CoachingSession.EndTime,
+      modalityName: ss.CoachingSession.Modality.ModalityName,
+      studioName: ss.CoachingSession.Studio.StudioName,
+      status: ss.CoachingSession.SessionStatus.StatusName,
     }));
 
     res.json({
@@ -298,10 +335,10 @@ async function getProfile(req, res, next) {
         nextSessions,
       },
       statistics: {
-        totalSessionsEnrolled: toInteger(sessionStats.totalSessionsEnrolled),
+        totalSessionsEnrolled,
         totalSessionsAttended,
-        upcomingSessions: toInteger(sessionStats.upcomingSessions),
-        completedSessions: toInteger(sessionStats.completedSessions),
+        upcomingSessions,
+        completedSessions,
         totalJoinRequests,
         totalInventoryRentals,
         totalMarketplacePurchases,
@@ -330,66 +367,85 @@ async function getDashboard(req, res, next) {
 
     const { studentAccountId } = student;
 
-    const [upcomingSessionsRows, pendingValidationsRows, reviewRequestsRows, externalPaymentsRows, notificationsRows, schedule] =
-      await Promise.all([
-        prisma.$queryRaw`
-          SELECT COUNT(1) AS upcomingSessions
-          FROM [SessionStudent] AS ss
-          INNER JOIN [CoachingSession] AS cs ON cs.SessionID = ss.SessionID
-          WHERE ss.StudentAccountID = ${studentAccountId}
-            AND cs.StartTime >= SYSUTCDATETIME()
-        `,
-        prisma.$queryRaw`
-          SELECT COUNT(DISTINCT sv.SessionID) AS pendingValidations
-          FROM [SessionValidation] AS sv
-          INNER JOIN [ValidationStep] AS vs ON vs.StepID = sv.ValidationStepID
-          INNER JOIN [SessionStudent] AS ss ON ss.SessionID = sv.SessionID
-          WHERE ss.StudentAccountID = ${studentAccountId}
-            AND (
-              LOWER(vs.StepName) LIKE '%pending%'
-              OR LOWER(vs.StepName) LIKE '%finalization%'
-            )
-        `,
-        prisma.$queryRaw`
-          SELECT COUNT(1) AS reviewRequests
-          FROM [CoachingJoinRequest] AS cjr
-          INNER JOIN [CoachingJoinRequestStatus] AS cjrs ON cjrs.StatusID = cjr.StatusID
-          WHERE cjr.StudentAccountID = ${studentAccountId}
-            AND LOWER(cjrs.StatusName) LIKE '%pend%'
-        `,
-        prisma.$queryRaw`
-          SELECT COUNT(DISTINCT cs.SessionID) AS externalPayments
-          FROM [CoachingSession] AS cs
-          INNER JOIN [SessionStudent] AS ss ON ss.SessionID = cs.SessionID
-          INNER JOIN [SessionStatus] AS sst ON sst.StatusID = cs.StatusID
-          WHERE ss.StudentAccountID = ${studentAccountId}
-            AND cs.IsExternal = 1
-            AND cs.StartTime >= SYSUTCDATETIME()
-            AND (
-              LOWER(sst.StatusName) NOT LIKE '%completed%'
-              AND LOWER(sst.StatusName) NOT LIKE '%cancelled%'
-            )
-        `,
-        prisma.$queryRaw`
-          SELECT TOP (5)
-            n.NotificationID AS notificationId,
-            n.Title AS title,
-            n.Message AS message,
-            n.IsRead AS isRead,
-            n.CreatedAt AS createdAt
-          FROM [Notification] AS n
-          WHERE n.UserID = ${userId}
-          ORDER BY n.CreatedAt DESC, n.NotificationID DESC
-        `,
-        listUpcomingSchedule(studentAccountId, 5),
-      ]);
+    const now = new Date();
+
+    const [
+      upcomingSessions,
+      pendingValidationSessions,
+      reviewRequests,
+      externalPayments,
+      notificationRows,
+      schedule,
+    ] = await Promise.all([
+      prisma.sessionStudent.count({
+        where: {
+          StudentAccountID: studentAccountId,
+          CoachingSession: { StartTime: { gte: now } },
+        },
+      }),
+      prisma.sessionValidation.findMany({
+        where: {
+          CoachingSession: {
+            SessionStudent: { some: { StudentAccountID: studentAccountId } },
+          },
+          ValidationStep: {
+            OR: [
+              { StepName: { contains: 'pending' } },
+              { StepName: { contains: 'finalization' } },
+            ],
+          },
+        },
+        select: { SessionID: true },
+        distinct: ['SessionID'],
+      }),
+      prisma.coachingJoinRequest.count({
+        where: {
+          StudentAccountID: studentAccountId,
+          CoachingJoinRequestStatus: { StatusName: { contains: 'pend' } },
+        },
+      }),
+      prisma.coachingSession.count({
+        where: {
+          IsExternal: true,
+          StartTime: { gte: now },
+          SessionStudent: { some: { StudentAccountID: studentAccountId } },
+          SessionStatus: {
+            AND: [
+              { StatusName: { not: { contains: 'completed' } } },
+              { StatusName: { not: { contains: 'cancelled' } } },
+            ],
+          },
+        },
+      }),
+      prisma.notification.findMany({
+        where: { UserID: userId },
+        orderBy: [{ CreatedAt: 'desc' }, { NotificationID: 'desc' }],
+        take: 5,
+        select: {
+          NotificationID: true,
+          Title: true,
+          Message: true,
+          IsRead: true,
+          CreatedAt: true,
+        },
+      }),
+      listUpcomingSchedule(studentAccountId, 5),
+    ]);
 
     res.json({
-      upcomingSessions: toInteger(upcomingSessionsRows[0]?.upcomingSessions),
-      pendingValidations: toInteger(pendingValidationsRows[0]?.pendingValidations),
-      reviewRequests: toInteger(reviewRequestsRows[0]?.reviewRequests),
-      externalPaymentsInProgress: toInteger(externalPaymentsRows[0]?.externalPayments),
-      notifications: notificationsRows.map(mapNotificationRow),
+      upcomingSessions,
+      pendingValidations: pendingValidationSessions.length,
+      reviewRequests,
+      externalPaymentsInProgress: externalPayments,
+      notifications: notificationRows.map((n) =>
+        mapNotificationRow({
+          notificationId: n.NotificationID,
+          title: n.Title,
+          message: n.Message,
+          isRead: n.IsRead,
+          createdAt: n.CreatedAt,
+        }),
+      ),
       schedule,
     });
   } catch (error) {

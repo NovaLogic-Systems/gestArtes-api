@@ -23,8 +23,7 @@ const createMarketplaceItemSchema = [
   body('photoUrl')
     .optional({ nullable: true })
     .trim()
-    .isLength({ min: 1, max: 255 }).withMessage('Foto inválida')
-    .escape(),
+    .isLength({ min: 1, max: 255 }).withMessage('Foto inválida'),
   body('location')
     .optional({ nullable: true })
     .trim()
@@ -58,8 +57,7 @@ const updateMarketplaceItemSchema = [
   body('photoUrl')
     .optional({ nullable: true })
     .trim()
-    .isLength({ min: 1, max: 255 }).withMessage('Foto inválida')
-    .escape(),
+    .isLength({ min: 1, max: 255 }).withMessage('Foto inválida'),
   body('location')
     .optional({ nullable: true })
     .trim()
@@ -121,6 +119,23 @@ const listMarketplaceListingsQuerySchema = [
     .trim()
     .isLength({ min: 1, max: 100 }).withMessage('Localização inválida')
     .escape(),
+  query('search')
+    .optional()
+    .trim()
+    .isLength({ min: 1, max: 100 }).withMessage('Pesquisa inválida')
+    .escape(),
+  query('status')
+    .optional()
+    .trim()
+    .isLength({ min: 1, max: 50 }).withMessage('Estado inválido')
+    .escape(),
+];
+
+const rejectMarketplaceListingSchema = [
+  body('reason')
+    .trim()
+    .isLength({ min: 1, max: 255 }).withMessage('Motivo de rejeição inválido')
+    .escape(),
 ];
 
 const createMarketplaceTransactionSchema = [
@@ -137,5 +152,6 @@ module.exports = {
   updateMarketplaceItemSchema,
   marketplaceListingIdParamSchema,
   listMarketplaceListingsQuerySchema,
+  rejectMarketplaceListingSchema,
   createMarketplaceTransactionSchema,
 };

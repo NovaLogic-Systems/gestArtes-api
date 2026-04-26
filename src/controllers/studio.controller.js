@@ -1,4 +1,10 @@
 const prisma = require('../config/prisma');
+const {
+  getStudioOccupancyRealTime,
+  getStudioOccupancyForecast: getStudioOccupancyForecastService,
+  blockStudio: createStudioBlock,
+  updateStudioStatus,
+} = require('../services/studioOccupancy.service');
 
 function toInteger(value) {
   if (typeof value === 'bigint') {
@@ -23,6 +29,82 @@ function getAuthenticatedAdminUserId(req, res) {
   }
   
   return userId;
+}
+
+async function resolveModalityIds(modalities) {
+  if (!Array.isArray(modalities) || modalities.length === 0) {
+    return [];
+  }
+
+  const hasModalityId = modalities[0]?.modalityId !== undefined;
+  const hasModalityName = modalities[0]?.modalityName !== undefined;
+
+  if (hasModalityId) {
+    const modalityIds = Array.from(
+      new Set(
+        modalities
+          .map((entry) => Number(entry?.modalityId))
+          .filter((entry) => Number.isInteger(entry) && entry > 0)
+      )
+    );
+
+    if (modalityIds.length !== modalities.length) {
+      const error = new Error('Invalid modality IDs');
+      error.status = 400;
+      throw error;
+    }
+
+    const found = await prisma.modality.findMany({
+      where: {
+        ModalityID: {
+          in: modalityIds,
+        },
+      },
+      select: {
+        ModalityID: true,
+      },
+    });
+
+    if (found.length !== modalityIds.length) {
+      const error = new Error('One or more modalities do not exist');
+      error.status = 400;
+      throw error;
+    }
+
+    return found.map((entry) => entry.ModalityID);
+  }
+
+  const modalityNames = hasModalityName
+    ? modalities.map((entry) => String(entry?.modalityName || '').trim())
+    : modalities.map((entry) => String(entry || '').trim());
+
+  if (modalityNames.some((entry) => !entry)) {
+    const error = new Error('Invalid modality names');
+    error.status = 400;
+    throw error;
+  }
+
+  const dedupedNames = Array.from(new Set(modalityNames));
+
+  const foundModalities = await prisma.modality.findMany({
+    where: {
+      ModalityName: {
+        in: dedupedNames,
+      },
+    },
+    select: {
+      ModalityID: true,
+      ModalityName: true,
+    },
+  });
+
+  if (foundModalities.length !== dedupedNames.length) {
+    const error = new Error('One or more modalities do not exist');
+    error.status = 400;
+    throw error;
+  }
+
+  return foundModalities.map((entry) => entry.ModalityID);
 }
 
 async function getStudios(req, res, next) {
@@ -111,42 +193,7 @@ async function createStudio(req, res, next) {
       return;
     }
 
-    // Process modalities - can be IDs (numbers) or names (strings)
-    let modalityIds = [];
-    if (modalities.length > 0) {
-      // Check if modalities are objects with modalityId or modalityName
-      const hasModalityId = modalities[0]?.modalityId !== undefined;
-      const hasModalityName = modalities[0]?.modalityName !== undefined;
-
-      if (hasModalityId) {
-        // Format: [{ modalityId: 1 }, { modalityId: 2 }]
-        modalityIds = modalities.map(m => m.modalityId);
-      } else if (hasModalityName) {
-        // Format: [{ modalityName: 'Ballet' }, { modalityName: 'Jazz' }]
-        const modalityNames = modalities.map(m => m.modalityName);
-        const foundModalities = await prisma.modality.findMany({
-          where: {
-            ModalityName: {
-              in: modalityNames,
-            },
-          },
-        });
-        modalityIds = foundModalities.map(m => m.ModalityID);
-      } else {
-        // Format: ['Ballet', 'Jazz'] - names as strings
-        const modalityNames = modalities.filter(m => typeof m === 'string');
-        if (modalityNames.length > 0) {
-          const foundModalities = await prisma.modality.findMany({
-            where: {
-              ModalityName: {
-                in: modalityNames,
-              },
-            },
-          });
-          modalityIds = foundModalities.map(m => m.ModalityID);
-        }
-      }
-    }
+    const modalityIds = await resolveModalityIds(modalities);
 
     const studio = await prisma.studio.create({
       data: {
@@ -225,40 +272,7 @@ async function updateStudio(req, res, next) {
       });
 
       if (modalities.length > 0) {
-        let modalityIds = [];
-
-        // Check format of modalities
-        const hasModalityId = modalities[0]?.modalityId !== undefined;
-        const hasModalityName = modalities[0]?.modalityName !== undefined;
-
-        if (hasModalityId) {
-          // Format: [{ modalityId: 1 }, { modalityId: 2 }]
-          modalityIds = modalities.map(m => m.modalityId);
-        } else if (hasModalityName) {
-          // Format: [{ modalityName: 'Ballet' }, { modalityName: 'Jazz' }]
-          const modalityNames = modalities.map(m => m.modalityName);
-          const foundModalities = await prisma.modality.findMany({
-            where: {
-              ModalityName: {
-                in: modalityNames,
-              },
-            },
-          });
-          modalityIds = foundModalities.map(m => m.ModalityID);
-        } else {
-          // Format: ['Ballet', 'Jazz'] - names as strings
-          const modalityNames = modalities.filter(m => typeof m === 'string');
-          if (modalityNames.length > 0) {
-            const foundModalities = await prisma.modality.findMany({
-              where: {
-                ModalityName: {
-                  in: modalityNames,
-                },
-              },
-            });
-            modalityIds = foundModalities.map(m => m.ModalityID);
-          }
-        }
+        const modalityIds = await resolveModalityIds(modalities);
 
         if (modalityIds.length > 0) {
           await prisma.studioModality.createMany({
@@ -331,10 +345,117 @@ async function deleteStudio(req, res, next) {
   }
 }
 
+async function getStudioOccupancy(req, res, next) {
+  try {
+    const payload = await getStudioOccupancyRealTime({
+      at: req.query?.at,
+    });
+
+    res.json(payload);
+  } catch (error) {
+    if (error?.status) {
+      res.status(error.status).json({
+        error: error.message,
+        details: error.details || null,
+      });
+      return;
+    }
+
+    next(error);
+  }
+}
+
+async function getStudioOccupancyForecast(req, res, next) {
+  try {
+    const payload = await getStudioOccupancyForecastService({
+      from: req.query?.from,
+      to: req.query?.to,
+    });
+
+    res.json(payload);
+  } catch (error) {
+    if (error?.status) {
+      res.status(error.status).json({
+        error: error.message,
+        details: error.details || null,
+      });
+      return;
+    }
+
+    next(error);
+  }
+}
+
+async function blockStudio(req, res, next) {
+  try {
+    const adminUserId = getAuthenticatedAdminUserId(req, res);
+    if (!adminUserId) {
+      return;
+    }
+
+    const studioId = toInteger(req.body?.studioId);
+    const payload = await createStudioBlock({
+      studioId,
+      startsAt: req.body?.startsAt,
+      endsAt: req.body?.endsAt,
+      reason: req.body?.reason,
+      blockType: req.body?.blockType,
+      userId: adminUserId,
+    });
+
+    res.status(201).json(payload);
+  } catch (error) {
+    if (error?.status) {
+      res.status(error.status).json({
+        error: error.message,
+        details: error.details || null,
+      });
+      return;
+    }
+
+    next(error);
+  }
+}
+
+async function updateStudioOccupancyStatus(req, res, next) {
+  try {
+    const adminUserId = getAuthenticatedAdminUserId(req, res);
+    if (!adminUserId) {
+      return;
+    }
+
+    const studioId = toInteger(req.params?.studioId);
+    const payload = await updateStudioStatus({
+      studioId,
+      status: req.body?.status,
+      reason: req.body?.reason,
+      startsAt: req.body?.startsAt,
+      endsAt: req.body?.endsAt,
+      userId: adminUserId,
+    });
+
+    res.json(payload);
+  } catch (error) {
+    if (error?.status) {
+      res.status(error.status).json({
+        error: error.message,
+        details: error.details || null,
+      });
+      return;
+    }
+
+    next(error);
+  }
+}
+
 module.exports = {
   getStudios,
   getStudioById,
   createStudio,
   updateStudio,
   deleteStudio,
+  getStudioOccupancy,
+  getStudioOccupancyForecast,
+  blockStudio,
+  updateStudioOccupancyStatus,
 };

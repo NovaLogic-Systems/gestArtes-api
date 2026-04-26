@@ -1,6 +1,7 @@
 require('dotenv').config();
 
 const crypto = require('node:crypto');
+const path = require('node:path');
 const express = require('express');
 const http = require('node:http');
 const session = require('express-session');
@@ -9,7 +10,9 @@ const cors = require('cors');
 const helmet = require('helmet');
 const morgan = require('morgan');
 const adminRoutes = require('./routes/admin.routes');
+const adminMarketplaceRoutes = require('./routes/admin.marketplace.routes');
 const adminStudiosRoutes = require('./routes/admin.studios.routes');
+const adminStudioOccupancyRoutes = require('./routes/admin.studio-occupancy.routes');
 const authRoutes = require('./routes/auth.routes');
 const studentRoutes = require('./routes/student.routes');
 const teacherRoutes = require('./routes/teacher.routes');
@@ -44,8 +47,15 @@ const CORS_ALLOW_NO_ORIGIN = parseBoolean(
   true
 );
 const CORS_ORIGINS = buildCorsAllowList();
-const SESSION_COOKIE_SAMESITE = 'strict';
-const SESSION_COOKIE_SECURE = IS_PRODUCTION;
+const SESSION_CROSS_SITE = parseBoolean(
+  process.env.SESSION_COOKIE_CROSS_SITE,
+  false
+);
+const SESSION_COOKIE_SAMESITE = SESSION_CROSS_SITE ? 'none' : 'strict';
+const SESSION_COOKIE_SECURE = resolveSecureCookieSetting(
+  process.env.SESSION_COOKIE_SECURE,
+  SESSION_CROSS_SITE ? true : (IS_PRODUCTION ? true : 'auto')
+);
 const HAS_SESSION_SECRET = Boolean(process.env.SESSION_SECRET);
 const SESSION_SECRET = HAS_SESSION_SECRET
   ? process.env.SESSION_SECRET
@@ -99,6 +109,20 @@ function parsePositiveInt(value, fallback) {
   }
 
   return fallback;
+}
+
+function resolveSecureCookieSetting(value, fallback) {
+  if (value === undefined || value === null || value === '') {
+    return fallback;
+  }
+
+  const normalized = String(value).trim().toLowerCase();
+
+  if (normalized === 'auto') {
+    return 'auto';
+  }
+
+  return parseBoolean(value, fallback);
 }
 
 function parseCsv(value) {
@@ -328,6 +352,14 @@ app.use((req, res, next) => {
   return apiCspMiddleware(req, res, next);
 });
 app.use(express.json());
+const uploadsStaticPath = path.resolve(__dirname, '..', 'uploads');
+const uploadsStaticOptions = {
+  setHeaders: (res) => {
+    res.setHeader('Cross-Origin-Resource-Policy', 'cross-origin');
+  },
+};
+app.use('/uploads', express.static(uploadsStaticPath, uploadsStaticOptions));
+app.use('/api/uploads', express.static(uploadsStaticPath, uploadsStaticOptions));
 app.use(morgan('dev'));
 if (parseBoolean(process.env.TRUST_PROXY, false)) {
   app.set('trust proxy', 1);
@@ -366,7 +398,9 @@ app.get('/health', (req, res) => res.json({ status: 'ok' }));
 app.use('/', financeRoutes);
 app.use('/', auditRoutes);
 app.use('/admin', adminRoutes);
+app.use('/admin/marketplace', adminMarketplaceRoutes);
 app.use('/admin/studios', adminStudiosRoutes);
+app.use('/admin/studio-occupancy', adminStudioOccupancyRoutes);
 setupSwagger(app);
 
 app.use((err, req, res, next) => {
@@ -376,11 +410,11 @@ app.use((err, req, res, next) => {
 const httpServer = http.createServer(app);
 
 const io = initSocket(httpServer, sessionMiddleware);
-  app.set('io', io);
+app.set('io', io);
 
 if (require.main === module) {
   const port = Number(process.env.PORT) || 3001;
-    httpServer.listen(port, () => {
+  httpServer.listen(port, () => {
     logger.info(`API running on http://localhost:${port}`);
   });
 }

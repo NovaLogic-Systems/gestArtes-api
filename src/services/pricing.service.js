@@ -62,9 +62,9 @@ function createPricingService(prismaClient) {
       const finalPrice = await calculateFinalPrice(sessionId, tx);
 
       const entryType = await tx.financialEntryType.findUnique({
-        where: { TypeName: 'NOSHOWPENALTY' },
+        where: { TypeName: 'no_show_fee' },
       });
-      if (!entryType) throw new Error("FinancialEntryType 'NOSHOWPENALTY' not found");
+      if (!entryType) throw new Error("FinancialEntryType 'no_show_fee' not found");
 
       const summary = await _findOrCreateMonthSummary(tx, userId);
 
@@ -100,9 +100,9 @@ function createPricingService(prismaClient) {
       const finalPrice = await calculateFinalPrice(sessionId, db);
 
       const entryType = await db.financialEntryType.findUnique({
-        where: { TypeName: 'SESSION' },
+        where: { TypeName: 'session_revenue' },
       });
-      if (!entryType) throw new Error("FinancialEntryType 'SESSION' not found");
+      if (!entryType) throw new Error("FinancialEntryType 'session_revenue' not found");
 
       const summary = await _findOrCreateMonthSummary(db, userId);
 

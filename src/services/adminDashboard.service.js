@@ -70,7 +70,7 @@ async function getMonthlyRevenue(referenceDate = new Date()) {
         lt: end,
       },
       FinancialEntryType: {
-        TypeName: 'SESSION',
+        TypeName: 'session_revenue',
       },
     },
   });

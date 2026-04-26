@@ -14,6 +14,9 @@ const CSV_COLUMNS = [
 
 const MONTH_LABELS = ['Jan', 'Fev', 'Mar', 'Abr', 'Mai', 'Jun', 'Jul', 'Ago', 'Set', 'Out', 'Nov', 'Dez'];
 
+const REVENUE_TYPES = ['session_revenue'];
+const PENALTY_TYPES = ['no_show_fee', 'cancellation_fee'];
+
 function createFinanceService(prismaClient) {
   async function _resolveStudentAccountId(studentNumber) {
     if (!studentNumber) return null;
@@ -142,8 +145,8 @@ function createFinanceService(prismaClient) {
       totalEntries += count;
       exportedCount += exported;
       unexportedCount += unexported;
-      if (row.typeName === 'SESSION') totalRevenue += total;
-      else totalPenalties += total;
+      if (REVENUE_TYPES.includes(row.typeName)) totalRevenue += total;
+      else if (PENALTY_TYPES.includes(row.typeName)) totalPenalties += total;
     }
 
     return {
@@ -169,12 +172,15 @@ function createFinanceService(prismaClient) {
       );
     }
 
+    const revenueTypes = Prisma.join(REVENUE_TYPES);
+    const penaltyTypes = Prisma.join(PENALTY_TYPES);
+
     const rows = await prismaClient.$queryRaw(Prisma.sql`
       SELECT
         MONTH(fe.CreatedAt) AS month,
-        CAST(SUM(CASE WHEN fet.TypeName = 'SESSION' THEN fe.Amount ELSE 0 END) AS DECIMAL(18,2)) AS revenue,
-        CAST(SUM(CASE WHEN fet.TypeName IN ('NOSHOWPENALTY', 'CANCELLATIONFEE') THEN fe.Amount ELSE 0 END) AS DECIMAL(18,2)) AS penalties,
-        COUNT(CASE WHEN fet.TypeName = 'SESSION' THEN 1 ELSE NULL END) AS sessionCount
+        CAST(SUM(CASE WHEN fet.TypeName IN (${revenueTypes}) THEN fe.Amount ELSE 0 END) AS DECIMAL(18,2)) AS revenue,
+        CAST(SUM(CASE WHEN fet.TypeName IN (${penaltyTypes}) THEN fe.Amount ELSE 0 END) AS DECIMAL(18,2)) AS penalties,
+        COUNT(CASE WHEN fet.TypeName IN (${revenueTypes}) THEN 1 ELSE NULL END) AS sessionCount
       FROM FinancialEntry fe
       INNER JOIN FinancialEntryType fet ON fet.EntryTypeID = fe.EntryTypeID
       WHERE ${Prisma.join(conditions, ' AND ')}

@@ -25,6 +25,18 @@ router.post(
     adminController.createUser
 );
 
+router.get(
+    '/validations/post-session',
+    ...adminAccess,
+    adminController.getPostSessionValidations
+);
+
+router.patch(
+    '/sessions/:id/finalize-validation',
+    ...adminAccess,
+    adminController.finalizeValidation
+);
+
 router.patch(
     '/users/:id/reset-password',
     ...adminAccess,

@@ -13,6 +13,12 @@ const mockState = {
   userCreateData: null,
   userRoleCreateData: null,
   studentAccountCreateData: null,
+  postSessionValidations: [],
+  finalizationResult: {
+    session: { SessionID: 901 },
+    financialEntry: { EntryID: 777, Amount: 82.5 },
+  },
+  finalizationArgs: null,
 };
 
 const fakeBcrypt = {
@@ -70,6 +76,14 @@ const fakePrisma = {
   },
 };
 
+const fakeAdminValidationService = {
+  listPostSessionValidations: async () => mockState.postSessionValidations,
+  finalizeSessionValidation: async (sessionId, adminUserId) => {
+    mockState.finalizationArgs = { sessionId, adminUserId };
+    return mockState.finalizationResult;
+  },
+};
+
 const originalLoad = Module._load;
 Module._load = function patchedLoad(request, parent, isMain) {
   if (request === 'bcrypt') {
@@ -80,14 +94,20 @@ Module._load = function patchedLoad(request, parent, isMain) {
     return fakePrisma;
   }
 
+  if (request === '../services/adminValidation.service') {
+    return fakeAdminValidationService;
+  }
+
   return originalLoad.call(this, request, parent, isMain);
 };
 
 let createUser;
+let finalizeValidation;
+let getPostSessionValidations;
 let listUsers;
 
 try {
-  ({ createUser, listUsers } = require('../../src/controllers/admin.controller'));
+  ({ createUser, finalizeValidation, getPostSessionValidations, listUsers } = require('../../src/controllers/admin.controller'));
 } finally {
   Module._load = originalLoad;
 }
@@ -116,6 +136,12 @@ function resetMockState() {
   mockState.userCreateData = null;
   mockState.userRoleCreateData = null;
   mockState.studentAccountCreateData = null;
+  mockState.postSessionValidations = [];
+  mockState.finalizationResult = {
+    session: { SessionID: 901 },
+    financialEntry: { EntryID: 777, Amount: 82.5 },
+  };
+  mockState.finalizationArgs = null;
 }
 
 test('createUser maps Direction to admin and creates a role assignment', async () => {
@@ -199,4 +225,47 @@ test('listUsers normalizes stored business roles to app roles', async () => {
   assert.equal(res.payload.users.length, 1);
   assert.equal(res.payload.users[0].role, 'admin');
   assert.equal(res.payload.users[0].roleLabel, 'Direção');
+});
+
+test('getPostSessionValidations returns the validation queue payload', async () => {
+  resetMockState();
+
+  mockState.postSessionValidations = [
+    {
+      sessionId: 321,
+      sessionReference: '#321',
+      title: 'Coaching session',
+    },
+  ];
+
+  const req = {};
+  const res = createResponse();
+
+  await getPostSessionValidations(req, res, (error) => {
+    throw error;
+  });
+
+  assert.deepEqual(res.payload, { sessions: mockState.postSessionValidations });
+});
+
+test('finalizeValidation validates the session id and forwards the admin user id', async () => {
+  resetMockState();
+
+  const req = {
+    params: { id: '321' },
+    session: { userId: 44 },
+  };
+  const res = createResponse();
+
+  await finalizeValidation(req, res, (error) => {
+    throw error;
+  });
+
+  assert.equal(mockState.finalizationArgs.sessionId, 321);
+  assert.equal(mockState.finalizationArgs.adminUserId, 44);
+  assert.deepEqual(res.payload, {
+    sessionId: 901,
+    financialEntryId: 777,
+    finalPrice: 82.5,
+  });
 });

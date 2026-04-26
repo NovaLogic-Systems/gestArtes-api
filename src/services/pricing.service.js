@@ -95,18 +95,18 @@ function createPricingService(prismaClient) {
     return entry;
   }
 
-  async function generateFinancialEntryOnFinalization(sessionId, userId) {
-    const { entry, finalPrice } = await prismaClient.$transaction(async (tx) => {
-      const finalPrice = await calculateFinalPrice(sessionId, tx);
+  async function generateFinancialEntryOnFinalization(sessionId, userId, client = prismaClient) {
+    const run = async (db) => {
+      const finalPrice = await calculateFinalPrice(sessionId, db);
 
-      const entryType = await tx.financialEntryType.findUnique({
+      const entryType = await db.financialEntryType.findUnique({
         where: { TypeName: 'SESSION' },
       });
       if (!entryType) throw new Error("FinancialEntryType 'SESSION' not found");
 
-      const summary = await _findOrCreateMonthSummary(tx, userId);
+      const summary = await _findOrCreateMonthSummary(db, userId);
 
-      const entry = await tx.financialEntry.create({
+      const entry = await db.financialEntry.create({
         data: {
           SessionID: sessionId,
           Amount: finalPrice,
@@ -117,25 +117,29 @@ function createPricingService(prismaClient) {
         },
       });
 
-      await tx.coachingSession.update({
+      await db.coachingSession.update({
         where: { SessionID: sessionId },
         data: { FinalPrice: finalPrice },
       });
 
       return { entry, finalPrice };
-    });
+    };
+
+    const result = client === prismaClient
+      ? await prismaClient.$transaction((tx) => run(tx))
+      : await run(client);
 
     logAudit({
       userId,
       action: AUDIT_ACTIONS.SESSION_FINALIZED,
       module: AUDIT_MODULES.FINANCE,
       targetType: 'FinancialEntry',
-      targetId: entry.EntryID,
+      targetId: result.entry.EntryID,
       result: AUDIT_RESULTS.SUCCESS,
-      detail: `Session ${sessionId} finalized at ${finalPrice}€`,
+      detail: `Session ${sessionId} finalized at ${result.finalPrice}€`,
     });
 
-    return entry;
+    return result.entry;
   }
 
   return { calculateFinalPrice, applyNoShowPenalty, generateFinancialEntryOnFinalization };

@@ -6,6 +6,7 @@ const {
     resetUserPasswordSchema,
 } = require('../middlewares/schemas/admin.schema');
 const adminController = require('../controllers/admin.controller');
+const joinRequestController = require('../controllers/joinRequest.controller');
 const { createSessionSchema } = require('../middlewares/schemas/session.schema');
 
 const router = express.Router();
@@ -34,7 +35,31 @@ router.get(
 router.patch(
     '/sessions/:id/finalize-validation',
     ...adminAccess,
-    adminController.finalizeValidation
+    adminController.finalizeSessionValidation
+);
+
+router.get(
+    '/studio-occupancy',
+    ...adminAccess,
+    adminController.getStudioOccupancy
+);
+
+router.get(
+    '/coachingjoin-requests/pending',
+    ...adminAccess,
+    joinRequestController.getAdminPending
+);
+
+router.patch(
+    '/coachingjoin-requests/:id/approve',
+    ...adminAccess,
+    joinRequestController.adminApprove
+);
+
+router.patch(
+    '/coachingjoin-requests/:id/reject',
+    ...adminAccess,
+    joinRequestController.adminReject
 );
 
 router.patch(

@@ -1,11 +1,8 @@
 const crypto = require('node:crypto');
 const bcrypt = require('bcrypt');
 const prisma = require('../config/prisma');
+const adminService = require('../services/admin.service');
 const { createSessionWithBusinessRules } = require('../services/session.service');
-const {
-    finalizeSessionValidation,
-    listPostSessionValidations,
-} = require('../services/adminValidation.service');
 const {
     ROLE_HIERARCHY,
     ROLE_LABELS,
@@ -210,36 +207,55 @@ async function resetUserPassword(req, res, next) {
     }
 }
 
+function toPositiveInteger(value) {
+    const parsed = Number(value);
+    return Number.isInteger(parsed) && parsed > 0 ? parsed : null;
+}
+
 async function getPostSessionValidations(req, res, next) {
     try {
+        const sessions = await adminService.listPostSessionValidationQueue();
+
         return res.json({
-            sessions: await listPostSessionValidations(),
+            sessions,
         });
     } catch (error) {
         return next(error);
     }
 }
 
-async function finalizeValidation(req, res, next) {
+async function finalizeSessionValidation(req, res, next) {
     try {
-        const sessionId = Number(req.params.id);
-        const adminUserId = Number(req.session?.userId);
+        const sessionId = toPositiveInteger(req.params.id);
+        const adminUserId = toPositiveInteger(req.session?.userId);
 
-        if (!Number.isInteger(sessionId) || sessionId <= 0) {
+        if (!sessionId) {
             return res.status(400).json({ error: 'Invalid session id' });
         }
 
-        if (!Number.isInteger(adminUserId) || adminUserId <= 0) {
-            return res.status(401).json({ error: 'Unauthorized' });
+        if (!adminUserId) {
+            return res.status(401).json({ error: 'Not authenticated' });
         }
 
-        const result = await finalizeSessionValidation(sessionId, adminUserId);
-
-        return res.json({
-            sessionId: result.session.SessionID,
-            financialEntryId: result.financialEntry.EntryID,
-            finalPrice: Number(result.financialEntry.Amount),
+        const result = await adminService.finalizeSessionValidation({
+            sessionId,
+            adminUserId,
         });
+
+        return res.json(result);
+    } catch (error) {
+        return next(error);
+    }
+}
+
+async function getStudioOccupancy(req, res, next) {
+    try {
+        const occupancy = await adminService.getStudioOccupancy({
+            from: req.query.from,
+            to: req.query.to,
+        });
+
+        return res.json(occupancy);
     } catch (error) {
         return next(error);
     }
@@ -272,8 +288,9 @@ async function createSession(req, res, next) {
 
 module.exports = {
     createUser,
-    finalizeValidation,
+    finalizeSessionValidation,
     getPostSessionValidations,
+    getStudioOccupancy,
     listUsers,
     resetUserPassword,
     createSession,

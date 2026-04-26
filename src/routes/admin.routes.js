@@ -3,7 +3,10 @@ const validateRequest = require('../middlewares/validate.middleware');
 const { requireSessionAuth, requireRole } = require('../middlewares/auth.middleware');
 const {
     createUserSchema,
+    deleteUserSchema,
     resetUserPasswordSchema,
+    updateUserRolesSchema,
+    updateUserSchema,
 } = require('../middlewares/schemas/admin.schema');
 const adminController = require('../controllers/admin.controller');
 const joinRequestController = require('../controllers/joinRequest.controller');
@@ -30,6 +33,30 @@ router.post(
     ...createUserSchema,
     validateRequest,
     adminController.createUser
+);
+
+router.patch(
+    '/users/:id',
+    ...adminAccess,
+    ...updateUserSchema,
+    validateRequest,
+    adminController.updateUser
+);
+
+router.delete(
+    '/users/:id',
+    ...adminAccess,
+    ...deleteUserSchema,
+    validateRequest,
+    adminController.deleteUser
+);
+
+router.patch(
+    '/users/:id/roles',
+    ...adminAccess,
+    ...updateUserRolesSchema,
+    validateRequest,
+    adminController.updateUserRoles
 );
 
 router.get(

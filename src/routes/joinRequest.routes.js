@@ -1,7 +1,11 @@
 const express = require('express');
 
 const joinRequestController = require('../controllers/joinRequest.controller');
-const { requireAuth, requireRoles } = require('../middlewares/auth.middleware');
+const {
+  APP_PERMISSIONS,
+  requireAuth,
+  requirePermission,
+} = require('../middlewares/auth.middleware');
 
 const router = express.Router();
 
@@ -9,55 +13,58 @@ router.use(requireAuth);
 
 router.post(
   '/coaching/sessions/:id/join-requests',
-  requireRoles('student'),
+  requirePermission(APP_PERMISSIONS.JOIN_REQUEST_CREATE),
   joinRequestController.createJoinRequest
 );
 
 router.get(
   '/coaching/sessions/:id/join-requests',
-  requireRoles(['teacher', 'admin']),
+  requirePermission(
+    APP_PERMISSIONS.JOIN_REQUEST_REVIEW_TEACHER,
+    APP_PERMISSIONS.JOIN_REQUEST_REVIEW_ADMIN
+  ),
   joinRequestController.listBySession
 );
 
 router.get(
   '/coaching/join-requests/teacher-pending',
-  requireRoles('teacher'),
+  requirePermission(APP_PERMISSIONS.JOIN_REQUEST_REVIEW_TEACHER),
   joinRequestController.getTeacherPending
 );
 
 router.patch(
   '/coaching/join-requests/:id/teacher-approve',
-  requireRoles('teacher'),
+  requirePermission(APP_PERMISSIONS.JOIN_REQUEST_REVIEW_TEACHER),
   joinRequestController.teacherApprove
 );
 
 router.patch(
   '/coaching/join-requests/:id/teacher-reject',
-  requireRoles('teacher'),
+  requirePermission(APP_PERMISSIONS.JOIN_REQUEST_REVIEW_TEACHER),
   joinRequestController.teacherReject
 );
 
 router.get(
   '/admin/coaching/join-requests/pending',
-  requireRoles('admin'),
+  requirePermission(APP_PERMISSIONS.JOIN_REQUEST_REVIEW_ADMIN),
   joinRequestController.getAdminPending
 );
 
 router.patch(
   '/admin/coaching/join-requests/:id/approve',
-  requireRoles('admin'),
+  requirePermission(APP_PERMISSIONS.JOIN_REQUEST_REVIEW_ADMIN),
   joinRequestController.adminApprove
 );
 
 router.patch(
   '/admin/coaching/join-requests/:id/reject',
-  requireRoles('admin'),
+  requirePermission(APP_PERMISSIONS.JOIN_REQUEST_REVIEW_ADMIN),
   joinRequestController.adminReject
 );
 
 router.get(
   '/coaching/join-requests/my',
-  requireRoles('student'),
+  requirePermission(APP_PERMISSIONS.JOIN_REQUEST_CREATE),
   joinRequestController.getStudentRequests
 );
 

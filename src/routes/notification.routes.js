@@ -2,13 +2,13 @@
 const express = require('express');
 const router = express.Router();
 const {
-  APP_ROLES,
+  APP_PERMISSIONS,
   requireAuth,
   requireInternalToken,
-  requireRole,
+  requirePermission,
 } = require('../middlewares/auth.middleware');
 const notificationController = require('../controllers/notification.controller');
-const notificationAccess = [requireAuth, requireRole(APP_ROLES)];
+const notificationAccess = [requireAuth, requirePermission(APP_PERMISSIONS.NOTIFICATIONS_ACCESS)];
 
 router.post('/', requireInternalToken, notificationController.create); // chamado internamente
 router.post('/broadcast', requireInternalToken, notificationController.broadcastNotification); // broadcast geral

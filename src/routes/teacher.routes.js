@@ -1,9 +1,13 @@
 const express = require('express');
-const { requireAuth, requireRole } = require('../middlewares/auth.middleware');
+const {
+  APP_PERMISSIONS,
+  requireAuth,
+  requirePermission,
+} = require('../middlewares/auth.middleware');
 const teacherController = require('../controllers/teacher.controller');
 
 const router = express.Router();
-const teacherAccess = [requireAuth, requireRole(['TEACHER'])];
+const teacherAccess = [requireAuth, requirePermission(APP_PERMISSIONS.TEACHER_PORTAL_ACCESS)];
 
 router.get('/admissions/pending', ...teacherAccess, teacherController.getPendingAdmissions);
 router.patch('/admissions/:joinRequestId/approve', ...teacherAccess, teacherController.approveJoinRequest);

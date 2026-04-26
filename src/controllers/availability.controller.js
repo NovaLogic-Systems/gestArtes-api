@@ -5,6 +5,8 @@ const {
   submitAvailability,
   updateAvailability,
 } = require('../services/availability.service');
+const { getTeacherAvailabilityCounters } = require('../services/availabilityCounters.service');
+const { emitAvailabilityCounter } = require('../events/availability.events');
 
 function getAuthenticatedTeacherUserId(req, res) {
   const userId = Number(req.session?.userId);
@@ -37,6 +39,7 @@ async function submitTeacherAvailability(req, res, next) {
     }
 
     const result = await submitAvailability(teacherUserId, req.body);
+    await emitAvailabilitySummary(req, teacherUserId);
     res.status(201).json(result);
   } catch (error) {
     next(error);
@@ -74,6 +77,7 @@ async function updateTeacherAvailability(req, res, next) {
     }
 
     const result = await updateAvailability(teacherUserId, availabilityId, req.body);
+    await emitAvailabilitySummary(req, teacherUserId);
     res.json({ availability: result });
   } catch (error) {
     next(error);
@@ -89,10 +93,22 @@ async function createTeacherException(req, res, next) {
     }
 
     const result = await createException(teacherUserId, req.body);
+    await emitAvailabilitySummary(req, teacherUserId);
     res.status(201).json({ exception: result });
   } catch (error) {
     next(error);
   }
+}
+
+async function emitAvailabilitySummary(req, teacherUserId) {
+  const io = req.app.get('io');
+
+  if (!io) {
+    return;
+  }
+
+  const payload = await getTeacherAvailabilityCounters(teacherUserId);
+  emitAvailabilityCounter(io, teacherUserId, payload);
 }
 
 async function listPendingTeacherExceptions(req, res, next) {

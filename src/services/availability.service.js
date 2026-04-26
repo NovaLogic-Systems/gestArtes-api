@@ -1,5 +1,7 @@
 const prisma = require('../config/prisma');
 
+const PENDING_STATUS_NAME = 'Pending';
+
 function createHttpError(status, message, details) {
   const error = new Error(message);
   error.status = status;
@@ -231,23 +233,18 @@ function normalizeExceptionPayload(body) {
   };
 }
 
-async function ensureStatusId(tx, modelName, defaultStatusName) {
+async function findStatusIdByName(tx, modelName, statusName, domainLabel) {
   const model = tx[modelName];
   const existing = await model.findFirst({
-    orderBy: { StatusID: 'asc' },
+    where: { StatusName: statusName },
     select: { StatusID: true },
   });
 
-  if (existing) {
-    return existing.StatusID;
+  if (!existing) {
+    throw createHttpError(500, `${domainLabel} nao configurado`);
   }
 
-  const created = await model.create({
-    data: { StatusName: defaultStatusName },
-    select: { StatusID: true },
-  });
-
-  return created.StatusID;
+  return existing.StatusID;
 }
 
 async function fetchAvailabilityById(tx, teacherId, availabilityId) {
@@ -371,7 +368,12 @@ async function submitAvailability(teacherId, body) {
   const payload = normalizeAvailabilityPayload(body);
 
   return prisma.$transaction(async (tx) => {
-    const statusId = await ensureStatusId(tx, 'teacherAvailabilityStatus', 'Active');
+    const statusId = await findStatusIdByName(
+      tx,
+      'teacherAvailabilityStatus',
+      PENDING_STATUS_NAME,
+      'Estado de disponibilidade'
+    );
     const created = [];
 
     for (const slot of payload.slots) {
@@ -531,7 +533,12 @@ async function createException(teacherId, body) {
   const payload = normalizeExceptionPayload(body);
 
   return prisma.$transaction(async (tx) => {
-    const statusId = await ensureStatusId(tx, 'teacherAbsenceStatus', 'Active');
+    const statusId = await findStatusIdByName(
+      tx,
+      'teacherAbsenceStatus',
+      PENDING_STATUS_NAME,
+      'Estado de ausencia'
+    );
 
     const created = await tx.teacherAbsence.create({
       data: {

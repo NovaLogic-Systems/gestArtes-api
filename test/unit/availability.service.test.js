@@ -8,6 +8,8 @@ function createState() {
     nextAbsenceId: 1,
     availabilityStatusId: 10,
     absenceStatusId: 20,
+    hasAvailabilityPendingStatus: true,
+    hasAbsencePendingStatus: true,
     availabilityRows: [],
     punctualRows: new Map(),
     recurringRows: new Map(),
@@ -28,7 +30,7 @@ function buildAvailabilityRow(availability) {
     ReviewNotes: availability.ReviewNotes,
     TeacherAvailabilityStatus: {
       StatusID: state.availabilityStatusId,
-      StatusName: 'Active',
+      StatusName: 'Pending',
     },
     TeacherAvailabilityPunctual: state.punctualRows.get(availability.AvailabilityID) || null,
     TeacherAvailabilityRecurring: state.recurringRows.get(availability.AvailabilityID) || null,
@@ -38,12 +40,22 @@ function buildAvailabilityRow(availability) {
 const fakePrisma = {
   $transaction: async (callback) => callback(fakePrisma),
   teacherAvailabilityStatus: {
-    findFirst: async () => null,
-    create: async ({ data }) => ({ StatusID: state.availabilityStatusId, ...data }),
+    findFirst: async ({ where }) => {
+      if (where?.StatusName === 'Pending' && state.hasAvailabilityPendingStatus) {
+        return { StatusID: state.availabilityStatusId, StatusName: 'Pending' };
+      }
+
+      return null;
+    },
   },
   teacherAbsenceStatus: {
-    findFirst: async () => null,
-    create: async ({ data }) => ({ StatusID: state.absenceStatusId, ...data }),
+    findFirst: async ({ where }) => {
+      if (where?.StatusName === 'Pending' && state.hasAbsencePendingStatus) {
+        return { StatusID: state.absenceStatusId, StatusName: 'Pending' };
+      }
+
+      return null;
+    },
   },
   teacherAvailability: {
     create: async ({ data }) => {
@@ -116,7 +128,7 @@ const fakePrisma = {
         ...created,
         TeacherAbsenceStatus: {
           StatusID: state.absenceStatusId,
-          StatusName: 'Active',
+          StatusName: 'Pending',
         },
       };
     },
@@ -128,7 +140,7 @@ const fakePrisma = {
         ...row,
         TeacherAbsenceStatus: {
           StatusID: state.absenceStatusId,
-          StatusName: 'Active',
+          StatusName: 'Pending',
         },
       })),
   },
@@ -207,4 +219,24 @@ test('creates and lists pending exceptions', async () => {
   const pending = await availabilityService.getPendingExceptions(42);
   assert.equal(pending.summary.pendingExceptions, 1);
   assert.equal(pending.exceptions[0].reason, 'Holiday');
+});
+
+test('fails when pending availability status is not configured', async () => {
+  resetState();
+  state.hasAvailabilityPendingStatus = false;
+
+  await assert.rejects(
+    () => availabilityService.submitAvailability(42, {
+      mode: 'weekly',
+      dayOfWeek: 1,
+      startTime: '09:00',
+      endTime: '11:00',
+      academicYearId: 1,
+    }),
+    (error) => {
+      assert.equal(error.status, 500);
+      assert.equal(error.message, 'Estado de disponibilidade nao configurado');
+      return true;
+    }
+  );
 });

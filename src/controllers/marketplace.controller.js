@@ -1,6 +1,6 @@
 const prisma = require('../config/prisma');
 
-const DEFAULT_STATUS_NAMES = ['available', 'disponivel', 'disponível', 'active', 'ativo'];
+const PENDING_STATUS_NAMES = ['pending', 'pendente', 'pending_review', 'pending approval'];
 const REMOVED_STATUS_NAMES = ['removed', 'removido', 'hidden', 'oculto', 'inactive', 'inativo'];
 
 function createHttpError(status, message) {
@@ -19,6 +19,20 @@ function toMoney(value) {
   }
 
   return Number(value);
+}
+
+function normalizePhotoUrl(value) {
+  if (value === null || value === undefined) {
+    return null;
+  }
+
+  return String(value)
+    .replace(/&#x2F;/gi, '/')
+    .replace(/&quot;/gi, '"')
+    .replace(/&#x27;/gi, "'")
+    .replace(/&amp;/gi, '&')
+    .replace(/&lt;/gi, '<')
+    .replace(/&gt;/gi, '>');
 }
 
 function serializeListing(record, includeSellerContact = false) {
@@ -41,6 +55,7 @@ function serializeListing(record, includeSellerContact = false) {
     sellerId: record.SellerID,
     title: record.Title,
     description: record.Description,
+    rejectionReason: record.RejectionReason ?? null,
     price: toMoney(record.Price),
     category: record.ItemCategory
       ? {
@@ -60,7 +75,7 @@ function serializeListing(record, includeSellerContact = false) {
         statusName: record.MarketplaceItemStatus.StatusName,
       }
       : null,
-    photoUrl: record.PhotoURL,
+    photoUrl: normalizePhotoUrl(record.PhotoURL),
     location: record.Location,
     createdAt: record.CreatedAt,
     isActive: record.IsActive,
@@ -186,6 +201,47 @@ function buildListingInclude(includeSellerContact = false) {
   };
 }
 
+async function getMarketplaceOptions(req, res, next) {
+  try {
+    const [categories, conditions] = await Promise.all([
+      prisma.itemCategory.findMany({
+        where: {
+          IsActive: true,
+        },
+        select: {
+          CategoryID: true,
+          CategoryName: true,
+        },
+        orderBy: {
+          CategoryName: 'asc',
+        },
+      }),
+      prisma.marketplaceItemCondition.findMany({
+        select: {
+          ConditionID: true,
+          ConditionName: true,
+        },
+        orderBy: {
+          ConditionName: 'asc',
+        },
+      }),
+    ]);
+
+    res.json({
+      categories: categories.map((entry) => ({
+        categoryId: entry.CategoryID,
+        categoryName: entry.CategoryName,
+      })),
+      conditions: conditions.map((entry) => ({
+        conditionId: entry.ConditionID,
+        conditionName: entry.ConditionName,
+      })),
+    });
+  } catch (error) {
+    next(error);
+  }
+}
+
 async function getListings(req, res, next) {
   try {
     const where = {
@@ -237,7 +293,14 @@ async function getListingById(req, res, next) {
     const listing = await prisma.marketplaceItem.findFirst({
       where: {
         MarketplaceItemID: req.params.id,
-        IsActive: true,
+        OR: [
+          {
+            IsActive: true,
+          },
+          {
+            SellerID: req.session.userId,
+          },
+        ],
       },
       include: buildListingInclude(true),
     });
@@ -259,10 +322,10 @@ async function createListing(req, res, next) {
     await ensureConditionExists(req.body.conditionId);
     await ensureCategoryExists(req.body.categoryId);
 
-    const statusId = await resolveStatusId(DEFAULT_STATUS_NAMES);
+    const statusId = await resolveStatusId(PENDING_STATUS_NAMES);
 
     if (!statusId) {
-      throw createHttpError(500, 'Estado inicial de anúncio não configurado');
+      throw createHttpError(500, 'Estado pendente de anúncio não configurado');
     }
 
     const listing = await prisma.marketplaceItem.create({
@@ -276,7 +339,8 @@ async function createListing(req, res, next) {
         StatusID: statusId,
         PhotoURL: req.body.photoUrl ?? null,
         Location: req.body.location ?? null,
-        IsActive: true,
+        RejectionReason: null,
+        IsActive: false,
       },
       include: buildListingInclude(false),
     });
@@ -323,7 +387,7 @@ async function updateListing(req, res, next) {
       },
     });
 
-    if (!existing || !existing.IsActive) {
+    if (!existing) {
       throw createHttpError(404, 'Anúncio não encontrado');
     }
 
@@ -340,6 +404,11 @@ async function updateListing(req, res, next) {
     }
 
     const updateData = {};
+    const pendingStatusId = await resolveStatusId(PENDING_STATUS_NAMES);
+
+    if (!pendingStatusId) {
+      throw createHttpError(500, 'Estado pendente de anúncio não configurado');
+    }
 
     if (req.body.title !== undefined) {
       updateData.Title = req.body.title;
@@ -369,6 +438,10 @@ async function updateListing(req, res, next) {
       updateData.Location = req.body.location;
     }
 
+    updateData.StatusID = pendingStatusId;
+    updateData.IsActive = false;
+    updateData.RejectionReason = null;
+
     const updated = await prisma.marketplaceItem.update({
       where: {
         MarketplaceItemID: listingId,
@@ -395,6 +468,7 @@ async function deleteListing(req, res, next) {
       select: {
         SellerID: true,
         IsActive: true,
+        RejectionReason: true,
       },
     });
 
@@ -414,6 +488,7 @@ async function deleteListing(req, res, next) {
     const removedStatusId = await resolveStatusId(REMOVED_STATUS_NAMES);
     const updateData = {
       IsActive: false,
+      RejectionReason: existing.RejectionReason ?? null,
     };
 
     if (removedStatusId) {
@@ -434,6 +509,7 @@ async function deleteListing(req, res, next) {
 }
 
 module.exports = {
+  getMarketplaceOptions,
   getListings,
   getListingById,
   createListing,

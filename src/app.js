@@ -1,6 +1,7 @@
 require('dotenv').config();
 
 const crypto = require('node:crypto');
+const path = require('node:path');
 const express = require('express');
 const http = require('node:http');
 const session = require('express-session');
@@ -9,6 +10,7 @@ const cors = require('cors');
 const helmet = require('helmet');
 const morgan = require('morgan');
 const adminRoutes = require('./routes/admin.routes');
+const adminMarketplaceRoutes = require('./routes/admin.marketplace.routes');
 const adminStudiosRoutes = require('./routes/admin.studios.routes');
 const authRoutes = require('./routes/auth.routes');
 const studentRoutes = require('./routes/student.routes');
@@ -17,6 +19,8 @@ const lostFoundRoutes = require('./routes/lostFound.routes');
 const marketplaceRoutes = require('./routes/marketplace.routes');
 const inventoryRoutes = require('./routes/inventory.routes');
 const notificationRoutes = require('./routes/notification.routes');
+const financeRoutes = require('./routes/finance.routes');
+const auditRoutes = require('./routes/audit.routes');
 const joinRequestRoutes = require('./routes/joinRequest.routes');
 const apiRateLimiter = require('./middlewares/rateLimit.middleware');
 const errorHandler = require('./middlewares/error.middleware');
@@ -317,6 +321,14 @@ app.use((req, res, next) => {
   return apiCspMiddleware(req, res, next);
 });
 app.use(express.json());
+const uploadsStaticPath = path.resolve(__dirname, '..', 'uploads');
+const uploadsStaticOptions = {
+  setHeaders: (res) => {
+    res.setHeader('Cross-Origin-Resource-Policy', 'cross-origin');
+  },
+};
+app.use('/uploads', express.static(uploadsStaticPath, uploadsStaticOptions));
+app.use('/api/uploads', express.static(uploadsStaticPath, uploadsStaticOptions));
 app.use(morgan('dev'));
 if (parseBoolean(process.env.TRUST_PROXY, false)) {
   app.set('trust proxy', 1);
@@ -351,7 +363,10 @@ app.use('/teacher/inventory', inventoryRoutes);
 app.use('/notifications', notificationRoutes);
 app.use('/', joinRequestRoutes);
 app.get('/health', (req, res) => res.json({ status: 'ok' }));
+app.use('/', financeRoutes);
+app.use('/', auditRoutes);
 app.use('/admin', adminRoutes);
+app.use('/admin/marketplace', adminMarketplaceRoutes);
 app.use('/admin/studios', adminStudiosRoutes);
 setupSwagger(app);
 

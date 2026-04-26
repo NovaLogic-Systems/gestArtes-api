@@ -203,6 +203,7 @@ model MarketplaceItem {
   CategoryID               Int?
   Title                    String                   @db.VarChar(100)
   Description              String?                  @db.VarChar(255)
+  RejectionReason          String?                  @db.VarChar(255)
   Price                    Decimal                  @db.Decimal(10, 2)
   ConditionID              Int
   StatusID                 Int

@@ -32,10 +32,10 @@ const { initSocket } = require('./socket');
 const app = express();
 
 const SESSION_COOKIE_NAME = 'connect.sid';
-const DEFAULT_SESSION_TTL_MS = 1000 * 60 * 60 * 24 * 7;
-const SESSION_TTL_MS = Number(process.env.SESSION_TTL_MS) > 0
-  ? Number(process.env.SESSION_TTL_MS)
-  : DEFAULT_SESSION_TTL_MS;
+const SESSION_TTL_MS = parsePositiveInt(
+  process.env.SESSION_TTL_MS,
+  1000 * 60 * 60 * 2
+);
 const SESSION_TABLE_NAME = 'Sessions';
 const SESSION_AUTO_REMOVE_INTERVAL_MS = 1000 * 60 * 10;
 const SESSION_STORE_RETRIES = 1;
@@ -96,6 +96,16 @@ function parseBoolean(value, fallback) {
 
   if (['0', 'false', 'no', 'off'].includes(normalized)) {
     return false;
+  }
+
+  return fallback;
+}
+
+function parsePositiveInt(value, fallback) {
+  const parsed = Number(value);
+
+  if (Number.isInteger(parsed) && parsed > 0) {
+    return parsed;
   }
 
   return fallback;
@@ -400,11 +410,11 @@ app.use((err, req, res, next) => {
 const httpServer = http.createServer(app);
 
 const io = initSocket(httpServer, sessionMiddleware);
-  app.set('io', io);
+app.set('io', io);
 
 if (require.main === module) {
   const port = Number(process.env.PORT) || 3001;
-    httpServer.listen(port, () => {
+  httpServer.listen(port, () => {
     logger.info(`API running on http://localhost:${port}`);
   });
 }

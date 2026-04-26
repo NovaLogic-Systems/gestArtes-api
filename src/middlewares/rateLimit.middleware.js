@@ -1,10 +1,23 @@
 const rateLimit = require('express-rate-limit');
 const logger = require('../utils/logger');
 
-const windowMs = Number(process.env.RATE_LIMIT_WINDOW_MS) || 15 * 60 * 1000;
-const max = Number(process.env.RATE_LIMIT_MAX_REQUESTS) || 100;
-const loginWindowMs = Number(process.env.LOGIN_RATE_LIMIT_WINDOW_MS) || windowMs;
-const loginMax = Number(process.env.LOGIN_RATE_LIMIT_MAX_REQUESTS) || 5;
+function parsePositiveInt(value, fallback) {
+  const parsed = Number(value);
+
+  if (Number.isInteger(parsed) && parsed > 0) {
+    return parsed;
+  }
+
+  return fallback;
+}
+
+const windowMs = parsePositiveInt(process.env.RATE_LIMIT_WINDOW_MS, 15 * 60 * 1000);
+const max = parsePositiveInt(process.env.RATE_LIMIT_MAX_REQUESTS, 100);
+const loginWindowMs = parsePositiveInt(
+  process.env.LOGIN_RATE_LIMIT_WINDOW_MS,
+  15 * 60 * 1000
+);
+const loginMax = parsePositiveInt(process.env.LOGIN_RATE_LIMIT_MAX_REQUESTS, 5);
 
 function getRequestIp(req) {
   const forwardedFor = req.headers['x-forwarded-for'];
@@ -50,6 +63,7 @@ const apiRateLimiter = rateLimit({
 const loginLimiter = rateLimit({
   windowMs: loginWindowMs,
   max: loginMax,
+  skipSuccessfulRequests: true,
   standardHeaders: true,
   legacyHeaders: false,
   skipSuccessfulRequests: true,

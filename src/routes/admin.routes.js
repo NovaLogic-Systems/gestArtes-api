@@ -7,6 +7,7 @@ const {
 } = require('../middlewares/schemas/admin.schema');
 const adminController = require('../controllers/admin.controller');
 const joinRequestController = require('../controllers/joinRequest.controller');
+const { createSessionSchema } = require('../middlewares/schemas/session.schema');
 
 const router = express.Router();
 const adminAccess = [requireSessionAuth, requireRole(['ADMIN'])];
@@ -23,14 +24,6 @@ router.post(
     ...createUserSchema,
     validateRequest,
     adminController.createUser
-);
-
-router.patch(
-    '/users/:id/reset-password',
-    ...adminAccess,
-    ...resetUserPasswordSchema,
-    validateRequest,
-    adminController.resetUserPassword
 );
 
 router.get(
@@ -67,6 +60,22 @@ router.patch(
     '/coachingjoin-requests/:id/reject',
     ...adminAccess,
     joinRequestController.adminReject
+);
+
+router.patch(
+    '/users/:id/reset-password',
+    ...adminAccess,
+    ...resetUserPasswordSchema,
+    validateRequest,
+    adminController.resetUserPassword
+);
+
+router.post(
+    '/sessions',
+    ...adminAccess,
+    ...createSessionSchema,
+    validateRequest,
+    adminController.createSession
 );
 
 module.exports = router;

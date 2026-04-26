@@ -1,7 +1,7 @@
 const express = require('express');
 
 const validateRequest = require('../middlewares/validate.middleware');
-const { requireSessionAuth, requireRole } = require('../middlewares/auth.middleware');
+const { requireSessionAuth, requireAdminRole } = require('../middlewares/auth.middleware');
 const {
   marketplaceListingIdParamSchema,
   listMarketplaceListingsQuerySchema,
@@ -10,7 +10,7 @@ const {
 const adminMarketplaceController = require('../controllers/admin_marketplace.controller');
 
 const router = express.Router();
-const adminAccess = [requireSessionAuth, requireRole(['ADMIN'])];
+const adminAccess = [requireSessionAuth, requireAdminRole];
 
 router.get(
   '/listings',

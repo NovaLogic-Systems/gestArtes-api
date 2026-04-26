@@ -1,6 +1,6 @@
 const express = require('express');
 const validateRequest = require('../middlewares/validate.middleware');
-const { requireSessionAuth, requireRole } = require('../middlewares/auth.middleware');
+const { requireSessionAuth, requireAdminRole } = require('../middlewares/auth.middleware');
 const {
     createUserSchema,
     deleteUserSchema,
@@ -13,7 +13,7 @@ const joinRequestController = require('../controllers/joinRequest.controller');
 const { createSessionSchema } = require('../middlewares/schemas/session.schema');
 
 const router = express.Router();
-const adminAccess = [requireSessionAuth, requireRole(['ADMIN'])];
+const adminAccess = [requireSessionAuth, requireAdminRole];
 
 router.get(
     '/dashboard',

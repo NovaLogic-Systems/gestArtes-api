@@ -1,9 +1,17 @@
 const crypto = require('crypto');
 const {
   APP_ROLES,
+  APP_PERMISSIONS,
+  ROLE_PERMISSIONS,
+  getRolePermissions,
   getSessionRole,
+  getSessionPermissions,
+  hasSessionPermission,
   requireRole,
   requireRoles,
+  requirePermission,
+  requirePermissions,
+  requireAllPermissions,
 } = require('./rbac.middleware');
 
 const requireAuth = (req, res, next) => {
@@ -15,7 +23,7 @@ const requireAuth = (req, res, next) => {
 
 const requireSessionAuth = requireAuth;
 
-const requireAdminRole = requireRole(['admin']);
+const requireAdminRole = requirePermission(APP_PERMISSIONS.ADMIN_PORTAL_ACCESS);
 
 const secureTokenEquals = (providedToken, configuredToken) => {
   if (String(providedToken || '').length !== String(configuredToken || '').length) {
@@ -43,11 +51,19 @@ const requireInternalToken = (req, res, next) => {
 
 module.exports = {
   APP_ROLES,
+  APP_PERMISSIONS,
+  ROLE_PERMISSIONS,
+  getRolePermissions,
   getSessionRole,
+  getSessionPermissions,
+  hasSessionPermission,
   requireAuth,
   requireSessionAuth,
   requireRole,
   requireRoles,
+  requirePermission,
+  requirePermissions,
+  requireAllPermissions,
   requireAdminRole,
   requireInternalToken,
 };

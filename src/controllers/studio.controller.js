@@ -1,4 +1,10 @@
 const prisma = require('../config/prisma');
+const {
+  getStudioOccupancyRealTime,
+  getStudioOccupancyForecast: getStudioOccupancyForecastService,
+  blockStudio: createStudioBlock,
+  updateStudioStatus,
+} = require('../services/studioOccupancy.service');
 
 function toInteger(value) {
   if (typeof value === 'bigint') {
@@ -339,10 +345,117 @@ async function deleteStudio(req, res, next) {
   }
 }
 
+async function getStudioOccupancy(req, res, next) {
+  try {
+    const payload = await getStudioOccupancyRealTime({
+      at: req.query?.at,
+    });
+
+    res.json(payload);
+  } catch (error) {
+    if (error?.status) {
+      res.status(error.status).json({
+        error: error.message,
+        details: error.details || null,
+      });
+      return;
+    }
+
+    next(error);
+  }
+}
+
+async function getStudioOccupancyForecast(req, res, next) {
+  try {
+    const payload = await getStudioOccupancyForecastService({
+      from: req.query?.from,
+      to: req.query?.to,
+    });
+
+    res.json(payload);
+  } catch (error) {
+    if (error?.status) {
+      res.status(error.status).json({
+        error: error.message,
+        details: error.details || null,
+      });
+      return;
+    }
+
+    next(error);
+  }
+}
+
+async function blockStudio(req, res, next) {
+  try {
+    const adminUserId = getAuthenticatedAdminUserId(req, res);
+    if (!adminUserId) {
+      return;
+    }
+
+    const studioId = toInteger(req.body?.studioId);
+    const payload = await createStudioBlock({
+      studioId,
+      startsAt: req.body?.startsAt,
+      endsAt: req.body?.endsAt,
+      reason: req.body?.reason,
+      blockType: req.body?.blockType,
+      userId: adminUserId,
+    });
+
+    res.status(201).json(payload);
+  } catch (error) {
+    if (error?.status) {
+      res.status(error.status).json({
+        error: error.message,
+        details: error.details || null,
+      });
+      return;
+    }
+
+    next(error);
+  }
+}
+
+async function updateStudioOccupancyStatus(req, res, next) {
+  try {
+    const adminUserId = getAuthenticatedAdminUserId(req, res);
+    if (!adminUserId) {
+      return;
+    }
+
+    const studioId = toInteger(req.params?.studioId);
+    const payload = await updateStudioStatus({
+      studioId,
+      status: req.body?.status,
+      reason: req.body?.reason,
+      startsAt: req.body?.startsAt,
+      endsAt: req.body?.endsAt,
+      userId: adminUserId,
+    });
+
+    res.json(payload);
+  } catch (error) {
+    if (error?.status) {
+      res.status(error.status).json({
+        error: error.message,
+        details: error.details || null,
+      });
+      return;
+    }
+
+    next(error);
+  }
+}
+
 module.exports = {
   getStudios,
   getStudioById,
   createStudio,
   updateStudio,
   deleteStudio,
+  getStudioOccupancy,
+  getStudioOccupancyForecast,
+  blockStudio,
+  updateStudioOccupancyStatus,
 };

@@ -12,6 +12,7 @@ const morgan = require('morgan');
 const adminRoutes = require('./routes/admin.routes');
 const adminMarketplaceRoutes = require('./routes/admin.marketplace.routes');
 const adminStudiosRoutes = require('./routes/admin.studios.routes');
+const adminStudioOccupancyRoutes = require('./routes/admin.studio-occupancy.routes');
 const authRoutes = require('./routes/auth.routes');
 const studentRoutes = require('./routes/student.routes');
 const teacherRoutes = require('./routes/teacher.routes');
@@ -368,6 +369,7 @@ app.use('/', auditRoutes);
 app.use('/admin', adminRoutes);
 app.use('/admin/marketplace', adminMarketplaceRoutes);
 app.use('/admin/studios', adminStudiosRoutes);
+app.use('/admin/studio-occupancy', adminStudioOccupancyRoutes);
 setupSwagger(app);
 
 app.use((err, req, res, next) => {

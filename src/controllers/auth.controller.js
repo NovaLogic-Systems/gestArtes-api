@@ -137,22 +137,24 @@ async function me(req, res, next) {
 }
 
 function logout(req, res, next) {
+  const cookieName = req.app.get('sessionCookieName');
+  const cookieOptions = req.app.get('sessionCookieOptions');
+  const { maxAge, expires, ...clearCookieOptions } = cookieOptions || {};
+
   if (!req.session) {
+    res.clearCookie(cookieName, clearCookieOptions);
     res.status(204).send();
     return;
   }
 
   req.session.destroy((error) => {
+    res.clearCookie(cookieName, clearCookieOptions);
+
     if (error) {
       next(error);
       return;
     }
 
-    const cookieName = req.app.get('sessionCookieName');
-    const cookieOptions = req.app.get('sessionCookieOptions');
-    const { maxAge, expires, ...clearCookieOptions } = cookieOptions || {};
-
-    res.clearCookie(cookieName, clearCookieOptions);
     res.status(204).send();
   });
 }

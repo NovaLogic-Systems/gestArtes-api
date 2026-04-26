@@ -2,6 +2,16 @@ node_modules/
 .env
 *.log
 logs/
+
+# SSL / TLS certificados
+*.key
+*.pem
+*.crt
+*.cer
+*.p12
+*.pfx
+certs/
+ssl/
 instructions/
 skills/
 scratch/

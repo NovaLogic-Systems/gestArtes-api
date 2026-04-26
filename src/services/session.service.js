@@ -1,27 +1,34 @@
 const { Prisma } = require('@prisma/client');
 const prisma = require('../config/prisma');
+const { createHttpError } = require('../utils/http-error');
+const { toTimeOnlyDate, formatDateLabel } = require('../utils/date');
 
-function toTimeOnlyDate(date) {
-  return new Date(Date.UTC(
-    1970,
-    0,
-    1,
-    date.getUTCHours(),
-    date.getUTCMinutes(),
-    date.getUTCSeconds(),
-    date.getUTCMilliseconds()
-  ));
+const DEFAULT_NOTIFICATION_TYPE_ID = 1;
+const PENDING_SESSION_STATUS_CANDIDATES = ['pending'];
+const CANCELLED_SESSION_STATUS_NAME = 'cancelled';
+
+function normalizeStatusName(statusName) {
+  return String(statusName || '')
+    .trim()
+    .toLowerCase()
+    .replace(/[^a-z0-9]/g, '');
 }
 
-function createHttpError(status, message, details) {
-  const error = new Error(message);
-  error.status = status;
+function buildNotificationTitle(message) {
+  const trimmed = String(message || '').trim();
 
-  if (details) {
-    error.details = details;
+  if (!trimmed) {
+    return 'Nova notificacao';
   }
 
-  return error;
+  return trimmed.length > 50 ? `${trimmed.slice(0, 50)}...` : trimmed;
+}
+
+function buildAbsenceCancellationMessage(startTime, endTime) {
+  const startLabel = startTime instanceof Date ? formatDateLabel(startTime) : String(startTime || '');
+  const endLabel = endTime instanceof Date ? formatDateLabel(endTime) : String(endTime || '');
+
+  return `A tua reserva foi cancelada automaticamente porque o professor ficou indisponivel entre ${startLabel} e ${endLabel}.`;
 }
 
 function normalizeTeacherIds(teacherIds) {
@@ -200,6 +207,153 @@ async function ensureTeacherHasAvailability(tx, teacherId, startTime, endTime) {
   }
 }
 
+async function resolveSessionStatusIds(tx, candidates, errorMessage) {
+  const statuses = await tx.sessionStatus.findMany({
+    select: {
+      StatusID: true,
+      StatusName: true,
+    },
+  });
+
+  const statusIds = statuses
+    .filter((status) => {
+      const normalizedStatusName = normalizeStatusName(status.StatusName);
+      return candidates.some((candidate) => normalizedStatusName.includes(candidate));
+    })
+    .map((status) => status.StatusID);
+
+  const uniqueStatusIds = [...new Set(statusIds)];
+
+  if (uniqueStatusIds.length === 0) {
+    throw createHttpError(500, errorMessage);
+  }
+
+  return uniqueStatusIds;
+}
+
+async function resolveSessionStatusId(tx, candidate, errorMessage) {
+  const statuses = await tx.sessionStatus.findMany({
+    select: {
+      StatusID: true,
+      StatusName: true,
+    },
+  });
+
+  const match = statuses.find(
+    (status) => normalizeStatusName(status.StatusName) === normalizeStatusName(candidate)
+  );
+
+  if (!match) {
+    throw createHttpError(500, errorMessage);
+  }
+
+  return match.StatusID;
+}
+
+async function cancelPendingBookingsForTeacherAbsence(tx, teacherId, startTime, endTime) {
+  const pendingStatusIds = await resolveSessionStatusIds(
+    tx,
+    PENDING_SESSION_STATUS_CANDIDATES,
+    'Estado de sessao pendente nao configurado'
+  );
+  const cancelledStatusId = await resolveSessionStatusId(
+    tx,
+    CANCELLED_SESSION_STATUS_NAME,
+    'Estado de sessao cancelada nao configurado'
+  );
+
+  const sessions = await tx.coachingSession.findMany({
+    where: {
+      StatusID: {
+        in: pendingStatusIds,
+      },
+      StartTime: { lt: endTime },
+      EndTime: { gt: startTime },
+      SessionTeacher: {
+        some: {
+          TeacherID: teacherId,
+        },
+      },
+    },
+    select: {
+      SessionID: true,
+      RequestedByUserID: true,
+      StartTime: true,
+      EndTime: true,
+      SessionStudent: {
+        select: {
+          StudentAccount: {
+            select: {
+              UserID: true,
+            },
+          },
+        },
+      },
+    },
+  });
+
+  if (sessions.length === 0) {
+    return {
+      cancelledSessionCount: 0,
+      notificationCount: 0,
+    };
+  }
+
+  const sessionIds = sessions.map((session) => session.SessionID);
+  const cancellationReason = 'Cancelamento automatico por indisponibilidade do professor';
+
+  await tx.coachingSession.updateMany({
+    where: {
+      SessionID: {
+        in: sessionIds,
+      },
+    },
+    data: {
+      StatusID: cancelledStatusId,
+      CancellationReason: cancellationReason,
+    },
+  });
+
+  const notifications = [];
+
+  for (const session of sessions) {
+    const recipientIds = new Set([
+      session.RequestedByUserID,
+      ...session.SessionStudent
+        .map((entry) => entry?.StudentAccount?.UserID)
+        .filter((userId) => Number.isInteger(userId) && userId > 0),
+    ]);
+    const message = buildAbsenceCancellationMessage(session.StartTime, session.EndTime);
+    const title = buildNotificationTitle(message);
+    const now = new Date();
+
+    for (const userId of recipientIds) {
+      if (!Number.isInteger(userId) || userId <= 0) {
+        continue;
+      }
+
+      notifications.push({
+        UserID: userId,
+        Message: message,
+        TypeID: DEFAULT_NOTIFICATION_TYPE_ID,
+        IsRead: false,
+        CreatedAt: now,
+        Title: title,
+        SessionID: session.SessionID,
+      });
+    }
+  }
+
+  if (notifications.length > 0) {
+    await tx.notification.createMany({ data: notifications });
+  }
+
+  return {
+    cancelledSessionCount: sessions.length,
+    notificationCount: notifications.length,
+  };
+}
+
 async function createSessionWithBusinessRules(input, requestedByUserId) {
   const teacherIds = normalizeTeacherIds(input.teacherIds);
   const hasAssignmentRoleId = input.assignmentRoleId !== undefined && input.assignmentRoleId !== null;
@@ -230,8 +384,8 @@ async function createSessionWithBusinessRules(input, requestedByUserId) {
       throw createHttpError(404, 'Estudio nao encontrado');
     }
 
-    const sessionCapacity = input.maxParticipants || studio.Capacity;
-    if (sessionCapacity > Number(studio.Capacity || 0)) {
+    const sessionCapacity = input.maxParticipants ?? studio.Capacity;
+    if (Number(sessionCapacity) > Number(studio.Capacity || 0)) {
       throw createHttpError(409, 'Capacidade da sessao excede capacidade do estudio');
     }
 
@@ -280,5 +434,6 @@ async function createSessionWithBusinessRules(input, requestedByUserId) {
 }
 
 module.exports = {
+  cancelPendingBookingsForTeacherAbsence,
   createSessionWithBusinessRules,
 };

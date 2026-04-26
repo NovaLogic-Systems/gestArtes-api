@@ -9,7 +9,11 @@ const {
     toAppRole,
 } = require('../utils/roles');
 
-const BCRYPT_ROUNDS = Number(process.env.BCRYPT_SALT_ROUNDS) || 12;
+const MIN_BCRYPT_ROUNDS = 12;
+const parsedBcryptRounds = Number.parseInt(process.env.BCRYPT_SALT_ROUNDS || '', 10);
+const BCRYPT_ROUNDS = Number.isInteger(parsedBcryptRounds)
+    ? Math.max(parsedBcryptRounds, MIN_BCRYPT_ROUNDS)
+    : MIN_BCRYPT_ROUNDS;
 
 function serializeAdminUser(user) {
     const role = getPrimaryRoleFromUser(user);

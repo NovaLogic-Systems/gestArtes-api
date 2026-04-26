@@ -19,6 +19,20 @@ const adminLostFoundAccess = [requireSessionAuth, requireRole(['ADMIN'])];
 router.get('/lostfound', lostFoundController.listPublic);
 router.get('/lostfound/:id', ...itemIdParamSchema, validateRequest, lostFoundController.getPublicById);
 
+router.get(
+  '/admin/lostfound',
+  ...adminLostFoundAccess,
+  lostFoundController.listAdmin
+);
+
+router.get(
+  '/admin/lostfound/:id',
+  ...adminLostFoundAccess,
+  ...itemIdParamSchema,
+  validateRequest,
+  lostFoundController.getAdminById
+);
+
 router.post(
   '/admin/lostfound',
   ...adminLostFoundAccess,

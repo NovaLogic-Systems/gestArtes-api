@@ -15,8 +15,9 @@ const mockState = {
   studentAccountCreateData: null,
   postSessionValidations: [],
   finalizationResult: {
-    session: { SessionID: 901 },
-    financialEntry: { EntryID: 777, Amount: 82.5 },
+    sessionId: 901,
+    financialEntryId: 777,
+    finalPrice: 82.5,
   },
   finalizationArgs: null,
 };
@@ -76,12 +77,13 @@ const fakePrisma = {
   },
 };
 
-const fakeAdminValidationService = {
-  listPostSessionValidations: async () => mockState.postSessionValidations,
-  finalizeSessionValidation: async (sessionId, adminUserId) => {
+const fakeAdminService = {
+  listPostSessionValidationQueue: async () => mockState.postSessionValidations,
+  finalizeSessionValidation: async ({ sessionId, adminUserId }) => {
     mockState.finalizationArgs = { sessionId, adminUserId };
     return mockState.finalizationResult;
   },
+  getStudioOccupancy: async () => ({ studios: [] }),
 };
 
 const originalLoad = Module._load;
@@ -94,20 +96,24 @@ Module._load = function patchedLoad(request, parent, isMain) {
     return fakePrisma;
   }
 
+  if (request === '../services/admin.service') {
+    return fakeAdminService;
+  }
+
   if (request === '../services/adminValidation.service') {
-    return fakeAdminValidationService;
+    return { listPostSessionValidations: async () => [], finalizeSessionValidation: async () => ({}) };
   }
 
   return originalLoad.call(this, request, parent, isMain);
 };
 
 let createUser;
-let finalizeValidation;
+let finalizeSessionValidation;
 let getPostSessionValidations;
 let listUsers;
 
 try {
-  ({ createUser, finalizeValidation, getPostSessionValidations, listUsers } = require('../../src/controllers/admin.controller'));
+  ({ createUser, finalizeSessionValidation, getPostSessionValidations, listUsers } = require('../../src/controllers/admin.controller'));
 } finally {
   Module._load = originalLoad;
 }
@@ -138,8 +144,9 @@ function resetMockState() {
   mockState.studentAccountCreateData = null;
   mockState.postSessionValidations = [];
   mockState.finalizationResult = {
-    session: { SessionID: 901 },
-    financialEntry: { EntryID: 777, Amount: 82.5 },
+    sessionId: 901,
+    financialEntryId: 777,
+    finalPrice: 82.5,
   };
   mockState.finalizationArgs = null;
 }
@@ -257,7 +264,7 @@ test('finalizeValidation validates the session id and forwards the admin user id
   };
   const res = createResponse();
 
-  await finalizeValidation(req, res, (error) => {
+  await finalizeSessionValidation(req, res, (error) => {
     throw error;
   });
 

@@ -13,6 +13,12 @@ const router = express.Router();
 const adminAccess = [requireSessionAuth, requireRole(['ADMIN'])];
 
 router.get(
+    '/dashboard',
+    ...adminAccess,
+    adminController.getDashboard
+);
+
+router.get(
     '/users',
     ...adminAccess,
     adminController.listUsers

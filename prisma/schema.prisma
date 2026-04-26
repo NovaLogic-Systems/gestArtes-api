@@ -145,6 +145,7 @@ model InventoryItem {
   Description          String?                @db.VarChar(255)
   PhotoURL             String?                @db.VarChar(255)
   TotalQuantity        Int                    @default(1, map: "DF__Inventory__Total__00200768")
+  IsSchoolOwned        Boolean                @default(true)
   ItemCategory         ItemCategory           @relation(fields: [CategoryID], references: [CategoryID], onUpdate: NoAction, map: "FKInventoryI464627")
   InventoryTransaction InventoryTransaction[]
 
@@ -161,6 +162,9 @@ model InventoryTransaction {
   IsCompleted      Boolean
   ConditionChecked Boolean
   ReturnVerified   Boolean
+  ReturnConditionStatus String?   @db.VarChar(50)
+  ReturnConditionNotes  String?   @db.VarChar(255)
+  ReturnVerifiedAt      DateTime? @db.DateTime
   User             User          @relation(fields: [RenterID], references: [UserID], onUpdate: NoAction, map: "FKInventoryT279068")
   InventoryItem    InventoryItem @relation(fields: [InventoryItemID], references: [InventoryItemID], onUpdate: NoAction, map: "FKInventoryT392770")
   PaymentMethod    PaymentMethod @relation(fields: [PaymentMethodID], references: [PaymentMethodID], onUpdate: NoAction, map: "FKInventoryT529044")

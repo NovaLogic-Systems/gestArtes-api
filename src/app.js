@@ -31,7 +31,10 @@ const { initSocket } = require('./socket');
 const app = express();
 
 const SESSION_COOKIE_NAME = 'connect.sid';
-const SESSION_TTL_MS = 1000 * 60 * 60 * 24 * 7;
+const DEFAULT_SESSION_TTL_MS = 1000 * 60 * 60 * 24 * 7;
+const SESSION_TTL_MS = Number(process.env.SESSION_TTL_MS) > 0
+  ? Number(process.env.SESSION_TTL_MS)
+  : DEFAULT_SESSION_TTL_MS;
 const SESSION_TABLE_NAME = 'Sessions';
 const SESSION_AUTO_REMOVE_INTERVAL_MS = 1000 * 60 * 10;
 const SESSION_STORE_RETRIES = 1;
@@ -47,8 +50,11 @@ const SESSION_CROSS_SITE = parseBoolean(
   process.env.SESSION_COOKIE_CROSS_SITE,
   false
 );
-const SESSION_COOKIE_SAMESITE = SESSION_CROSS_SITE ? 'none' : 'lax';
-const SESSION_COOKIE_SECURE = SESSION_CROSS_SITE ? true : IS_PRODUCTION;
+const SESSION_COOKIE_SAMESITE = SESSION_CROSS_SITE ? 'none' : 'strict';
+const SESSION_COOKIE_SECURE = resolveSecureCookieSetting(
+  process.env.SESSION_COOKIE_SECURE,
+  SESSION_CROSS_SITE ? true : (IS_PRODUCTION ? true : 'auto')
+);
 const HAS_SESSION_SECRET = Boolean(process.env.SESSION_SECRET);
 const SESSION_SECRET = HAS_SESSION_SECRET
   ? process.env.SESSION_SECRET
@@ -92,6 +98,20 @@ function parseBoolean(value, fallback) {
   }
 
   return fallback;
+}
+
+function resolveSecureCookieSetting(value, fallback) {
+  if (value === undefined || value === null || value === '') {
+    return fallback;
+  }
+
+  const normalized = String(value).trim().toLowerCase();
+
+  if (normalized === 'auto') {
+    return 'auto';
+  }
+
+  return parseBoolean(value, fallback);
 }
 
 function parseCsv(value) {
@@ -346,6 +366,7 @@ const sessionMiddleware = session({
   secret: SESSION_SECRET,
   resave: false,
   saveUninitialized: false,
+  rolling: true,
   cookie: app.get('sessionCookieOptions'),
 });
 

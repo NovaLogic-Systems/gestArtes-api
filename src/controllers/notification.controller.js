@@ -1,5 +1,6 @@
 // notification.controller.js
 const notificationService = require('../services/notification.service');
+const prisma = require('../config/prisma');
 
 const ALLOWED_NOTIFICATION_TYPES = new Set([
     'coaching',
@@ -31,6 +32,17 @@ const sendNotification = async (req, { userId, type, message }) => {
         throw error;
     }
 
+    const targetUser = await prisma.user.findUnique({
+        where: { UserID: parsedUserId },
+        select: { UserID: true, IsActive: true },
+    });
+
+    if (!targetUser || !targetUser.IsActive) {
+        const error = new Error('Invalid userId');
+        error.statusCode = 400;
+        throw error;
+    }
+
     const notification = await notificationService.create(parsedUserId, message.trim());
 
     const io = req.app.get('io');
@@ -56,8 +68,11 @@ const broadcastNotification = async (req, res) => {
             return res.status(400).json({ error: 'Invalid targetRole' });
         }
 
-        // Criar notificação de sistema (userId=0)
-        const notification = await notificationService.create(0, message.trim());
+        const notification = {
+            message: message.trim(),
+            targetRole: normalizedRole,
+            createdAt: new Date().toISOString(),
+        };
 
         const io = req.app.get('io');
         if (io) {
@@ -68,7 +83,10 @@ const broadcastNotification = async (req, res) => {
             }
         }
 
-        res.status(201).json(notification);
+        res.status(201).json({
+            success: true,
+            broadcast: notification,
+        });
     } catch (err) {
         res.status(500).json({ error: err.message });
     }

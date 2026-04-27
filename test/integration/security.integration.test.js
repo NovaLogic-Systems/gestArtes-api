@@ -7,6 +7,7 @@ process.env.NODE_ENV = process.env.NODE_ENV || 'test';
 process.env.CLIENT_URL = process.env.CLIENT_URL || 'http://localhost:5173';
 process.env.CORS_ORIGINS = process.env.CORS_ORIGINS || 'http://localhost:5173';
 process.env.CORS_ALLOW_NO_ORIGIN = process.env.CORS_ALLOW_NO_ORIGIN || 'true';
+process.env.CSRF_ALLOW_NO_ORIGIN = process.env.CSRF_ALLOW_NO_ORIGIN || 'false';
 process.env.SESSION_SECRET = process.env.SESSION_SECRET || 'test-secret';
 process.env.DATABASE_URL =
   process.env.DATABASE_URL ||
@@ -82,12 +83,23 @@ try {
 const {
   injectCspNonceInSwaggerHtml,
 } = require('../../src/config/swagger');
+const { initSocket } = require('../../src/socket');
 
 let server;
 let baseUrl;
+let io;
+
+function testSocketSessionMiddleware(req, _res, next) {
+  req.session = {
+    userId: 999,
+    role: 'admin',
+  };
+  next();
+}
 
 test.before(async () => {
   server = http.createServer(app);
+  io = initSocket(server, testSocketSessionMiddleware);
 
   await new Promise((resolve) => {
     server.listen(0, resolve);
@@ -98,6 +110,10 @@ test.before(async () => {
 });
 
 test.after(async () => {
+  if (io) {
+    io.close();
+  }
+
   if (!server) {
     return;
   }
@@ -118,6 +134,11 @@ async function request(path, options = {}) {
   return fetch(`${baseUrl}${path}`, options);
 }
 
+function socketHandshakePath() {
+  const timestamp = Date.now();
+  return `/socket.io/?EIO=4&transport=polling&t=${timestamp}`;
+}
+
 test('health endpoint exposes security headers and allows the configured origin', async () => {
   const response = await request('/health', {
     headers: {
@@ -127,6 +148,7 @@ test('health endpoint exposes security headers and allows the configured origin'
 
   assert.equal(response.status, 200);
   assert.equal(response.headers.get('access-control-allow-origin'), 'http://localhost:5173');
+  assert.equal(response.headers.get('x-powered-by'), null);
   assert.equal(response.headers.get('x-frame-options'), 'DENY');
   assert.equal(response.headers.get('referrer-policy'), 'no-referrer');
 
@@ -193,14 +215,66 @@ test('student profile endpoint requires authentication', async () => {
   assert.equal(body.error, 'Not authenticated');
 });
 
-test('student profile has no update endpoints (read-only)', async () => {
+test('student profile write attempts still require authentication', async () => {
   const putResponse = await request('/student/profile', {
     method: 'PUT',
+    headers: {
+      Origin: 'http://localhost:5173',
+    },
   });
   const patchResponse = await request('/student/profile', {
     method: 'PATCH',
+    headers: {
+      Origin: 'http://localhost:5173',
+    },
   });
 
-  assert.equal(putResponse.status, 404);
-  assert.equal(patchResponse.status, 404);
+  assert.equal(putResponse.status, 401);
+  assert.equal(patchResponse.status, 401);
+});
+
+test('csrf protection blocks state-changing requests from untrusted origins', async () => {
+  const blockedResponse = await request('/auth/logout', {
+    method: 'POST',
+    headers: {
+      Origin: 'http://evil.example',
+    },
+  });
+
+  assert.equal(blockedResponse.status, 403);
+
+  const blockedBody = await blockedResponse.json();
+  assert.equal(blockedBody.error, 'Invalid request origin');
+});
+
+test('csrf protection allows state-changing requests from configured origins', async () => {
+  const allowedResponse = await request('/auth/logout', {
+    method: 'POST',
+    headers: {
+      Origin: 'http://localhost:5173',
+    },
+  });
+
+  assert.equal(allowedResponse.status, 204);
+});
+
+test('socket handshake allows configured origin in CORS headers', async () => {
+  const response = await request(socketHandshakePath(), {
+    headers: {
+      Origin: 'http://localhost:5173',
+    },
+  });
+
+  assert.equal(response.status, 200);
+  assert.equal(response.headers.get('access-control-allow-origin'), 'http://localhost:5173');
+});
+
+test('socket handshake omits CORS allow-origin for unlisted origin', async () => {
+  const response = await request(socketHandshakePath(), {
+    headers: {
+      Origin: 'http://evil.example',
+    },
+  });
+
+  assert.equal(response.headers.get('access-control-allow-origin'), null);
 });

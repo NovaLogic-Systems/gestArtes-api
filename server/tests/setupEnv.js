@@ -2,6 +2,7 @@ process.env.NODE_ENV = 'test';
 process.env.CLIENT_URL = 'http://localhost:5173';
 process.env.CORS_ORIGINS = 'http://localhost:5173';
 process.env.CORS_ALLOW_NO_ORIGIN = 'true';
+process.env.CSRF_ALLOW_NO_ORIGIN = 'false';
 process.env.SESSION_SECRET = 'jest-test-secret';
 process.env.DATABASE_URL =
   'sqlserver://localhost;database=gestArtes_test;user=test;password=test;encrypt=true;trustServerCertificate=true;';

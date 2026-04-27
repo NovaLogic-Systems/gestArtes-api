@@ -1,6 +1,6 @@
 const express = require('express');
 const validateRequest = require('../middlewares/validate.middleware');
-const { requireSessionAuth, requireAdminRole } = require('../middlewares/auth.middleware');
+const { requireSessionAuth, requireAdminRole, requireRole } = require('../middlewares/auth.middleware');
 const {
     createUserSchema,
     deleteUserSchema,
@@ -97,7 +97,8 @@ router.patch(
 
 router.patch(
     '/users/:id/reset-password',
-    ...adminAccess,
+    requireSessionAuth,
+    requireRole('admin'),
     ...resetUserPasswordSchema,
     validateRequest,
     adminController.resetUserPassword

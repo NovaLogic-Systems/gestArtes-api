@@ -94,6 +94,11 @@ const marketplaceListingIdParamSchema = [
 ];
 
 const listMarketplaceListingsQuerySchema = [
+  query('q')
+    .optional()
+    .trim()
+    .isLength({ min: 1, max: 100 }).withMessage('Pesquisa inválida')
+    .escape(),
   query('category')
     .optional()
     .trim()

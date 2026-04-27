@@ -1,6 +1,12 @@
 const { body, query } = require('express-validator');
 
-const KNOWN_ENTRY_TYPES = ['SESSION', 'NOSHOWPENALTY', 'CANCELLATIONFEE'];
+const KNOWN_ENTRY_TYPES = [
+  'session_revenue',
+  'no_show_fee',
+  'cancellation_fee',
+  'inventory_fee',
+  'marketplace_fee',
+];
 
 const periodStartQuery = query('periodStart')
   .optional()

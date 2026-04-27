@@ -1,5 +1,9 @@
 const prisma = require('../config/prisma');
 
+function isAdminRole(role) {
+  return String(role || '').trim().toLowerCase() === 'admin';
+}
+
 function toPublicDto(item) {
   return {
     id: item.LostItemID,
@@ -11,14 +15,19 @@ function toPublicDto(item) {
   };
 }
 
-function toAdminDto(item) {
-  return {
+function toAdminDto(item, role) {
+  const dto = {
     ...toPublicDto(item),
     isArchived: item.IsArchived,
-    adminNotes: item.AdminNotes,
     archivedAt: item.ArchivedAt,
     registeredByUserId: item.RegisteredByUserID,
   };
+
+  if (isAdminRole(role)) {
+    dto.adminNotes = item.AdminNotes;
+  }
+
+  return dto;
 }
 
 async function findItemById(id) {
@@ -51,7 +60,24 @@ async function getPublicItemById(id) {
   return item ? toPublicDto(item) : null;
 }
 
-async function createItem(data, registeredByUserId) {
+async function listAdminItems(role) {
+  const items = await prisma.lostAndFoundItem.findMany({
+    orderBy: [
+      { IsArchived: 'asc' },
+      { FoundDate: 'desc' },
+    ],
+  });
+
+  return items.map((item) => toAdminDto(item, role));
+}
+
+async function getAdminItemById(id, role) {
+  const item = await findItemById(id);
+
+  return item ? toAdminDto(item, role) : null;
+}
+
+async function createItem(data, registeredByUserId, role) {
   const created = await prisma.lostAndFoundItem.create({
     data: {
       Title: data.title,
@@ -64,10 +90,10 @@ async function createItem(data, registeredByUserId) {
     },
   });
 
-  return toAdminDto(created);
+  return toAdminDto(created, role);
 }
 
-async function updateItem(id, data) {
+async function updateItem(id, data, role) {
   const existing = await findItemById(id);
 
   if (!existing) {
@@ -86,7 +112,7 @@ async function updateItem(id, data) {
     },
   });
 
-  return toAdminDto(updated);
+  return toAdminDto(updated, role);
 }
 
 async function deleteItem(id) {
@@ -103,7 +129,7 @@ async function deleteItem(id) {
   return true;
 }
 
-async function claimItem(id, adminNotes) {
+async function claimItem(id, adminNotes, role) {
   const existing = await findItemById(id);
 
   if (!existing) {
@@ -118,10 +144,10 @@ async function claimItem(id, adminNotes) {
     },
   });
 
-  return toAdminDto(updated);
+  return toAdminDto(updated, role);
 }
 
-async function archiveItem(id, adminNotes) {
+async function archiveItem(id, adminNotes, role) {
   const existing = await findItemById(id);
 
   if (!existing) {
@@ -137,12 +163,14 @@ async function archiveItem(id, adminNotes) {
     },
   });
 
-  return toAdminDto(updated);
+  return toAdminDto(updated, role);
 }
 
 module.exports = {
   listPublicItems,
   getPublicItemById,
+  listAdminItems,
+  getAdminItemById,
   createItem,
   updateItem,
   deleteItem,

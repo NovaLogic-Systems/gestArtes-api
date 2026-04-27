@@ -3,7 +3,7 @@ const lostFoundController = require('../controllers/lostFound.controller');
 const validateRequest = require('../middlewares/validate.middleware');
 const {
   requireSessionAuth,
-  requireRole,
+  requireAdminRole,
 } = require('../middlewares/auth.middleware');
 const {
   createLostAndFoundItemSchema,
@@ -14,10 +14,24 @@ const {
 } = require('../middlewares/schemas/lostFound.schema');
 
 const router = express.Router();
-const adminLostFoundAccess = [requireSessionAuth, requireRole(['ADMIN'])];
+const adminLostFoundAccess = [requireSessionAuth, requireAdminRole];
 
 router.get('/lostfound', lostFoundController.listPublic);
 router.get('/lostfound/:id', ...itemIdParamSchema, validateRequest, lostFoundController.getPublicById);
+
+router.get(
+  '/admin/lostfound',
+  ...adminLostFoundAccess,
+  lostFoundController.listAdmin
+);
+
+router.get(
+  '/admin/lostfound/:id',
+  ...adminLostFoundAccess,
+  ...itemIdParamSchema,
+  validateRequest,
+  lostFoundController.getAdminById
+);
 
 router.post(
   '/admin/lostfound',

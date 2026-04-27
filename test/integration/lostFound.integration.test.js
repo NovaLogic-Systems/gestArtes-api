@@ -226,6 +226,8 @@ if (!shouldRun) {
     assert.equal(second.status, 200);
     assert.equal(first.body.claimedStatus, true);
     assert.equal(second.body.claimedStatus, true);
+    assert.equal(first.body.adminNotes, 'Claimed once');
+    assert.equal(second.body.adminNotes, 'Claimed twice');
   });
 
   test('admin archive endpoint stores admin notes', async (t) => {
@@ -260,6 +262,92 @@ if (!shouldRun) {
     assert.equal(updated.IsArchived, true);
     assert.equal(updated.AdminNotes, 'Archived by integration test');
     assert.ok(updated.ArchivedAt instanceof Date);
+  });
+
+  test('admin listing returns archived items and admin notes', async (t) => {
+    if (!registeredByUserId) {
+      t.skip('No active user available to register lost and found item');
+      return;
+    }
+
+    const cookie = await createSessionCookie(registeredByUserId, 'admin');
+    if (!cookie) {
+      t.skip('SESSION_SECRET is required to create signed test session cookies');
+      return;
+    }
+
+    const active = await createLostFoundItem({
+      AdminNotes: 'Visible only to admin',
+      IsArchived: false,
+    });
+    const archived = await createLostFoundItem({
+      AdminNotes: 'Archived internal note',
+      IsArchived: true,
+      ArchivedAt: new Date(),
+    });
+
+    const response = await request('/admin/lostfound', {
+      headers: {
+        Cookie: cookie,
+      },
+    });
+
+    assert.equal(response.status, 200);
+    assert.ok(Array.isArray(response.body));
+
+    const activeItem = response.body.find((item) => item.id === active.LostItemID);
+    const archivedItem = response.body.find((item) => item.id === archived.LostItemID);
+
+    assert.ok(activeItem);
+    assert.ok(archivedItem);
+    assert.equal(activeItem.adminNotes, 'Visible only to admin');
+    assert.equal(archivedItem.adminNotes, 'Archived internal note');
+    assert.equal(archivedItem.isArchived, true);
+  });
+
+  test('public lost and found responses never expose admin notes', async (t) => {
+    if (!registeredByUserId) {
+      t.skip('No active user available to register lost and found item');
+      return;
+    }
+
+    const item = await createLostFoundItem({
+      AdminNotes: 'Internal only',
+      IsArchived: false,
+    });
+
+    const listResponse = await request('/lostfound');
+    const detailResponse = await request(`/lostfound/${item.LostItemID}`);
+
+    assert.equal(listResponse.status, 200);
+    assert.equal(detailResponse.status, 200);
+
+    const listedItem = listResponse.body.find((entry) => entry.id === item.LostItemID);
+
+    assert.ok(listedItem);
+    assert.equal(Object.hasOwn(listedItem, 'adminNotes'), false);
+    assert.equal(Object.hasOwn(detailResponse.body, 'adminNotes'), false);
+  });
+
+  test('admin get by id returns 404 for missing item', async (t) => {
+    if (!registeredByUserId) {
+      t.skip('No active user available to register lost and found item');
+      return;
+    }
+
+    const cookie = await createSessionCookie(registeredByUserId, 'admin');
+    if (!cookie) {
+      t.skip('SESSION_SECRET is required to create signed test session cookies');
+      return;
+    }
+
+    const response = await request('/admin/lostfound/999999999', {
+      headers: {
+        Cookie: cookie,
+      },
+    });
+
+    assert.equal(response.status, 404);
   });
 
   test('admin endpoints reject missing and non-admin sessions', async (t) => {

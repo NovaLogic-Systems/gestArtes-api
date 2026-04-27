@@ -13,6 +13,7 @@ const helmet = require('helmet');
 const morgan = require('morgan');
 const adminRoutes = require('./routes/admin.routes');
 const adminMarketplaceRoutes = require('./routes/admin.marketplace.routes');
+const adminInventoryRoutes = require('./routes/admin.inventory.routes');
 const adminStudiosRoutes = require('./routes/admin.studios.routes');
 const adminStudioOccupancyRoutes = require('./routes/admin.studio-occupancy.routes');
 const authRoutes = require('./routes/auth.routes');
@@ -20,11 +21,13 @@ const studentRoutes = require('./routes/student.routes');
 const teacherRoutes = require('./routes/teacher.routes');
 const lostFoundRoutes = require('./routes/lostFound.routes');
 const marketplaceRoutes = require('./routes/marketplace.routes');
+const searchRoutes = require('./routes/search.routes');
 const inventoryRoutes = require('./routes/inventory.routes');
 const notificationRoutes = require('./routes/notification.routes');
 const financeRoutes = require('./routes/finance.routes');
 const auditRoutes = require('./routes/audit.routes');
 const joinRequestRoutes = require('./routes/joinRequest.routes');
+const coachingRoutes = require('./routes/coaching.routes');
 const apiRateLimiter = require('./middlewares/rateLimit.middleware');
 const errorHandler = require('./middlewares/error.middleware');
 const { setupSwagger } = require('./config/swagger');
@@ -34,7 +37,10 @@ const { initSocket } = require('./socket');
 const app = express();
 
 const SESSION_COOKIE_NAME = 'connect.sid';
-const SESSION_TTL_MS = 1000 * 60 * 60 * 24 * 7;
+const SESSION_TTL_MS = parsePositiveInt(
+  process.env.SESSION_TTL_MS,
+  1000 * 60 * 60 * 2
+);
 const SESSION_TABLE_NAME = 'Sessions';
 const SESSION_AUTO_REMOVE_INTERVAL_MS = 1000 * 60 * 10;
 const SESSION_STORE_RETRIES = 1;
@@ -99,6 +105,30 @@ function parseBoolean(value, fallback) {
   }
 
   return fallback;
+}
+
+function parsePositiveInt(value, fallback) {
+  const parsed = Number(value);
+
+  if (Number.isInteger(parsed) && parsed > 0) {
+    return parsed;
+  }
+
+  return fallback;
+}
+
+function resolveSecureCookieSetting(value, fallback) {
+  if (value === undefined || value === null || value === '') {
+    return fallback;
+  }
+
+  const normalized = String(value).trim().toLowerCase();
+
+  if (normalized === 'auto') {
+    return 'auto';
+  }
+
+  return parseBoolean(value, fallback);
 }
 
 function parseCsv(value) {
@@ -373,6 +403,7 @@ const sessionMiddleware = session({
   secret: SESSION_SECRET,
   resave: false,
   saveUninitialized: false,
+  rolling: true,
   cookie: app.get('sessionCookieOptions'),
 });
 
@@ -385,15 +416,18 @@ app.use('/student', studentRoutes);
 app.use('/teacher', teacherRoutes);
 app.use('/', lostFoundRoutes);
 app.use('/marketplace', marketplaceRoutes);
+app.use('/search', searchRoutes);
 app.use('/inventory', inventoryRoutes);
 app.use('/teacher/inventory', inventoryRoutes);
 app.use('/notifications', notificationRoutes);
 app.use('/', joinRequestRoutes);
+app.use('/', coachingRoutes);
 app.get('/health', (req, res) => res.json({ status: 'ok' }));
 app.use('/', financeRoutes);
 app.use('/', auditRoutes);
 app.use('/admin', adminRoutes);
 app.use('/admin/marketplace', adminMarketplaceRoutes);
+app.use('/admin/inventory', adminInventoryRoutes);
 app.use('/admin/studios', adminStudiosRoutes);
 app.use('/admin/studio-occupancy', adminStudioOccupancyRoutes);
 setupSwagger(app);

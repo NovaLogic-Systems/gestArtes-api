@@ -1,16 +1,25 @@
 const express = require('express');
 const validateRequest = require('../middlewares/validate.middleware');
-const { requireSessionAuth, requireRole } = require('../middlewares/auth.middleware');
+const { requireSessionAuth, requireAdminRole, requireRole } = require('../middlewares/auth.middleware');
 const {
     createUserSchema,
+    deleteUserSchema,
     resetUserPasswordSchema,
+    updateUserRolesSchema,
+    updateUserSchema,
 } = require('../middlewares/schemas/admin.schema');
 const adminController = require('../controllers/admin.controller');
 const joinRequestController = require('../controllers/joinRequest.controller');
 const { createSessionSchema } = require('../middlewares/schemas/session.schema');
 
 const router = express.Router();
-const adminAccess = [requireSessionAuth, requireRole(['ADMIN'])];
+const adminAccess = [requireSessionAuth, requireAdminRole];
+
+router.get(
+    '/dashboard',
+    ...adminAccess,
+    adminController.getDashboard
+);
 
 router.get(
     '/users',
@@ -24,6 +33,30 @@ router.post(
     ...createUserSchema,
     validateRequest,
     adminController.createUser
+);
+
+router.patch(
+    '/users/:id',
+    ...adminAccess,
+    ...updateUserSchema,
+    validateRequest,
+    adminController.updateUser
+);
+
+router.delete(
+    '/users/:id',
+    ...adminAccess,
+    ...deleteUserSchema,
+    validateRequest,
+    adminController.deleteUser
+);
+
+router.patch(
+    '/users/:id/roles',
+    ...adminAccess,
+    ...updateUserRolesSchema,
+    validateRequest,
+    adminController.updateUserRoles
 );
 
 router.get(
@@ -64,7 +97,8 @@ router.patch(
 
 router.patch(
     '/users/:id/reset-password',
-    ...adminAccess,
+    requireSessionAuth,
+    requireRole('admin'),
     ...resetUserPasswordSchema,
     validateRequest,
     adminController.resetUserPassword

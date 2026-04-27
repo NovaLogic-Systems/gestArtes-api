@@ -2,7 +2,7 @@ const test = require('node:test');
 const assert = require('node:assert/strict');
 const { createFinanceService } = require('../../src/services/finance.service');
 
-const FAKE_ENTRY_TYPE = { EntryTypeID: 1, TypeName: 'SESSION' };
+const FAKE_ENTRY_TYPE = { EntryTypeID: 1, TypeName: 'session_revenue' };
 const FAKE_USER = { UserID: 5, FirstName: 'Ana', LastName: 'Silva', AuthUID: 'ST-0001' };
 const FAKE_STUDENT_ACCOUNT = { StudentAccountID: 3, User: FAKE_USER };
 const FAKE_SESSION_STUDENT = { StudentAccountID: 3, StudentAccount: FAKE_STUDENT_ACCOUNT };
@@ -64,7 +64,7 @@ test('listTransactions: maps entries to expected shape', async () => {
   assert.equal(item.entryId, 1);
   assert.equal(item.sessionId, 10);
   assert.equal(item.amount, 36);
-  assert.equal(item.entryType, 'SESSION');
+  assert.equal(item.entryType, 'session_revenue');
   assert.equal(item.isExported, false);
   assert.equal(item.studentName, 'Ana Silva');
   assert.equal(item.studentNumber, 'ST-0001');
@@ -101,8 +101,8 @@ test('listTransactions: resolves studentNumber to studentAccountId via DB lookup
 
 test('getSummary: aggregates rows correctly', async () => {
   const rawRows = [
-    { typeName: 'SESSION', cnt: BigInt(3), total: 108.0, exportedCount: BigInt(2), unexportedCount: BigInt(1) },
-    { typeName: 'NOSHOWPENALTY', cnt: BigInt(1), total: 36.0, exportedCount: BigInt(0), unexportedCount: BigInt(1) },
+    { typeName: 'session_revenue', cnt: BigInt(3), total: 108.0, exportedCount: BigInt(2), unexportedCount: BigInt(1) },
+    { typeName: 'no_show_fee', cnt: BigInt(1), total: 36.0, exportedCount: BigInt(0), unexportedCount: BigInt(1) },
   ];
   const svc = createFinanceService(makeFakePrisma({ rawRows }));
   const result = await svc.getSummary({});
@@ -111,9 +111,9 @@ test('getSummary: aggregates rows correctly', async () => {
   assert.equal(result.totalPenalties, 36);
   assert.equal(result.exportedCount, 2);
   assert.equal(result.unexportedCount, 2);
-  assert.equal(result.totalsByType.SESSION.count, 3);
-  assert.equal(result.totalsByType.SESSION.total, 108);
-  assert.equal(result.totalsByType.NOSHOWPENALTY.count, 1);
+  assert.equal(result.totalsByType.session_revenue.count, 3);
+  assert.equal(result.totalsByType.session_revenue.total, 108);
+  assert.equal(result.totalsByType.no_show_fee.count, 1);
 });
 
 test('getSummary: returns zero totals when no data', async () => {
@@ -164,7 +164,7 @@ test('exportTransactions: marks entries as exported and returns CSV', async () =
   }));
   const result = await svc.exportTransactions({ periodStart: new Date('2026-04-01'), periodEnd: new Date('2026-04-30'), userId: 99 });
   assert.equal(result.count, 1);
-  assert.ok(result.csv.includes('SESSION'));
+  assert.ok(result.csv.includes('session_revenue'));
   assert.ok(result.csv.includes('Ana Silva'));
   assert.equal(capturedUpdate.IsExported, true);
   assert.equal(capturedUpdate.ExportedByUserID, 99);

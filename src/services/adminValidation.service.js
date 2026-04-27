@@ -139,35 +139,46 @@ async function finalizeSessionValidation(sessionId, adminUserId) {
       throw createHttpError(404, 'Sessão não encontrada');
     }
 
-    const queue = await tx.$queryRaw`
-      WITH ValidationSummary AS (
-        SELECT
-          sv.SessionID,
-          COUNT(DISTINCT CASE WHEN LOWER(r.RoleName) = 'teacher' THEN sv.ValidatedByUserID END) AS teacherConfirmed,
-          COUNT(DISTINCT CASE WHEN LOWER(r.RoleName) = 'student' THEN sv.ValidatedByUserID END) AS studentConfirmed,
-          COUNT(CASE WHEN LOWER(vs.StepName) LIKE '%final%' THEN 1 END) AS finalizationCount
-        FROM SessionValidation AS sv
-        INNER JOIN ValidationStep AS vs ON vs.StepID = sv.ValidationStepID
-        INNER JOIN UserRole AS ur ON ur.UserID = sv.ValidatedByUserID
-        INNER JOIN Role AS r ON r.RoleID = ur.RoleID
-        WHERE sv.SessionID = ${sessionId}
-        GROUP BY sv.SessionID
-      )
-      SELECT TOP (1)
-        SessionID AS sessionId,
-        teacherConfirmed,
-        studentConfirmed,
-        finalizationCount
-      FROM ValidationSummary
-    `;
+    const validations = await tx.sessionValidation.findMany({
+      where: { SessionID: sessionId },
+      select: {
+        ValidatedByUserID: true,
+        ValidationStep: { select: { StepName: true } },
+        User: {
+          select: {
+            UserRole: {
+              select: { Role: { select: { RoleName: true } } },
+            },
+          },
+        },
+      },
+    });
 
-    const queueRow = queue[0];
+    const teacherUserIds = new Set();
+    const studentUserIds = new Set();
+    let finalizationCount = 0;
 
-    if (!queueRow || Number(queueRow.teacherConfirmed || 0) < 1 || Number(queueRow.studentConfirmed || 0) < 1) {
+    for (const sv of validations) {
+      const stepName = (sv.ValidationStep.StepName || '').toLowerCase();
+      if (stepName.includes('final')) finalizationCount++;
+      for (const ur of sv.User.UserRole) {
+        const roleName = (ur.Role.RoleName || '').toLowerCase();
+        if (roleName === 'teacher') teacherUserIds.add(sv.ValidatedByUserID);
+        if (roleName === 'student') studentUserIds.add(sv.ValidatedByUserID);
+      }
+    }
+
+    const queueRow = {
+      teacherConfirmed: teacherUserIds.size,
+      studentConfirmed: studentUserIds.size,
+      finalizationCount,
+    };
+
+    if (queueRow.teacherConfirmed < 1 || queueRow.studentConfirmed < 1) {
       throw createHttpError(409, 'Sessão ainda não está pronta para finalização');
     }
 
-    if (Number(queueRow.finalizationCount || 0) > 0) {
+    if (queueRow.finalizationCount > 0) {
       throw createHttpError(409, 'Sessão já foi finalizada');
     }
 

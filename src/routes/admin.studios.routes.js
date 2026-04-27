@@ -1,13 +1,14 @@
 const express = require('express');
-const { requireAuth, requireRole } = require('../middlewares/auth.middleware');
+const { requireAuth, requireAdminRole } = require('../middlewares/auth.middleware');
 const studioController = require('../controllers/studio.controller');
 const prisma = require('../config/prisma');
 
 const router = express.Router();
+const adminAccess = [requireAuth, requireAdminRole];
 
-router.post('/', requireAuth, requireRole('admin'), studioController.createStudio);
-router.get('/', requireAuth, requireRole('admin'), studioController.getStudios);
-router.get('/options', requireAuth, requireRole('admin'), async (req, res, next) => {
+router.post('/', ...adminAccess, studioController.createStudio);
+router.get('/', ...adminAccess, studioController.getStudios);
+router.get('/options', ...adminAccess, async (req, res, next) => {
   try {
     const modalities = await prisma.modality.findMany({
       select: {
@@ -30,7 +31,7 @@ router.get('/options', requireAuth, requireRole('admin'), async (req, res, next)
   }
 });
 
-router.post('/options', requireAuth, requireRole('admin'), async (req, res, next) => {
+router.post('/options', ...adminAccess, async (req, res, next) => {
   try {
     const type = String(req.body?.type || '').trim().toLowerCase();
     const name = String(req.body?.name || '').trim();
@@ -85,8 +86,8 @@ router.post('/options', requireAuth, requireRole('admin'), async (req, res, next
   }
 });
 
-router.get('/:id', requireAuth, requireRole('admin'), studioController.getStudioById);
-router.patch('/:id', requireAuth, requireRole('admin'), studioController.updateStudio);
-router.delete('/:id', requireAuth, requireRole('admin'), studioController.deleteStudio);
+router.get('/:id', ...adminAccess, studioController.getStudioById);
+router.patch('/:id', ...adminAccess, studioController.updateStudio);
+router.delete('/:id', ...adminAccess, studioController.deleteStudio);
 
 module.exports = router;

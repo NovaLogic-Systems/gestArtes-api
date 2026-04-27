@@ -2,6 +2,7 @@ const test = require('node:test');
 const assert = require('node:assert/strict');
 
 const {
+  ROLE_EQUIVALENCE_HINTS,
   ROLE_HIERARCHY,
   getHighestPriorityRole,
   toAppRole,
@@ -17,6 +18,16 @@ test('toAppRole maps Direção to admin', () => {
 
 test('toAppRole maps Management to admin', () => {
   assert.equal(toAppRole('Management'), 'admin');
+});
+
+test('toAppRole maps mixed functional management labels to admin', () => {
+  assert.equal(toAppRole('Direção / Gestão'), 'admin');
+  assert.equal(toAppRole('Management / Coordination'), 'admin');
+});
+
+test('admin equivalence hints explicitly include direction and management terms', () => {
+  assert.equal(ROLE_EQUIVALENCE_HINTS.admin.includes('direction'), true);
+  assert.equal(ROLE_EQUIVALENCE_HINTS.admin.includes('management'), true);
 });
 
 test('getHighestPriorityRole prefers admin over lower roles', () => {

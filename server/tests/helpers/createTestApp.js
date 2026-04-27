@@ -19,6 +19,7 @@ function createTestApp({
   joinRequestServiceMock,
   coachingServiceMock,
   notificationControllerMock,
+  pricingServiceMock,
 } = {}) {
   jest.resetModules();
 
@@ -64,6 +65,10 @@ function createTestApp({
 
   if (notificationControllerMock) {
     jest.doMock('../../../src/controllers/notification.controller', () => notificationControllerMock);
+  }
+
+  if (pricingServiceMock) {
+    jest.doMock('../../../src/services/pricing.service', () => pricingServiceMock);
   }
 
   const app = require('../../../src/app');

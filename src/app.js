@@ -392,6 +392,7 @@ app.use('/student', studentRoutes);
 app.use('/teacher', teacherRoutes);
 app.use('/', lostFoundRoutes);
 app.use('/marketplace', marketplaceRoutes);
+app.use('/teacher/marketplace', marketplaceRoutes);
 app.use('/inventory', inventoryRoutes);
 app.use('/teacher/inventory', inventoryRoutes);
 app.use('/notifications', notificationRoutes);

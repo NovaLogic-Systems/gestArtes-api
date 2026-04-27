@@ -783,6 +783,11 @@ function hasTeacherConfirmation(validations, teacherUserId) {
   );
 }
 
+function parseSessionIdParam(params) {
+  const sessionId = Number(params?.sessionId ?? params?.id);
+  return Number.isInteger(sessionId) && sessionId > 0 ? sessionId : null;
+}
+
 async function getPendingSessions(req, res, next) {
   try {
     const teacherUserId = getAuthenticatedTeacherUserId(req, res);
@@ -854,8 +859,8 @@ async function confirmCompletion(req, res, next) {
     const teacherUserId = getAuthenticatedTeacherUserId(req, res);
     if (!teacherUserId) return;
 
-    const sessionId = Number(req.params?.sessionId);
-    if (!Number.isInteger(sessionId) || sessionId <= 0) {
+    const sessionId = parseSessionIdParam(req.params);
+    if (!sessionId) {
       return res.status(400).json({ error: 'ID de sessão inválido' });
     }
 
@@ -923,8 +928,8 @@ async function registerNoShow(req, res, next) {
     const teacherUserId = getAuthenticatedTeacherUserId(req, res);
     if (!teacherUserId) return;
 
-    const sessionId = Number(req.params?.sessionId);
-    if (!Number.isInteger(sessionId) || sessionId <= 0) {
+    const sessionId = parseSessionIdParam(req.params);
+    if (!sessionId) {
       return res.status(400).json({ error: 'ID de sessão inválido' });
     }
 

@@ -165,6 +165,29 @@ function buildCategoryFilter(rawCategory) {
   };
 }
 
+function buildTextSearchFilter(rawQuery) {
+  const query = String(rawQuery || '').trim();
+
+  if (!query) {
+    return null;
+  }
+
+  return {
+    OR: [
+      {
+        Title: {
+          contains: query,
+        },
+      },
+      {
+        Description: {
+          contains: query,
+        },
+      },
+    ],
+  };
+}
+
 function buildListingInclude(includeSellerContact = false) {
   return {
     ItemCategory: {
@@ -248,7 +271,14 @@ async function getListings(req, res, next) {
       IsActive: true,
     };
 
+    const textQuery = req.query.q ?? req.query.search;
+    const textSearchFilter = buildTextSearchFilter(textQuery);
+
     const categoryFilter = buildCategoryFilter(req.query.category);
+
+    if (textSearchFilter) {
+      where.OR = textSearchFilter.OR;
+    }
 
     if (categoryFilter) {
       Object.assign(where, categoryFilter);

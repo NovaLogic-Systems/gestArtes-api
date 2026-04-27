@@ -14,6 +14,10 @@ router.get('/admissions/pending', ...teacherAccess, teacherController.getPending
 router.patch('/admissions/:joinRequestId/approve', ...teacherAccess, teacherController.approveJoinRequest);
 router.patch('/admissions/:joinRequestId/reject', ...teacherAccess, teacherController.rejectJoinRequest);
 
+router.get('/sessions/pending', ...teacherAccess, teacherController.getPendingSessions);
+router.patch('/sessions/:id/confirm-completion', ...teacherAccess, teacherController.confirmCompletion);
+router.post('/sessions/:id/no-show', ...teacherAccess, teacherController.registerNoShow);
+
 router.get('/admission-requests', ...teacherAccess, teacherController.getAdmissionRequests);
 router.get('/dashboard', ...teacherAccess, teacherController.getDashboard);
 router.get('/schedule/today', ...teacherAccess, teacherController.getTodaySchedule);

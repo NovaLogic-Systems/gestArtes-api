@@ -537,7 +537,7 @@ describe('POST /teacher/sessions/:sessionId/no-show (BR-16)', () => {
 
     // Attendance status updated to NO_SHOW
     expect(prismaMock.sessionStudent.update).toHaveBeenCalled();
-    expect(db.studentAttendanceUpdate).toMatchObject({ AttendanceStatusID: 3 }); // db.attendanceStatusRow.StatusID
+    expect(db.studentAttendanceUpdate).toMatchObject({ AttendanceStatusID: 3 });
 
     // Session status updated
     expect(db.sessionUpdates.length).toBeGreaterThan(0);

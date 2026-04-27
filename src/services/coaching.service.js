@@ -47,6 +47,24 @@ function getWeekBounds(weekStartStr) {
   return { weekStart: start, weekEnd: end };
 }
 
+function getDateRangeBounds(startDateStr, endDateStr) {
+  const start = new Date(startDateStr);
+  const end = new Date(endDateStr);
+  
+  if (Number.isNaN(start.getTime()) || Number.isNaN(end.getTime())) {
+    throw createHttpError(400, 'Data de início ou fim inválida');
+  }
+  
+  start.setUTCHours(0, 0, 0, 0);
+  end.setUTCHours(23, 59, 59, 999);
+  
+  if (end <= start) {
+    throw createHttpError(400, 'Data de fim deve ser posterior à data de início');
+  }
+  
+  return { rangeStart: start, rangeEnd: end };
+}
+
 function dateForDayOfWeek(weekStart, targetDow) {
   const startDow = weekStart.getUTCDay();
   const diff = (targetDow - startDow + 7) % 7;
@@ -74,9 +92,25 @@ async function getOrCreateValidationStep(stepName, keywords) {
   return created.StepID;
 }
 
-async function getAvailableSlots({ weekStart: weekStartStr, teacherId, modalityId }) {
-  const weekStartInput = weekStartStr || new Date().toISOString().slice(0, 10);
-  const { weekStart, weekEnd } = getWeekBounds(weekStartInput);
+async function getAvailableSlots({ weekStart: weekStartStr, startDate: startDateStr, endDate: endDateStr, teacherId, modalityId }) {
+  let rangeStart, rangeEnd;
+  let displayWeekStart, displayWeekEnd;
+
+  // Determine date range: prefer startDate/endDate over weekStart
+  if (startDateStr && endDateStr) {
+    const dateRange = getDateRangeBounds(startDateStr, endDateStr);
+    rangeStart = dateRange.rangeStart;
+    rangeEnd = dateRange.rangeEnd;
+    displayWeekStart = rangeStart;
+    displayWeekEnd = rangeEnd;
+  } else {
+    const weekStartInput = weekStartStr || new Date().toISOString().slice(0, 10);
+    const weekBounds = getWeekBounds(weekStartInput);
+    rangeStart = weekBounds.weekStart;
+    rangeEnd = weekBounds.weekEnd;
+    displayWeekStart = rangeStart;
+    displayWeekEnd = rangeEnd;
+  }
 
   const activeYear = await prisma.academicYear.findFirst({
     where: { IsActive: true },
@@ -133,8 +167,8 @@ async function getAvailableSlots({ weekStart: weekStartStr, teacherId, modalityI
   const teacherIds = teachers.map((t) => t.UserID);
 
   const emptyResult = {
-    weekStart: weekStart.toISOString().slice(0, 10),
-    weekEnd: weekEnd.toISOString().slice(0, 10),
+    rangeStart: displayWeekStart.toISOString().slice(0, 10),
+    rangeEnd: displayWeekEnd.toISOString().slice(0, 10),
     teachers: [],
     modalities: modalities.map((m) => ({ modalityId: m.ModalityID, modalityName: m.ModalityName })),
     studios: studios.map((s) => ({
@@ -169,7 +203,7 @@ async function getAvailableSlots({ weekStart: weekStartStr, teacherId, modalityI
         TeacherID: { in: teacherIds },
         TeacherAvailabilityStatus: buildApprovedAvailabilityStatusFilter(),
         TeacherAvailabilityPunctual: {
-          is: { StartDateTime: { lt: weekEnd }, EndDateTime: { gt: weekStart } },
+          is: { StartDateTime: { lt: rangeEnd }, EndDateTime: { gt: rangeStart } },
         },
       },
       select: {
@@ -182,8 +216,8 @@ async function getAvailableSlots({ weekStart: weekStartStr, teacherId, modalityI
     prisma.teacherAbsence.findMany({
       where: {
         TeacherID: { in: teacherIds },
-        StartDate: { lt: weekEnd },
-        EndDate: { gt: weekStart },
+        StartDate: { lt: rangeEnd },
+        EndDate: { gt: rangeStart },
       },
       select: { TeacherID: true, StartDate: true, EndDate: true },
     }),
@@ -191,7 +225,7 @@ async function getAvailableSlots({ weekStart: weekStartStr, teacherId, modalityI
       where: {
         TeacherID: { in: teacherIds },
         CoachingSession: {
-          is: { StartTime: { lt: weekEnd }, EndTime: { gt: weekStart } },
+          is: { StartTime: { lt: rangeEnd }, EndTime: { gt: rangeStart } },
         },
       },
       select: {
@@ -245,23 +279,30 @@ async function getAvailableSlots({ weekStart: weekStartStr, teacherId, modalityI
     const rec = avail.TeacherAvailabilityRecurring;
     if (!rec) continue;
 
-    const date = dateForDayOfWeek(weekStart, rec.DayOfWeek);
-    if (date >= weekEnd) continue;
+    // Generate dates for recurring availability within the range
+    let currentDate = new Date(rangeStart);
+    currentDate.setUTCHours(0, 0, 0, 0);
 
-    if (isTeacherAbsent(avail.TeacherID, date, date)) continue;
+    while (currentDate < rangeEnd) {
+      const currentDow = currentDate.getUTCDay();
+      if (currentDow === rec.DayOfWeek) {
+        if (!isTeacherAbsent(avail.TeacherID, currentDate, currentDate)) {
+          const dayStart = new Date(currentDate);
+          const dayEnd = new Date(currentDate);
+          dayEnd.setUTCDate(dayEnd.getUTCDate() + 1);
 
-    const dayStart = new Date(date);
-    const dayEnd = new Date(date);
-    dayEnd.setUTCDate(dayEnd.getUTCDate() + 1);
-
-    availabilityWindows.push({
-      teacherId: avail.TeacherID,
-      date: date.toISOString().slice(0, 10),
-      dayOfWeek: rec.DayOfWeek,
-      windowStart: toUTCTimeString(rec.StartTime),
-      windowEnd: toUTCTimeString(rec.EndTime),
-      bookedSessions: buildBookedSessions(avail.TeacherID, dayStart, dayEnd),
-    });
+          availabilityWindows.push({
+            teacherId: avail.TeacherID,
+            date: currentDate.toISOString().slice(0, 10),
+            dayOfWeek: rec.DayOfWeek,
+            windowStart: toUTCTimeString(rec.StartTime),
+            windowEnd: toUTCTimeString(rec.EndTime),
+            bookedSessions: buildBookedSessions(avail.TeacherID, dayStart, dayEnd),
+          });
+        }
+      }
+      currentDate.setUTCDate(currentDate.getUTCDate() + 1);
+    }
   }
 
   for (const avail of punctualAvailabilities) {
@@ -291,8 +332,8 @@ async function getAvailableSlots({ weekStart: weekStartStr, teacherId, modalityI
   }
 
   return {
-    weekStart: weekStart.toISOString().slice(0, 10),
-    weekEnd: weekEnd.toISOString().slice(0, 10),
+    rangeStart: displayWeekStart.toISOString().slice(0, 10),
+    rangeEnd: displayWeekEnd.toISOString().slice(0, 10),
     teachers: teachers.map((t) => ({
       teacherId: t.UserID,
       name: [t.FirstName, t.LastName].filter(Boolean).join(' '),

@@ -224,4 +224,94 @@ if (!shouldRun) {
 
     createdListingId = null;
   });
+
+  test('teacher marketplace endpoints reuse student marketplace validations and lifecycle', async (t) => {
+    const condition = await prisma.marketplaceItemCondition.findFirst({
+      orderBy: {
+        ConditionID: 'asc',
+      },
+    });
+
+    if (!condition) {
+      t.skip('No marketplace item conditions available for integration testing');
+      return;
+    }
+
+    const category = await prisma.itemCategory.findFirst({
+      where: {
+        IsActive: true,
+      },
+      orderBy: {
+        CategoryID: 'asc',
+      },
+    });
+
+    const uniqueSuffix = `${Date.now()}-${Math.floor(Math.random() * 10000)}`;
+    const createPayload = {
+      title: `Teacher marketplace test listing ${uniqueSuffix}`,
+      description: 'Teacher listing created by integration test',
+      price: 20,
+      conditionId: condition.ConditionID,
+      photoUrl: '/uploads/marketplace/teacher-test-item.jpg',
+      location: 'Braga',
+    };
+
+    if (category) {
+      createPayload.categoryId = category.CategoryID;
+    }
+
+    const createResponse = await request('/teacher/marketplace/listings', {
+      method: 'POST',
+      headers: {
+        'content-type': 'application/json',
+      },
+      body: JSON.stringify(createPayload),
+    });
+
+    assert.equal(createResponse.status, 201, 'POST /teacher/marketplace/listings should create a listing');
+
+    const createBody = await createResponse.json();
+    createdListingId = createBody.listing?.listingId;
+    assert.ok(createdListingId, 'Created teacher listing should return listingId');
+
+    const myListingsResponse = await request('/teacher/marketplace/my-listings');
+    assert.equal(myListingsResponse.status, 200, 'GET /teacher/marketplace/my-listings should succeed');
+
+    const myListingsBody = await myListingsResponse.json();
+    assert.ok(
+      myListingsBody.listings.some((listing) => listing.listingId === createdListingId),
+      'Created teacher listing should be visible in teacher my listings'
+    );
+
+    const updatedTitle = `Teacher marketplace updated ${uniqueSuffix}`;
+    const updateResponse = await request(`/teacher/marketplace/listings/${createdListingId}`, {
+      method: 'PATCH',
+      headers: {
+        'content-type': 'application/json',
+      },
+      body: JSON.stringify({
+        title: updatedTitle,
+      }),
+    });
+
+    assert.equal(updateResponse.status, 200, 'PATCH /teacher/marketplace/listings/:id should succeed');
+
+    const updateBody = await updateResponse.json();
+    assert.equal(updateBody.listing.title, updatedTitle);
+
+    const deleteResponse = await request(`/teacher/marketplace/listings/${createdListingId}`, {
+      method: 'DELETE',
+    });
+
+    assert.equal(deleteResponse.status, 204, 'DELETE /teacher/marketplace/listings/:id should return 204');
+
+    const afterDeleteResponse = await request(`/teacher/marketplace/listings/${createdListingId}`);
+    assert.equal(
+      afterDeleteResponse.status,
+      404,
+      'Deleted teacher listing should no longer be visible in active listing detail endpoint'
+    );
+
+    createdListingId = null;
+  });
 }

@@ -14,6 +14,17 @@ function toPositiveInt(value) {
   return Number.isInteger(parsed) && parsed > 0 ? parsed : null;
 }
 
+function buildApprovedAvailabilityStatusFilter() {
+  return {
+    OR: [
+      { StatusName: { contains: 'approved' } },
+      { StatusName: { contains: 'aprovado' } },
+      { StatusName: { contains: 'validated' } },
+      { StatusName: { contains: 'validado' } },
+    ],
+  };
+}
+
 function toUTCTimeString(date) {
   const d = new Date(date);
   const h = String(d.getUTCHours()).padStart(2, '0');
@@ -137,6 +148,7 @@ async function getAvailableSlots({ weekStart: weekStartStr, teacherId, modalityI
     prisma.teacherAvailability.findMany({
       where: {
         TeacherID: { in: teacherIds },
+        TeacherAvailabilityStatus: buildApprovedAvailabilityStatusFilter(),
         TeacherAvailabilityRecurring: {
           is: { AcademicYearID: activeYear.AcademicYearID, IsActive: true },
         },
@@ -151,6 +163,7 @@ async function getAvailableSlots({ weekStart: weekStartStr, teacherId, modalityI
     prisma.teacherAvailability.findMany({
       where: {
         TeacherID: { in: teacherIds },
+        TeacherAvailabilityStatus: buildApprovedAvailabilityStatusFilter(),
         TeacherAvailabilityPunctual: {
           is: { StartDateTime: { lt: weekEnd }, EndDateTime: { gt: weekStart } },
         },

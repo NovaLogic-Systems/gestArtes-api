@@ -1,4 +1,11 @@
 const prisma = require('../config/prisma');
+const {
+  submitAvailability,
+  getAvailability,
+  updateAvailability,
+} = require('../services/availability.service');
+const { getTeacherAvailabilityCounters } = require('../services/availabilityCounters.service');
+const { emitAvailabilityCounter } = require('../events/availability.events');
 
 const DEFAULT_NOTIFICATION_TYPE_ID = 1;
 const TEACHER_APPROVED_STATUS = 'TEACHER_APPROVED';
@@ -17,6 +24,32 @@ function normalizeString(value) {
   return String(value || '')
     .trim()
     .toLowerCase();
+}
+
+function normalizeAvailabilityWorkflowStatus(statusName) {
+  const normalized = normalizeString(statusName).replace(/[^a-z0-9]/g, '');
+
+  if (!normalized) {
+    return 'UNKNOWN';
+  }
+
+  if (normalized.includes('pending') || normalized.includes('review') || normalized.includes('pendente')) {
+    return 'PENDING_REVIEW';
+  }
+
+  if (normalized.includes('approved') || normalized.includes('aprovado') || normalized.includes('validat')) {
+    return 'APPROVED';
+  }
+
+  if (normalized.includes('rejected') || normalized.includes('rejeitado') || normalized.includes('denied')) {
+    return 'REJECTED';
+  }
+
+  return statusName || 'UNKNOWN';
+}
+
+function isPendingAvailabilityStatus(statusName) {
+  return normalizeAvailabilityWorkflowStatus(statusName) === 'PENDING_REVIEW';
 }
 
 function getAuthenticatedTeacherUserId(req, res) {
@@ -127,6 +160,157 @@ function toISODateTimeString(date) {
   if (!date) return null;
   const d = date instanceof Date ? date : new Date(date);
   return d.toISOString().slice(0, 19);
+}
+
+function parseAvailabilityId(value) {
+  const parsed = Number(value);
+  return Number.isInteger(parsed) && parsed > 0 ? parsed : null;
+}
+
+function enrichAvailabilityWorkflow(availability) {
+  return {
+    ...availability,
+    workflowStatus: normalizeAvailabilityWorkflowStatus(availability?.status),
+  };
+}
+
+async function emitAvailabilitySummary(req, teacherUserId) {
+  const io = req.app.get('io');
+
+  if (!io) {
+    return;
+  }
+
+  const payload = await getTeacherAvailabilityCounters(teacherUserId);
+  emitAvailabilityCounter(io, teacherUserId, payload);
+}
+
+async function submitSchedule(req, res, next) {
+  try {
+    const teacherUserId = getAuthenticatedTeacherUserId(req, res);
+
+    if (!teacherUserId) {
+      return;
+    }
+
+    const result = await submitAvailability(teacherUserId, req.body);
+    await emitAvailabilitySummary(req, teacherUserId);
+
+    res.status(201).json({
+      ...result,
+      availability: (result.availability || []).map(enrichAvailabilityWorkflow),
+    });
+  } catch (error) {
+    next(error);
+  }
+}
+
+async function getPendingSchedules(req, res, next) {
+  try {
+    const teacherUserId = getAuthenticatedTeacherUserId(req, res);
+
+    if (!teacherUserId) {
+      return;
+    }
+
+    const result = await getAvailability(teacherUserId);
+    const pendingSchedules = (result.availability || [])
+      .filter((item) => isPendingAvailabilityStatus(item.status))
+      .map(enrichAvailabilityWorkflow);
+
+    res.json({
+      summary: {
+        pendingSchedules: pendingSchedules.length,
+      },
+      schedules: pendingSchedules,
+    });
+  } catch (error) {
+    next(error);
+  }
+}
+
+async function updatePendingSchedule(req, res, next) {
+  try {
+    const teacherUserId = getAuthenticatedTeacherUserId(req, res);
+
+    if (!teacherUserId) {
+      return;
+    }
+
+    const availabilityId = parseAvailabilityId(req.params?.availabilityId ?? req.params?.id);
+
+    if (!availabilityId) {
+      res.status(400).json({ error: 'Invalid availabilityId' });
+      return;
+    }
+
+    const existing = await getAvailability(teacherUserId);
+    const target = (existing.availability || []).find((item) => Number(item.availabilityId) === availabilityId);
+
+    if (!target) {
+      res.status(404).json({ error: 'Schedule not found' });
+      return;
+    }
+
+    if (!isPendingAvailabilityStatus(target.status)) {
+      res.status(409).json({ error: 'Only pending schedules can be edited' });
+      return;
+    }
+
+    const updated = await updateAvailability(teacherUserId, availabilityId, req.body);
+    await emitAvailabilitySummary(req, teacherUserId);
+
+    res.json({
+      schedule: enrichAvailabilityWorkflow(updated),
+    });
+  } catch (error) {
+    next(error);
+  }
+}
+
+async function getScheduleStatus(req, res, next) {
+  try {
+    const teacherUserId = getAuthenticatedTeacherUserId(req, res);
+
+    if (!teacherUserId) {
+      return;
+    }
+
+    const result = await getAvailability(teacherUserId);
+    const schedules = (result.availability || []).map(enrichAvailabilityWorkflow);
+
+    const summary = schedules.reduce(
+      (acc, item) => {
+        const statusKey = normalizeAvailabilityWorkflowStatus(item.status);
+
+        if (statusKey === 'PENDING_REVIEW') {
+          acc.pendingReview += 1;
+        } else if (statusKey === 'APPROVED') {
+          acc.approved += 1;
+        } else if (statusKey === 'REJECTED') {
+          acc.rejected += 1;
+        } else {
+          acc.other += 1;
+        }
+
+        return acc;
+      },
+      {
+        total: schedules.length,
+        pendingReview: 0,
+        approved: 0,
+        rejected: 0,
+        other: 0,
+      },
+    );
+
+    res.json({
+      summary,
+      schedules,
+    });
+  } catch (error) {
+    next(error);
+  }
 }
 
 async function getAdmissionRequestForTeacher(db, teacherUserId, joinRequestId) {
@@ -522,8 +706,12 @@ module.exports = {
   approveJoinRequest,
   getAdmissionRequests,
   getPendingAdmissions,
+  getPendingSchedules,
+  getScheduleStatus,
   getDashboard,
   getTodaySchedule,
   rejectJoinRequest,
   reviewAdmissionRequest,
+  submitSchedule,
+  updatePendingSchedule,
 };

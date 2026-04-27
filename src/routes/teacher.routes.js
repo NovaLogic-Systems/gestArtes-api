@@ -19,6 +19,12 @@ router.get('/dashboard', ...teacherAccess, teacherController.getDashboard);
 router.get('/schedule/today', ...teacherAccess, teacherController.getTodaySchedule);
 router.patch('/admission-requests/:joinRequestId/review', ...teacherAccess, teacherController.reviewAdmissionRequest);
 
+router.post('/schedule', ...teacherAccess, teacherController.submitSchedule);
+router.get('/schedule/pending', ...teacherAccess, teacherController.getPendingSchedules);
+router.patch('/schedule/:availabilityId', ...teacherAccess, teacherController.updatePendingSchedule);
+router.patch('/schedule/pending/:availabilityId', ...teacherAccess, teacherController.updatePendingSchedule);
+router.get('/schedule/status', ...teacherAccess, teacherController.getScheduleStatus);
+
 router.post('/availability', ...teacherAccess, availabilityController.submitTeacherAvailability);
 router.get('/availability', ...teacherAccess, availabilityController.listTeacherAvailability);
 router.patch('/availability/:availabilityId', ...teacherAccess, availabilityController.updateTeacherAvailability);

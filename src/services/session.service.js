@@ -14,6 +14,17 @@ function normalizeStatusName(statusName) {
     .replace(/[^a-z0-9]/g, '');
 }
 
+function buildApprovedAvailabilityStatusFilter() {
+  return {
+    OR: [
+      { StatusName: { contains: 'approved' } },
+      { StatusName: { contains: 'aprovado' } },
+      { StatusName: { contains: 'validated' } },
+      { StatusName: { contains: 'validado' } },
+    ],
+  };
+}
+
 function buildNotificationTitle(message) {
   const trimmed = String(message || '').trim();
 
@@ -177,6 +188,7 @@ async function ensureTeacherHasAvailability(tx, teacherId, startTime, endTime) {
     tx.teacherAvailability.count({
       where: {
         TeacherID: teacherId,
+        TeacherAvailabilityStatus: buildApprovedAvailabilityStatusFilter(),
         TeacherAvailabilityPunctual: {
           is: {
             StartDateTime: { lte: startTime },
@@ -188,6 +200,7 @@ async function ensureTeacherHasAvailability(tx, teacherId, startTime, endTime) {
     tx.teacherAvailability.count({
       where: {
         TeacherID: teacherId,
+        TeacherAvailabilityStatus: buildApprovedAvailabilityStatusFilter(),
         TeacherAvailabilityRecurring: {
           is: {
             IsActive: true,

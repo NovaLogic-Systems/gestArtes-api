@@ -1,5 +1,7 @@
 const { body, param, query } = require('express-validator');
 
+const inventoryStatusValues = ['AVAILABLE', 'RENTED', 'RESERVED', 'ALL'];
+
 function isValidPhotoUrl(value) {
   if (value === undefined || value === null || value === '') {
     return true;
@@ -81,6 +83,16 @@ const listInventoryItemsQuerySchema = [
     .trim()
     .isLength({ min: 1, max: 50 }).withMessage('Categoria inválida')
     .escape(),
+  query('status')
+    .optional()
+    .trim()
+    .customSanitizer((value) => String(value).trim().toUpperCase())
+    .isIn(inventoryStatusValues).withMessage('Estado de inventário inválido'),
+  query('availability')
+    .optional()
+    .trim()
+    .customSanitizer((value) => String(value).trim().toUpperCase())
+    .isIn(inventoryStatusValues).withMessage('Estado de inventário inválido'),
   query('onlyAvailable')
     .optional()
     .isBoolean().withMessage('Filtro de disponibilidade inválido')
@@ -94,6 +106,26 @@ const listInventoryItemsQuerySchema = [
     .trim()
     .isLength({ min: 1, max: 100 }).withMessage('Pesquisa inválida')
     .escape(),
+  query('price')
+    .optional()
+    .isFloat({ min: 0 }).withMessage('Preço inválido')
+    .toFloat(),
+  query('minPrice')
+    .optional()
+    .isFloat({ min: 0 }).withMessage('Preço mínimo inválido')
+    .toFloat(),
+  query('maxPrice')
+    .optional()
+    .isFloat({ min: 0 }).withMessage('Preço máximo inválido')
+    .toFloat(),
+  query('priceMin')
+    .optional()
+    .isFloat({ min: 0 }).withMessage('Preço mínimo inválido')
+    .toFloat(),
+  query('priceMax')
+    .optional()
+    .isFloat({ min: 0 }).withMessage('Preço máximo inválido')
+    .toFloat(),
   query('availableOnly')
     .optional()
     .isBoolean().withMessage('Filtro de disponibilidade inválido')

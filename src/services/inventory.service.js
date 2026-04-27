@@ -22,6 +22,42 @@ function normalizeString(value) {
     .toLowerCase();
 }
 
+function normalizeStatusFilter(value) {
+  const normalized = normalizeString(value);
+
+  if (!normalized) {
+    return null;
+  }
+
+  if (normalized === 'all') {
+    return null;
+  }
+
+  if (['available', 'available-only', 'available_only', 'free', 'livre'].includes(normalized)) {
+    return 'available';
+  }
+
+  if (['rented', 'reserved', 'unavailable', 'occupied', 'alugado'].includes(normalized)) {
+    return 'rented';
+  }
+
+  return null;
+}
+
+function parsePositiveMoney(value) {
+  if (value === undefined || value === null || value === '') {
+    return null;
+  }
+
+  const numeric = Number(value);
+
+  if (!Number.isFinite(numeric) || numeric < 0) {
+    throw createHttpError(400, 'Preço inválido');
+  }
+
+  return numeric;
+}
+
 function isSchoolOwnedItem(item) {
   return item?.IsSchoolOwned !== false;
 }
@@ -60,6 +96,41 @@ function buildSearchFilter(rawSearch) {
         },
       },
     ],
+  };
+}
+
+function buildInventoryStatusFilter(filters = {}) {
+  const explicitStatus = normalizeStatusFilter(filters.status || filters.availability);
+
+  if (explicitStatus) {
+    return explicitStatus;
+  }
+
+  if (
+    filters.availableOnly === true
+    || normalizeString(filters.availableOnly) === 'true'
+    || filters.onlyAvailable === true
+    || normalizeString(filters.onlyAvailable) === 'true'
+  ) {
+    return 'available';
+  }
+
+  return null;
+}
+
+function buildInventoryPriceFilter(filters = {}) {
+  const exactPrice = parsePositiveMoney(filters.price);
+  const minPrice = parsePositiveMoney(filters.priceMin ?? filters.minPrice);
+  const maxPrice = parsePositiveMoney(filters.priceMax ?? filters.maxPrice);
+
+  if (exactPrice === null && minPrice === null && maxPrice === null) {
+    return null;
+  }
+
+  return {
+    exactPrice,
+    minPrice,
+    maxPrice,
   };
 }
 
@@ -216,13 +287,38 @@ function buildInventoryWhere(filters = {}) {
   return where;
 }
 
-function shouldOnlyReturnAvailable(filters = {}) {
-  return (
-    filters.availableOnly === true
-    || normalizeString(filters.availableOnly) === 'true'
-    || filters.onlyAvailable === true
-    || normalizeString(filters.onlyAvailable) === 'true'
-  );
+function matchesInventoryStatusFilter(item, statusFilter) {
+  if (!statusFilter) {
+    return true;
+  }
+
+  if (statusFilter === 'available') {
+    return item.isAvailable;
+  }
+
+  return !item.isAvailable;
+}
+
+function matchesInventoryPriceFilter(item, priceFilter) {
+  if (!priceFilter) {
+    return true;
+  }
+
+  const symbolicFee = Number(item.symbolicFee ?? 0);
+
+  if (priceFilter.exactPrice !== null && symbolicFee !== priceFilter.exactPrice) {
+    return false;
+  }
+
+  if (priceFilter.minPrice !== null && symbolicFee < priceFilter.minPrice) {
+    return false;
+  }
+
+  if (priceFilter.maxPrice !== null && symbolicFee > priceFilter.maxPrice) {
+    return false;
+  }
+
+  return true;
 }
 
 async function loadReservedQuantities(db, itemIds) {
@@ -263,17 +359,18 @@ async function listItems(filters = {}) {
 
   const itemIds = items.map((item) => item.InventoryItemID);
   const activeRentalsByItem = await loadReservedQuantities(prisma, itemIds);
+  const statusFilter = buildInventoryStatusFilter(filters);
+  const priceFilter = buildInventoryPriceFilter(filters);
 
   const result = items.map((item) => {
     const activeRentalsCount = activeRentalsByItem.get(item.InventoryItemID) || 0;
     return serializeItem(item, activeRentalsCount);
   });
 
-  if (shouldOnlyReturnAvailable(filters)) {
-    return result.filter((item) => item.isAvailable);
-  }
-
-  return result;
+  return result.filter((item) => (
+    matchesInventoryStatusFilter(item, statusFilter)
+    && matchesInventoryPriceFilter(item, priceFilter)
+  ));
 }
 
 async function getItemById(itemId) {

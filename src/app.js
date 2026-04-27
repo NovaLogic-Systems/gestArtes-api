@@ -35,6 +35,7 @@ const logger = require('./utils/logger');
 const { initSocket } = require('./socket');
 
 const app = express();
+const DEFAULT_API_PORT = 3001;
 
 const SESSION_COOKIE_NAME = 'connect.sid';
 const SESSION_TTL_MS = parsePositiveInt(
@@ -469,25 +470,27 @@ if (require.main === module) {
     const httpsIo = initSocket(httpsServer, sessionMiddleware);
     app.set('io', httpsIo);
 
-    const httpsPort = Number(process.env.PORT) || 443;
+    const httpsPort = Number(process.env.PORT) || DEFAULT_API_PORT;
     httpsServer.listen(httpsPort, () => {
       logger.info(`API running on https://localhost:${httpsPort}`);
     });
 
-    const httpRedirectPort = Number(process.env.HTTP_PORT) || 80;
-    http.createServer((req, res) => {
-      const host = (req.headers.host || '').replace(/:\d+$/, '');
-      const target = httpsPort === 443 ? host : `${host}:${httpsPort}`;
-      res.writeHead(301, { Location: `https://${target}${req.url}` });
-      res.end();
-    }).listen(httpRedirectPort, () => {
-      logger.info(`HTTP→HTTPS redirect on port ${httpRedirectPort}`);
-    });
+    if (IS_PRODUCTION) {
+      const httpRedirectPort = Number(process.env.HTTP_PORT) || 80;
+      http.createServer((req, res) => {
+        const host = (req.headers.host || '').replace(/:\d+$/, '');
+        const target = httpsPort === 443 ? host : `${host}:${httpsPort}`;
+        res.writeHead(301, { Location: `https://${target}${req.url}` });
+        res.end();
+      }).listen(httpRedirectPort, () => {
+        logger.info(`HTTP→HTTPS redirect on port ${httpRedirectPort}`);
+      });
+    }
   } else {
     if (IS_PRODUCTION) {
       logger.warn('SSL not configured; running without HTTPS in production');
     }
-    const port = Number(process.env.PORT) || 3001;
+    const port = Number(process.env.PORT) || DEFAULT_API_PORT;
     httpServer.listen(port, () => {
       logger.info(`API running on http://localhost:${port}`);
     });

@@ -1,5 +1,5 @@
 function formatZodIssue(issue) {
-  const path = issue.path.length > 0 ? issue.path.join('.') : 'body';
+  const path = issue.path.length > 0 ? issue.path : ['body'];
 
   return {
     path,

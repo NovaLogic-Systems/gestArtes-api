@@ -1,17 +1,9 @@
 const prisma = require('../config/prisma');
+const { cancelPendingBookingsForTeacherAbsence } = require('./session.service');
+const { createHttpError } = require('../utils/http-error');
+const { toTimeOnlyDate, formatTimeOnly } = require('../utils/date');
 
 const PENDING_STATUS_NAME = 'Pending';
-
-function createHttpError(status, message, details) {
-  const error = new Error(message);
-  error.status = status;
-
-  if (details) {
-    error.details = details;
-  }
-
-  return error;
-}
 
 function isPlainObject(value) {
   return Boolean(value) && typeof value === 'object' && !Array.isArray(value);
@@ -66,49 +58,6 @@ function toDayOfWeek(value) {
   return parsed;
 }
 
-function toTimeOnlyDate(value, message) {
-  const raw = value instanceof Date ? value : String(value ?? '').trim();
-
-  if (raw instanceof Date) {
-    if (Number.isNaN(raw.getTime())) {
-      throw createHttpError(400, message);
-    }
-
-    return new Date(Date.UTC(
-      1970,
-      0,
-      1,
-      raw.getUTCHours(),
-      raw.getUTCMinutes(),
-      raw.getUTCSeconds(),
-      raw.getUTCMilliseconds()
-    ));
-  }
-
-  const match = /^([01]\d|2[0-3]):([0-5]\d)(?::([0-5]\d))?$/.exec(raw);
-
-  if (!match) {
-    throw createHttpError(400, message);
-  }
-
-  return new Date(Date.UTC(
-    1970,
-    0,
-    1,
-    Number(match[1]),
-    Number(match[2]),
-    Number(match[3] || 0),
-    0
-  ));
-}
-
-function formatTimeOnly(date) {
-  if (!(date instanceof Date) || Number.isNaN(date.getTime())) {
-    return null;
-  }
-
-  return date.toISOString().slice(11, 19);
-}
 
 function detectMode(slot, defaultMode) {
   const explicitMode = normalizeMode(slot.mode ?? slot.availabilityMode ?? slot.type);
@@ -117,17 +66,18 @@ function detectMode(slot, defaultMode) {
     return explicitMode;
   }
 
-  if (slot.startDateTime != null || slot.endDateTime != null || slot.startDate != null || slot.endDate != null) {
+  const hasSemesterFields = slot.startDateTime != null || slot.endDateTime != null || slot.startDate != null || slot.endDate != null;
+  const hasWeeklyFields = slot.dayOfWeek != null || slot.startTime != null || slot.endTime != null || slot.academicYearId != null || slot.isActive != null;
+
+  if (hasSemesterFields && hasWeeklyFields) {
+    throw createHttpError(400, 'Campos de disponibilidade incompativeis: especifica o campo mode explicitamente');
+  }
+
+  if (hasSemesterFields) {
     return 'semester';
   }
 
-  if (
-    slot.dayOfWeek != null
-    || slot.startTime != null
-    || slot.endTime != null
-    || slot.academicYearId != null
-    || slot.isActive != null
-  ) {
+  if (hasWeeklyFields) {
     return 'weekly';
   }
 
@@ -435,7 +385,8 @@ async function getAvailability(teacherId) {
 }
 
 async function updateAvailability(teacherId, availabilityId, body) {
-  const payload = normalizeAvailabilityPayload(body, { requireSlot: false });
+  const notes = normalizeText(body?.notes);
+  const requestedMode = normalizeMode(body?.mode ?? body?.availabilityMode ?? body?.type);
 
   if (!Number.isInteger(availabilityId) || availabilityId <= 0) {
     throw createHttpError(400, 'Availability id invalido');
@@ -449,16 +400,15 @@ async function updateAvailability(teacherId, availabilityId, body) {
     }
 
     const currentMode = existing.TeacherAvailabilityPunctual ? 'semester' : 'weekly';
-    const requestedMode = payload.mode;
 
     if (requestedMode && requestedMode !== currentMode) {
       throw createHttpError(400, 'Modo de disponibilidade invalido para atualizacao');
     }
 
-    if (payload.notes !== null || Object.prototype.hasOwnProperty.call(body, 'notes')) {
+    if (notes !== null || Object.prototype.hasOwnProperty.call(body, 'notes')) {
       await tx.teacherAvailability.update({
         where: { AvailabilityID: availabilityId },
-        data: { Notes: payload.notes },
+        data: { Notes: notes },
       });
     }
 
@@ -562,17 +512,28 @@ async function createException(teacherId, body) {
       },
     });
 
+    await cancelPendingBookingsForTeacherAbsence(tx, teacherId, payload.startDate, payload.endDate);
+
     return serializeException(created);
   });
 }
 
 async function getPendingExceptions(teacherId) {
   const now = new Date();
+  const pendingStatus = await prisma.teacherAbsenceStatus.findFirst({
+    where: { StatusName: PENDING_STATUS_NAME },
+    select: { StatusID: true },
+  });
+
+  if (!pendingStatus) {
+    throw createHttpError(500, 'Estado de ausencia nao configurado');
+  }
+
   const rows = await prisma.teacherAbsence.findMany({
     where: {
       TeacherID: teacherId,
       EndDate: { gte: now },
-      ReviewedAt: null,
+      StatusID: pendingStatus.StatusID,
     },
     include: {
       TeacherAbsenceStatus: {

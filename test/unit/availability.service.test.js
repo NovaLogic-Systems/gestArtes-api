@@ -14,6 +14,14 @@ function createState() {
     punctualRows: new Map(),
     recurringRows: new Map(),
     exceptions: [],
+    sessionStatuses: [
+      { StatusID: 1, StatusName: 'Pending' },
+      { StatusID: 2, StatusName: 'Approved' },
+      { StatusID: 3, StatusName: 'Cancelled' },
+    ],
+    pendingSessions: [],
+    updatedSessionIds: [],
+    notifications: [],
     academicYearById: new Map([[1, { AcademicYearID: 1, Label: '2025/2026' }]]),
   };
 }
@@ -135,7 +143,7 @@ const fakePrisma = {
     findMany: async ({ where }) => state.exceptions
       .filter((row) => row.TeacherID === where.TeacherID)
       .filter((row) => row.EndDate >= where.EndDate.gte)
-      .filter((row) => row.ReviewedAt == null)
+      .filter((row) => where.StatusID == null || row.StatusID === where.StatusID)
       .map((row) => ({
         ...row,
         TeacherAbsenceStatus: {
@@ -143,6 +151,35 @@ const fakePrisma = {
           StatusName: 'Pending',
         },
       })),
+  },
+  sessionStatus: {
+    findMany: async () => state.sessionStatuses,
+  },
+  coachingSession: {
+    findMany: async ({ where }) => state.pendingSessions.filter((session) => (
+      session.StartTime < where.StartTime.lt
+      && session.EndTime > where.EndTime.gt
+    )),
+    updateMany: async ({ where, data }) => {
+      state.updatedSessionIds = where.SessionID.in;
+      state.pendingSessions = state.pendingSessions.map((session) => (
+        where.SessionID.in.includes(session.SessionID)
+          ? { ...session, ...data }
+          : session
+      ));
+
+      return { count: where.SessionID.in.length };
+    },
+  },
+  notification: {
+    createMany: async ({ data }) => {
+      const created = data.map((item, i) => ({
+        NotificationID: state.notifications.length + i + 1,
+        ...item,
+      }));
+      state.notifications.push(...created);
+      return { count: created.length };
+    },
   },
 };
 
@@ -221,6 +258,42 @@ test('creates and lists pending exceptions', async () => {
   assert.equal(pending.exceptions[0].reason, 'Holiday');
 });
 
+test('creates exception and auto-cancels overlapping pending sessions with notifications', async () => {
+  resetState();
+  state.pendingSessions = [
+    {
+      SessionID: 77,
+      RequestedByUserID: 9001,
+      StartTime: new Date('2026-06-10T10:00:00.000Z'),
+      EndTime: new Date('2026-06-10T11:00:00.000Z'),
+      SessionStudent: [
+        { StudentAccount: { UserID: 9002 } },
+      ],
+    },
+    {
+      SessionID: 78,
+      RequestedByUserID: 9003,
+      StartTime: new Date('2026-06-12T10:00:00.000Z'),
+      EndTime: new Date('2026-06-12T11:00:00.000Z'),
+      SessionStudent: [],
+    },
+  ];
+
+  const exception = await availabilityService.createException(42, {
+    startDate: '2026-06-10T00:00:00.000Z',
+    endDate: '2026-06-11T00:00:00.000Z',
+    reason: 'Holiday',
+  });
+
+  assert.equal(exception.reason, 'Holiday');
+  assert.deepEqual(state.updatedSessionIds, [77]);
+  assert.equal(state.pendingSessions[0].StatusID, 3);
+  assert.equal(state.pendingSessions[0].CancellationReason, 'Cancelamento automatico por indisponibilidade do professor');
+  assert.equal(state.notifications.length, 2);
+  assert.equal(state.notifications[0].SessionID, 77);
+  assert.equal(state.notifications[0].Title.startsWith('A tua reserva foi cancelada automaticamente'), true);
+});
+
 test('fails when pending availability status is not configured', async () => {
   resetState();
   state.hasAvailabilityPendingStatus = false;
@@ -239,4 +312,177 @@ test('fails when pending availability status is not configured', async () => {
       return true;
     }
   );
+});
+
+test('submits semester availability and summarizes slots', async () => {
+  resetState();
+
+  const result = await availabilityService.submitAvailability(42, {
+    mode: 'semester',
+    startDateTime: '2026-09-01T08:00:00.000Z',
+    endDateTime: '2026-09-01T10:00:00.000Z',
+  });
+
+  assert.equal(result.summary.totalSlots, 1);
+  assert.equal(result.summary.weeklySlots, 0);
+  assert.equal(result.summary.semesterSlots, 1);
+  assert.equal(result.availability[0].mode, 'semester');
+  assert.equal(result.availability[0].slot.startDateTime.toISOString(), '2026-09-01T08:00:00.000Z');
+});
+
+test('submits multiple slots in a single request', async () => {
+  resetState();
+
+  const result = await availabilityService.submitAvailability(42, {
+    slots: [
+      { mode: 'weekly', dayOfWeek: 1, startTime: '09:00', endTime: '11:00', academicYearId: 1 },
+      { mode: 'weekly', dayOfWeek: 3, startTime: '14:00', endTime: '16:00', academicYearId: 1 },
+    ],
+  });
+
+  assert.equal(result.summary.totalSlots, 2);
+  assert.equal(result.summary.weeklySlots, 2);
+});
+
+test('getAvailability returns all slots for a teacher', async () => {
+  resetState();
+
+  await availabilityService.submitAvailability(42, {
+    mode: 'weekly',
+    dayOfWeek: 2,
+    startTime: '10:00',
+    endTime: '12:00',
+    academicYearId: 1,
+  });
+
+  const result = await availabilityService.getAvailability(42);
+
+  assert.equal(result.summary.totalSlots, 1);
+  assert.equal(result.availability[0].teacherId, 42);
+  assert.equal(result.availability[0].mode, 'weekly');
+});
+
+test('updates recurring availability in place', async () => {
+  resetState();
+
+  await availabilityService.submitAvailability(42, {
+    mode: 'weekly',
+    dayOfWeek: 1,
+    startTime: '09:00',
+    endTime: '11:00',
+    academicYearId: 1,
+  });
+
+  const updated = await availabilityService.updateAvailability(42, 1, {
+    startTime: '10:00',
+    endTime: '12:00',
+  });
+
+  assert.equal(updated.mode, 'weekly');
+  assert.equal(updated.slot.startTime, '10:00:00');
+  assert.equal(updated.slot.endTime, '12:00:00');
+});
+
+test('rejects update when requested mode differs from existing mode', async () => {
+  resetState();
+
+  await availabilityService.submitAvailability(42, {
+    mode: 'weekly',
+    dayOfWeek: 1,
+    startTime: '09:00',
+    endTime: '11:00',
+    academicYearId: 1,
+  });
+
+  await assert.rejects(
+    () => availabilityService.updateAvailability(42, 1, {
+      mode: 'semester',
+      startDateTime: '2026-09-01T08:00:00.000Z',
+      endDateTime: '2026-09-01T10:00:00.000Z',
+    }),
+    (error) => {
+      assert.equal(error.status, 400);
+      assert.equal(error.message, 'Modo de disponibilidade invalido para atualizacao');
+      return true;
+    }
+  );
+});
+
+test('rejects update for non-existent availability id', async () => {
+  resetState();
+
+  await assert.rejects(
+    () => availabilityService.updateAvailability(42, 9999, { startTime: '10:00', endTime: '12:00' }),
+    (error) => {
+      assert.equal(error.status, 404);
+      assert.equal(error.message, 'Disponibilidade nao encontrada');
+      return true;
+    }
+  );
+});
+
+test('rejects weekly slot with end time not after start time', async () => {
+  resetState();
+
+  await assert.rejects(
+    () => availabilityService.submitAvailability(42, {
+      mode: 'weekly',
+      dayOfWeek: 1,
+      startTime: '11:00',
+      endTime: '09:00',
+      academicYearId: 1,
+    }),
+    (error) => {
+      assert.equal(error.status, 400);
+      assert.equal(error.message, 'Intervalo horario invalido');
+      return true;
+    }
+  );
+});
+
+test('rejects slot with conflicting semester and weekly fields and no explicit mode', async () => {
+  resetState();
+
+  await assert.rejects(
+    () => availabilityService.submitAvailability(42, {
+      startDateTime: '2026-09-01T08:00:00.000Z',
+      dayOfWeek: 1,
+    }),
+    (error) => {
+      assert.equal(error.status, 400);
+      assert.match(error.message, /incompativeis/);
+      return true;
+    }
+  );
+});
+
+test('getPendingExceptions returns empty list when no pending exceptions exist', async () => {
+  resetState();
+
+  const result = await availabilityService.getPendingExceptions(42);
+
+  assert.equal(result.summary.pendingExceptions, 0);
+  assert.deepEqual(result.exceptions, []);
+});
+
+test('notifications use human-readable dates in absence cancellation messages', async () => {
+  resetState();
+  state.pendingSessions = [
+    {
+      SessionID: 55,
+      RequestedByUserID: 9001,
+      StartTime: new Date('2026-06-10T10:00:00.000Z'),
+      EndTime: new Date('2026-06-10T11:00:00.000Z'),
+      SessionStudent: [],
+    },
+  ];
+
+  await availabilityService.createException(42, {
+    startDate: '2026-06-10T00:00:00.000Z',
+    endDate: '2026-06-11T00:00:00.000Z',
+  });
+
+  assert.equal(state.notifications.length, 1);
+  assert.ok(!state.notifications[0].Message.includes('T'), 'Message should not contain ISO T separator');
+  assert.ok(!state.notifications[0].Message.includes('.000Z'), 'Message should not contain ISO milliseconds');
 });

@@ -144,6 +144,13 @@ describe('Coaching API (Jest + SuperTest)', () => {
 
     expect(response.status).toBe(400);
     expect(response.body.error).toBe('Validation failed');
+    expect(response.body.details).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          path: expect.arrayContaining(['endTime']),
+        }),
+      ]),
+    );
     expect(coachingServiceMock.createBooking).not.toHaveBeenCalled();
   });
 

@@ -608,6 +608,295 @@ async function getSessionHistory(studentUserId) {
   });
 }
 
+async function getWeeklyMap({ weekStart: weekStartStr, teacherId, studioId }) {
+  const weekStartInput = weekStartStr || new Date().toISOString().slice(0, 10);
+  const { weekStart, weekEnd } = getWeekBounds(weekStartInput);
+
+  const activeYear = await prisma.academicYear.findFirst({
+    where: { IsActive: true },
+    select: { AcademicYearID: true },
+  });
+
+  if (!activeYear) {
+    throw createHttpError(503, 'Nenhum ano letivo ativo encontrado');
+  }
+
+  // Build query filters
+  const teacherWhere = {
+    IsActive: true,
+    UserRole: { some: { Role: { RoleName: 'teacher' } } },
+  };
+
+  if (teacherId) {
+    const parsedTeacherId = toPositiveInt(teacherId);
+    if (!parsedTeacherId) throw createHttpError(400, 'teacherId inválido');
+    teacherWhere.UserID = parsedTeacherId;
+  }
+
+  const studioWhere = {};
+  if (studioId) {
+    const parsedStudioId = toPositiveInt(studioId);
+    if (!parsedStudioId) throw createHttpError(400, 'studioId inválido');
+    studioWhere.StudioID = parsedStudioId;
+  }
+
+  // Fetch all required data in parallel
+  const [teachers, studios, recurringAvailabilities, punctualAvailabilities, absences, allSessions] = await Promise.all([
+    prisma.user.findMany({
+      where: teacherWhere,
+      select: {
+        UserID: true,
+        FirstName: true,
+        LastName: true,
+        TeacherModality: { select: { ModalityID: true } },
+      },
+      orderBy: { FirstName: 'asc' },
+    }),
+    prisma.studio.findMany({
+      where: studioWhere,
+      select: {
+        StudioID: true,
+        StudioName: true,
+        Capacity: true,
+        StudioModality: { select: { ModalityID: true } },
+      },
+      orderBy: { StudioName: 'asc' },
+    }),
+    prisma.teacherAvailability.findMany({
+      where: {
+        TeacherID: { in: teachers.map((t) => t.UserID) },
+        TeacherAvailabilityStatus: buildApprovedAvailabilityStatusFilter(),
+        TeacherAvailabilityRecurring: {
+          is: { AcademicYearID: activeYear.AcademicYearID, IsActive: true },
+        },
+      },
+      select: {
+        TeacherID: true,
+        TeacherAvailabilityRecurring: {
+          select: { DayOfWeek: true, StartTime: true, EndTime: true },
+        },
+      },
+    }),
+    prisma.teacherAvailability.findMany({
+      where: {
+        TeacherID: { in: teachers.map((t) => t.UserID) },
+        TeacherAvailabilityStatus: buildApprovedAvailabilityStatusFilter(),
+        TeacherAvailabilityPunctual: {
+          is: { StartDateTime: { lt: weekEnd }, EndDateTime: { gt: weekStart } },
+        },
+      },
+      select: {
+        TeacherID: true,
+        TeacherAvailabilityPunctual: {
+          select: { StartDateTime: true, EndDateTime: true },
+        },
+      },
+    }),
+    prisma.teacherAbsence.findMany({
+      where: {
+        TeacherID: { in: teachers.map((t) => t.UserID) },
+        StartDate: { lt: weekEnd },
+        EndDate: { gt: weekStart },
+        TeacherAbsenceStatus: {
+          StatusName: { in: ['approved', 'aprovado', 'validated', 'validado'] },
+        },
+      },
+      select: {
+        TeacherID: true,
+        StartDate: true,
+        EndDate: true,
+        Reason: true,
+      },
+    }),
+    prisma.coachingSession.findMany({
+      where: {
+        StartTime: { lt: weekEnd },
+        EndTime: { gt: weekStart },
+        ...(studioId && { StudioID: toPositiveInt(studioId) }),
+      },
+      include: {
+        SessionTeacher: { select: { TeacherID: true } },
+        SessionStudent: { select: { StudentAccountID: true } },
+        Studio: { select: { StudioID: true, Capacity: true } },
+        SessionStatus: { select: { StatusName: true } },
+      },
+    }),
+  ]);
+
+  const teacherIds = teachers.map((t) => t.UserID);
+
+  // Build availability map: teacherId -> date -> { availableWindows, absenceReasons }
+  const availabilityMap = new Map();
+
+  // Initialize all teachers and dates
+  for (const teacher of teachers) {
+    if (!availabilityMap.has(teacher.UserID)) {
+      availabilityMap.set(teacher.UserID, new Map());
+    }
+    for (let d = 0; d < 7; d++) {
+      const date = new Date(weekStart);
+      date.setUTCDate(date.getUTCDate() + d);
+      const dateStr = date.toISOString().slice(0, 10);
+      if (!availabilityMap.get(teacher.UserID).has(dateStr)) {
+        availabilityMap.get(teacher.UserID).set(dateStr, {
+          availableWindows: [],
+          absenceReasons: [],
+        });
+      }
+    }
+  }
+
+  // Add recurring availabilities
+  for (const avail of recurringAvailabilities) {
+    const rec = avail.TeacherAvailabilityRecurring;
+    if (!rec) continue;
+
+    const date = dateForDayOfWeek(weekStart, rec.DayOfWeek);
+    if (date >= weekEnd) continue;
+
+    const dateStr = date.toISOString().slice(0, 10);
+    const teacherAvailMap = availabilityMap.get(avail.TeacherID);
+    if (teacherAvailMap && teacherAvailMap.has(dateStr)) {
+      teacherAvailMap.get(dateStr).availableWindows.push({
+        startTime: toUTCTimeString(rec.StartTime),
+        endTime: toUTCTimeString(rec.EndTime),
+        isRecurring: true,
+      });
+    }
+  }
+
+  // Add punctual availabilities
+  for (const avail of punctualAvailabilities) {
+    const punc = avail.TeacherAvailabilityPunctual;
+    if (!punc) continue;
+
+    const startDt = new Date(punc.StartDateTime);
+    const date = new Date(startDt);
+    date.setUTCHours(0, 0, 0, 0);
+    const dateStr = date.toISOString().slice(0, 10);
+
+    const teacherAvailMap = availabilityMap.get(avail.TeacherID);
+    if (teacherAvailMap && teacherAvailMap.has(dateStr)) {
+      teacherAvailMap.get(dateStr).availableWindows.push({
+        startTime: toUTCTimeString(startDt),
+        endTime: toUTCTimeString(punc.EndDateTime),
+        isRecurring: false,
+      });
+    }
+  }
+
+  // Add absences
+  for (const absence of absences) {
+    for (let d = 0; d < 7; d++) {
+      const date = new Date(weekStart);
+      date.setUTCDate(date.getUTCDate() + d);
+      date.setUTCHours(0, 0, 0, 0);
+
+      const absenceStart = new Date(absence.StartDate);
+      absenceStart.setUTCHours(0, 0, 0, 0);
+      const absenceEnd = new Date(absence.EndDate);
+      absenceEnd.setUTCHours(0, 0, 0, 0);
+
+      if (date >= absenceStart && date < absenceEnd) {
+        const dateStr = date.toISOString().slice(0, 10);
+        const teacherAvailMap = availabilityMap.get(absence.TeacherID);
+        if (teacherAvailMap && teacherAvailMap.has(dateStr)) {
+          teacherAvailMap.get(dateStr).absenceReasons.push({
+            startDate: absenceStart.toISOString().slice(0, 10),
+            endDate: absenceEnd.toISOString().slice(0, 10),
+            reason: absence.Reason || 'Sem especificação',
+          });
+        }
+      }
+    }
+  }
+
+  // Build occupancy data per teacher per day
+  const occupancyMap = [];
+
+  for (const teacher of teachers) {
+    const dateMap = [];
+
+    for (let d = 0; d < 7; d++) {
+      const date = new Date(weekStart);
+      date.setUTCDate(date.getUTCDate() + d);
+      const dateStr = date.toISOString().slice(0, 10);
+      const dayOfWeek = date.getUTCDay();
+
+      const availInfo = availabilityMap.get(teacher.UserID).get(dateStr);
+      const dayStart = new Date(date);
+      dayStart.setUTCHours(0, 0, 0, 0);
+      const dayEnd = new Date(date);
+      dayEnd.setUTCDate(dayEnd.getUTCDate() + 1);
+
+      // Get sessions for this teacher on this day
+      const daySessionsForTeacher = allSessions.filter(
+        (session) =>
+          session.SessionTeacher.some((st) => st.TeacherID === teacher.UserID) &&
+          new Date(session.StartTime) >= dayStart &&
+          new Date(session.StartTime) < dayEnd
+      );
+
+      // Determine availability status for the day
+      let dayStatus = 'unavailable';
+      if (availInfo.absenceReasons.length > 0) {
+        dayStatus = 'absent';
+      } else if (availInfo.availableWindows.length > 0) {
+        dayStatus = 'available';
+      }
+
+      dateMap.push({
+        date: dateStr,
+        dayOfWeek,
+        status: dayStatus, // available | absent | unavailable
+        availableWindows: availInfo.availableWindows,
+        absenceReasons: availInfo.absenceReasons,
+        sessions: daySessionsForTeacher.map((session) => {
+          const enrolledCount = session.SessionStudent.length;
+          const isAtCapacity =
+            session.Studio.Capacity > 0 &&
+            enrolledCount >= session.Studio.Capacity;
+
+          return {
+            sessionId: session.SessionID,
+            startTime: session.StartTime,
+            endTime: session.EndTime,
+            studioId: session.Studio.StudioID,
+            studioAtCapacity: isAtCapacity,
+            enrolledCount,
+            maxParticipants: session.MaxParticipants || session.Studio.Capacity,
+            status: session.SessionStatus?.StatusName,
+          };
+        }),
+      });
+    }
+
+    occupancyMap.push({
+      teacherId: teacher.UserID,
+      name: [teacher.FirstName, teacher.LastName].filter(Boolean).join(' '),
+      modalityIds: teacher.TeacherModality.map((tm) => tm.ModalityID),
+      dateMap,
+    });
+  }
+
+  return {
+    weekStart: weekStart.toISOString().slice(0, 10),
+    weekEnd: weekEnd.toISOString().slice(0, 10),
+    teachers: teachers.map((t) => ({
+      teacherId: t.UserID,
+      name: [t.FirstName, t.LastName].filter(Boolean).join(' '),
+      modalityIds: t.TeacherModality.map((tm) => tm.ModalityID),
+    })),
+    studios: studios.map((s) => ({
+      studioId: s.StudioID,
+      studioName: s.StudioName,
+      capacity: s.Capacity,
+      modalityIds: s.StudioModality.map((sm) => sm.ModalityID),
+    })),
+    occupancyMap,
+  };
+}
+
 module.exports = {
   cancelBooking,
   confirmCompletion,
@@ -615,4 +904,5 @@ module.exports = {
   getAvailableSlots,
   getCompatibleStudios,
   getSessionHistory,
+  getWeeklyMap,
 };

@@ -39,6 +39,11 @@ function createCoachingContext() {
         return null;
       }),
     },
+    userRole: {
+      findMany: jest.fn(async () => ([
+        { UserID: adminUser.UserID },
+      ])),
+    },
   };
 
   const bcryptMock = {
@@ -76,6 +81,10 @@ function createCoachingContext() {
   const coachingServiceMock = {
     getAvailableSlots: jest.fn(async () => ({ weeks: [] })),
     getCompatibleStudios: jest.fn(async () => []),
+    createSessionInitiative: jest.fn(async () => ({
+      SessionID: 999,
+      StartTime: new Date('2026-04-27T10:00:00.000Z'),
+    })),
     createBooking: jest.fn(async () => ({ SessionID: 999 })),
     cancelBooking: jest.fn(async () => ({ cancelledSessionCount: 1 })),
     confirmCompletion: jest.fn(async () => ({ success: true })),
@@ -152,6 +161,50 @@ describe('Coaching API (Jest + SuperTest)', () => {
       ]),
     );
     expect(coachingServiceMock.createBooking).not.toHaveBeenCalled();
+  });
+
+  test('POST /coaching/sessions creates a pending approval initiative and notifies management', async () => {
+    const {
+      app,
+      teacherUser,
+      adminUser,
+      coachingServiceMock,
+      notificationControllerMock,
+    } = createCoachingContext();
+    const agent = request.agent(app);
+
+    await loginAs(agent, teacherUser);
+
+    const response = await agent.post('/coaching/sessions').send({
+      date: '2026-05-15T10:00:00.000Z',
+      studioId: 12,
+      modalityId: 7,
+      capacity: 8,
+      pricePerHour: 36,
+      isExternal: false,
+      isOutsideStdHours: false,
+    });
+
+    expect(response.status).toBe(201);
+    expect(coachingServiceMock.createSessionInitiative).toHaveBeenCalledWith(
+      expect.objectContaining({
+        date: '2026-05-15T10:00:00.000Z',
+        studioId: 12,
+        modalityId: 7,
+        capacity: 8,
+        pricePerHour: 36,
+        isExternal: false,
+        isOutsideStdHours: false,
+      }),
+      teacherUser.UserID,
+    );
+    expect(notificationControllerMock.sendNotification).toHaveBeenCalledWith(
+      expect.any(Object),
+      expect.objectContaining({
+        userId: adminUser.UserID,
+        type: 'coaching',
+      }),
+    );
   });
 
   test('POST /coaching/sessions/:id/join-requests creates a booking request for students', async () => {

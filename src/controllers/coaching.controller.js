@@ -1,9 +1,29 @@
+const prisma = require('../config/prisma');
 const coachingService = require('../services/coaching.service');
 const { sendNotification } = require('./notification.controller');
 
 function toPositiveInt(value) {
   const parsed = Number.parseInt(value, 10);
   return Number.isInteger(parsed) && parsed > 0 ? parsed : null;
+}
+
+async function listAdminUserIds() {
+  const rows = await prisma.userRole.findMany({
+    where: {
+      Role: {
+        RoleName: 'admin',
+      },
+      User: {
+        IsActive: true,
+        DeletedAt: null,
+      },
+    },
+    select: {
+      UserID: true,
+    },
+  });
+
+  return [...new Set(rows.map((row) => row.UserID).filter((userId) => Number.isInteger(userId) && userId > 0))];
 }
 
 async function getAvailableSlots(req, res, next) {
@@ -23,6 +43,40 @@ async function getCompatibleStudios(req, res, next) {
     res.json({ studios });
   } catch (error) {
     next(error);
+  }
+}
+
+async function createSession(req, res, next) {
+  try {
+    const teacherUserId = toPositiveInt(req.session?.userId);
+    if (!teacherUserId) return res.status(401).json({ error: 'Não autenticado' });
+
+    const session = await coachingService.createSessionInitiative(req.body, teacherUserId);
+    const adminUserIds = await listAdminUserIds();
+    const startLabel = new Date(session.StartTime).toLocaleString('pt-PT', {
+      timeZone: 'UTC',
+      dateStyle: 'short',
+      timeStyle: 'short',
+    });
+
+    await Promise.allSettled(
+      adminUserIds.map((userId) => sendNotification(req, {
+        userId,
+        type: 'coaching',
+        message: `Nova iniciativa de coaching pendente de aprovação para ${startLabel}. Sessão #${session.SessionID}.`,
+      }))
+    );
+
+    return res.status(201).json({ session });
+  } catch (error) {
+    if (error?.status) {
+      return res.status(error.status).json({
+        error: error.message,
+        details: error.details || null,
+      });
+    }
+
+    return next(error);
   }
 }
 
@@ -107,6 +161,7 @@ module.exports = {
   cancelBooking,
   confirmCompletion,
   createBooking,
+  createSession,
   getAvailableSlots,
   getCompatibleStudios,
   getSessionHistory,

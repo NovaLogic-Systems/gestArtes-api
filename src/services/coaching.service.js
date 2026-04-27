@@ -2,6 +2,9 @@ const { Prisma } = require('@prisma/client');
 const prisma = require('../config/prisma');
 const { createSessionWithBusinessRules } = require('./session.service');
 
+const DEFAULT_TEACHER_INITIATIVE_DURATION_MS = 60 * 60 * 1000;
+const PENDING_APPROVAL_STATUS_NAME = 'PendingApproval';
+
 function createHttpError(status, message, details) {
   const error = new Error(message);
   error.status = status;
@@ -309,6 +312,97 @@ async function getCompatibleStudios(modalityId) {
   }));
 }
 
+async function resolveOrCreateSessionStatusId(statusName) {
+  const normalizedStatusName = String(statusName || '').trim();
+
+  if (!normalizedStatusName) {
+    throw createHttpError(400, 'Estado da sessão inválido');
+  }
+
+  const existingStatus = await prisma.sessionStatus.findFirst({
+    where: {
+      StatusName: {
+        equals: normalizedStatusName,
+        mode: 'insensitive',
+      },
+    },
+    select: { StatusID: true },
+  });
+
+  if (existingStatus) {
+    return existingStatus.StatusID;
+  }
+
+  const createdStatus = await prisma.sessionStatus.create({
+    data: { StatusName: normalizedStatusName },
+    select: { StatusID: true },
+  });
+
+  return createdStatus.StatusID;
+}
+
+async function resolveOrCreatePricingRateId(pricePerHour) {
+  const hourlyRate = Number(pricePerHour);
+
+  if (!Number.isFinite(hourlyRate) || hourlyRate <= 0) {
+    throw createHttpError(400, 'pricePerHour inválido');
+  }
+
+  const existingRate = await prisma.sessionPricingRate.findFirst({
+    where: { HourlyRate: hourlyRate },
+    select: { PricingRateID: true },
+  });
+
+  if (existingRate) {
+    return existingRate.PricingRateID;
+  }
+
+  const createdRate = await prisma.sessionPricingRate.create({
+    data: {
+      RateName: `Teacher initiative ${hourlyRate.toFixed(2)}`,
+      HourlyRate: hourlyRate,
+    },
+    select: { PricingRateID: true },
+  });
+
+  return createdRate.PricingRateID;
+}
+
+async function createSessionInitiative(
+  { date, studioId, modalityId, capacity, pricePerHour, isExternal, isOutsideStdHours },
+  requestedByUserId
+) {
+  const startTime = new Date(date);
+
+  if (Number.isNaN(startTime.getTime())) {
+    throw createHttpError(400, 'date inválida');
+  }
+
+  const endTime = new Date(startTime.getTime() + DEFAULT_TEACHER_INITIATIVE_DURATION_MS);
+
+  const [statusId, pricingRateId] = await Promise.all([
+    resolveOrCreateSessionStatusId(PENDING_APPROVAL_STATUS_NAME),
+    resolveOrCreatePricingRateId(pricePerHour),
+  ]);
+
+  return createSessionWithBusinessRules(
+    {
+      studioId: Number(studioId),
+      startTime,
+      endTime,
+      modalityId: Number(modalityId),
+      pricingRateId,
+      statusId,
+      teacherIds: [requestedByUserId],
+      maxParticipants: Number(capacity),
+      isExternal: Boolean(isExternal),
+      isOutsideStdHours: Boolean(isOutsideStdHours),
+      reviewNotes: null,
+    },
+    requestedByUserId
+  );
+}
+
 async function createBooking({ teacherId, studioId, modalityId, startTime, endTime, maxParticipants, notes }, studentUserId) {
   const parsedTeacherId = toPositiveInt(teacherId);
   const parsedStudioId = toPositiveInt(studioId);
@@ -596,6 +690,7 @@ async function getSessionHistory(studentUserId) {
 }
 
 module.exports = {
+  createSessionInitiative,
   cancelBooking,
   confirmCompletion,
   createBooking,

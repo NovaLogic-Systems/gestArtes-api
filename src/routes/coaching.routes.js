@@ -1,6 +1,7 @@
 const express = require('express');
 const { requireAuth, requireRole } = require('../middlewares/auth.middleware');
 const { validateZod } = require('../middlewares/zodValidation.middleware');
+const { createTeacherSessionSchema } = require('../middlewares/schemas/coaching.schema');
 const { bookingSchema } = require('../middlewares/schemas/booking.schema');
 const coachingController = require('../controllers/coaching.controller');
 
@@ -11,6 +12,14 @@ router.get('/coaching/slots', requireAuth, coachingController.getAvailableSlots)
 
 // BR-05: list studios compatible with a given modality
 router.get('/studios/compatible', requireAuth, coachingController.getCompatibleStudios);
+
+router.post(
+  '/coaching/sessions',
+  requireAuth,
+  requireRole(['TEACHER']),
+  validateZod(createTeacherSessionSchema),
+  coachingController.createSession
+);
 
 // Student session history (past + future)
 router.get(

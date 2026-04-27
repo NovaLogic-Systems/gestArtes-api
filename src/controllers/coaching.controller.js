@@ -1,5 +1,6 @@
 const coachingService = require('../services/coaching.service');
 const { sendNotification } = require('./notification.controller');
+const logger = require('../utils/logger');
 
 function toPositiveInt(value) {
   const parsed = Number.parseInt(value, 10);
@@ -26,6 +27,52 @@ async function getCompatibleStudios(req, res, next) {
   }
 }
 
+async function createSession(req, res, next) {
+  try {
+    const teacherUserId = toPositiveInt(req.session?.userId);
+    if (!teacherUserId) {
+      return res.status(500).json({ error: 'Sessão autenticada inválida' });
+    }
+
+    const session = await coachingService.createSessionInitiative(req.body, teacherUserId);
+    const adminUserIds = await coachingService.listAdminUserIds();
+    const startLabel = new Date(session.StartTime).toLocaleString('pt-PT', {
+      timeZone: 'UTC',
+      dateStyle: 'short',
+      timeStyle: 'short',
+    });
+
+    const notificationResults = await Promise.allSettled(
+      adminUserIds.map((userId) => sendNotification(req, {
+        userId,
+        type: 'coaching',
+        message: `Nova iniciativa de coaching pendente de aprovação para ${startLabel}. Sessão #${session.SessionID}.`,
+      }))
+    );
+
+    const failedNotifications = notificationResults.filter((result) => result.status === 'rejected');
+    if (failedNotifications.length > 0) {
+      logger.warn('Failed to notify one or more admins about a teacher coaching initiative', {
+        sessionId: session.SessionID,
+        attemptedRecipients: adminUserIds.length,
+        failedRecipients: failedNotifications.length,
+        reasons: failedNotifications.map((result) => String(result.reason?.message || result.reason || 'Unknown')),
+      });
+    }
+
+    return res.status(201).json({ session });
+  } catch (error) {
+    if (error?.status) {
+      return res.status(error.status).json({
+        error: error.message,
+        details: error.details || null,
+      });
+    }
+
+    return next(error);
+  }
+}
+
 async function createBooking(req, res, next) {
   try {
     const studentUserId = toPositiveInt(req.session?.userId);
@@ -49,8 +96,12 @@ async function createBooking(req, res, next) {
           type: 'coaching',
           message: `Nova solicitação de sessão de coaching para ${startLabel}. Sessão #${session.SessionID}.`,
         });
-      } catch {
-        // Notification failure must not block the booking response
+      } catch (notificationError) {
+        logger.warn('Failed to notify teacher about new coaching booking request', {
+          sessionId: session.SessionID,
+          teacherUserId: parsedTeacherId,
+          error: notificationError?.message,
+        });
       }
     }
 
@@ -117,6 +168,7 @@ module.exports = {
   cancelBooking,
   confirmCompletion,
   createBooking,
+  createSession,
   getAvailableSlots,
   getCompatibleStudios,
   getSessionHistory,

@@ -1,6 +1,10 @@
-const { Prisma } = require('@prisma/client');
 const prisma = require('../config/prisma');
 const { createSessionWithBusinessRules } = require('./session.service');
+
+// BR-11/BR-12: teacher initiatives are created pending management approval.
+// BR-19: initiative duration is one hour by default.
+const DEFAULT_TEACHER_INITIATIVE_DURATION_MS = 60 * 60 * 1000;
+const PENDING_APPROVAL_STATUS_NAME = 'PendingApproval';
 
 function createHttpError(status, message, details) {
   const error = new Error(message);
@@ -320,6 +324,116 @@ async function getCompatibleStudios(modalityId) {
     studioName: s.StudioName,
     capacity: s.Capacity,
   }));
+}
+
+async function resolveSessionStatusId(statusName) {
+  const normalizedStatusName = String(statusName || '').trim();
+
+  if (!normalizedStatusName) {
+    throw createHttpError(400, 'Estado da sessão inválido');
+  }
+
+  const existingStatus = await prisma.sessionStatus.findFirst({
+    where: {
+      StatusName: {
+        equals: normalizedStatusName,
+        mode: 'insensitive',
+      },
+    },
+    select: { StatusID: true },
+  });
+
+  if (!existingStatus) {
+    throw createHttpError(500, `Estado de sessão "${normalizedStatusName}" não configurado`);
+  }
+
+  return existingStatus.StatusID;
+}
+
+async function resolvePricingRateId(pricingRateId) {
+  const parsedPricingRateId = toPositiveInt(pricingRateId);
+
+  if (pricingRateId !== undefined && pricingRateId !== null && !parsedPricingRateId) {
+    throw createHttpError(400, 'pricingRateId inválido');
+  }
+
+  if (parsedPricingRateId) {
+    const existingRate = await prisma.sessionPricingRate.findUnique({
+      where: { PricingRateID: parsedPricingRateId },
+      select: { PricingRateID: true },
+    });
+
+    if (!existingRate) {
+      throw createHttpError(400, 'pricingRateId inválido');
+    }
+
+    return existingRate.PricingRateID;
+  }
+
+  try {
+    const defaultRate = await prisma.sessionPricingRate.findFirstOrThrow({
+      orderBy: { PricingRateID: 'asc' },
+      select: { PricingRateID: true },
+    });
+
+    return defaultRate.PricingRateID;
+  } catch {
+    throw createHttpError(500, 'Nenhuma tabela de preços configurada para iniciativas de teacher');
+  }
+}
+
+async function createSessionInitiative(
+  { date, studioId, modalityId, capacity, pricingRateId, isExternal, isOutsideStdHours },
+  requestedByUserId
+) {
+  const startTime = new Date(date);
+
+  if (Number.isNaN(startTime.getTime())) {
+    throw createHttpError(400, 'date inválida');
+  }
+
+  const endTime = new Date(startTime.getTime() + DEFAULT_TEACHER_INITIATIVE_DURATION_MS);
+
+  const [statusId, resolvedPricingRateId] = await Promise.all([
+    resolveSessionStatusId(PENDING_APPROVAL_STATUS_NAME),
+    resolvePricingRateId(pricingRateId),
+  ]);
+
+  return createSessionWithBusinessRules(
+    {
+      studioId: Number(studioId),
+      startTime,
+      endTime,
+      modalityId: Number(modalityId),
+      pricingRateId: resolvedPricingRateId,
+      statusId,
+      teacherIds: [requestedByUserId],
+      maxParticipants: Number(capacity),
+      isExternal: Boolean(isExternal),
+      isOutsideStdHours: Boolean(isOutsideStdHours),
+      reviewNotes: null,
+    },
+    requestedByUserId
+  );
+}
+
+async function listAdminUserIds() {
+  const rows = await prisma.userRole.findMany({
+    where: {
+      Role: {
+        RoleName: 'admin',
+      },
+      User: {
+        IsActive: true,
+        DeletedAt: null,
+      },
+    },
+    select: {
+      UserID: true,
+    },
+  });
+
+  return [...new Set(rows.map((row) => row.UserID).filter((userId) => Number.isInteger(userId) && userId > 0))];
 }
 
 async function createBooking({ teacherId, studioId, modalityId, startTime, endTime, maxParticipants, notes }, studentUserId) {
@@ -898,11 +1012,13 @@ async function getWeeklyMap({ weekStart: weekStartStr, teacherId, studioId }) {
 }
 
 module.exports = {
+  createSessionInitiative,
   cancelBooking,
   confirmCompletion,
   createBooking,
   getAvailableSlots,
   getCompatibleStudios,
   getSessionHistory,
+  listAdminUserIds,
   getWeeklyMap,
 };

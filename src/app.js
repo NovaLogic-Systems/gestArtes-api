@@ -4,6 +4,8 @@ const crypto = require('node:crypto');
 const path = require('node:path');
 const express = require('express');
 const http = require('node:http');
+const https = require('node:https');
+const fs = require('node:fs');
 const session = require('express-session');
 const MSSQLStore = require('connect-mssql-v2');
 const cors = require('cors');
@@ -45,6 +47,10 @@ const SESSION_STORE_RETRIES = 1;
 const SESSION_STORE_RETRY_DELAY_MS = 1000;
 const CSP_NONCE_BYTE_LENGTH = 16;
 const IS_PRODUCTION = process.env.NODE_ENV === 'production';
+const SSL_KEY_PATH = process.env.SSL_KEY_PATH || '';
+const SSL_CERT_PATH = process.env.SSL_CERT_PATH || '';
+const HSTS_MAX_AGE = Number(process.env.HSTS_MAX_AGE) || 31536000;
+const HAS_SSL = Boolean(SSL_KEY_PATH && SSL_CERT_PATH);
 const CORS_ALLOW_NO_ORIGIN = parseBoolean(
   process.env.CORS_ALLOW_NO_ORIGIN,
   true
@@ -54,11 +60,8 @@ const SESSION_CROSS_SITE = parseBoolean(
   process.env.SESSION_COOKIE_CROSS_SITE,
   false
 );
-const SESSION_COOKIE_SAMESITE = SESSION_CROSS_SITE ? 'none' : 'strict';
-const SESSION_COOKIE_SECURE = resolveSecureCookieSetting(
-  process.env.SESSION_COOKIE_SECURE,
-  SESSION_CROSS_SITE ? true : (IS_PRODUCTION ? true : 'auto')
-);
+const SESSION_COOKIE_SAMESITE = SESSION_CROSS_SITE ? 'none' : 'lax';
+const SESSION_COOKIE_SECURE = SESSION_CROSS_SITE ? true : (IS_PRODUCTION || HAS_SSL);
 const HAS_SESSION_SECRET = Boolean(process.env.SESSION_SECRET);
 const SESSION_SECRET = HAS_SESSION_SECRET
   ? process.env.SESSION_SECRET
@@ -242,6 +245,23 @@ function safeDecode(value) {
   }
 }
 
+function normalizeFilePath(value) {
+  if (!value) {
+    return '';
+  }
+
+  const trimmed = String(value).trim();
+
+  if (
+    (trimmed.startsWith('"') && trimmed.endsWith('"')) ||
+    (trimmed.startsWith("'") && trimmed.endsWith("'"))
+  ) {
+    return trimmed.slice(1, -1);
+  }
+
+  return trimmed;
+}
+
 function buildMssqlSessionConfig() {
   const rawConnectionString = sanitizeConnectionString(
     process.env.DATABASE_URL
@@ -344,6 +364,9 @@ app.use(
     contentSecurityPolicy: false,
     frameguard: { action: 'deny' },
     referrerPolicy: { policy: 'no-referrer' },
+    hsts: IS_PRODUCTION && HAS_SSL
+      ? { maxAge: HSTS_MAX_AGE, includeSubDomains: true, preload: false }
+      : false,
   })
 );
 app.use(attachCspNonce);
@@ -413,16 +436,62 @@ app.use((err, req, res, next) => {
   errorHandler(err, req, res, next);
 });
 
+function loadSslCredentials() {
+  const keyPath = normalizeFilePath(SSL_KEY_PATH);
+  const certPath = normalizeFilePath(SSL_CERT_PATH);
+
+  try {
+    return {
+      key: fs.readFileSync(keyPath),
+      cert: fs.readFileSync(certPath),
+    };
+  } catch (err) {
+    throw new Error(`Failed to load SSL credentials: ${err.message}`);
+  }
+}
+
 const httpServer = http.createServer(app);
 
 const io = initSocket(httpServer, sessionMiddleware);
 app.set('io', io);
 
 if (require.main === module) {
-  const port = Number(process.env.PORT) || 3001;
-  httpServer.listen(port, () => {
-    logger.info(`API running on http://localhost:${port}`);
-  });
+  if (HAS_SSL) {
+    let credentials;
+    try {
+      credentials = loadSslCredentials();
+    } catch (err) {
+      logger.error(err.message);
+      process.exit(1);
+    }
+
+    const httpsServer = https.createServer(credentials, app);
+    const httpsIo = initSocket(httpsServer, sessionMiddleware);
+    app.set('io', httpsIo);
+
+    const httpsPort = Number(process.env.PORT) || 443;
+    httpsServer.listen(httpsPort, () => {
+      logger.info(`API running on https://localhost:${httpsPort}`);
+    });
+
+    const httpRedirectPort = Number(process.env.HTTP_PORT) || 80;
+    http.createServer((req, res) => {
+      const host = (req.headers.host || '').replace(/:\d+$/, '');
+      const target = httpsPort === 443 ? host : `${host}:${httpsPort}`;
+      res.writeHead(301, { Location: `https://${target}${req.url}` });
+      res.end();
+    }).listen(httpRedirectPort, () => {
+      logger.info(`HTTP→HTTPS redirect on port ${httpRedirectPort}`);
+    });
+  } else {
+    if (IS_PRODUCTION) {
+      logger.warn('SSL not configured; running without HTTPS in production');
+    }
+    const port = Number(process.env.PORT) || 3001;
+    httpServer.listen(port, () => {
+      logger.info(`API running on http://localhost:${port}`);
+    });
+  }
 }
 
 module.exports = app;

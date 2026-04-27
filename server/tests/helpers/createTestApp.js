@@ -17,6 +17,7 @@ function createTestApp({
   prismaMock,
   bcryptMock,
   joinRequestServiceMock,
+  coachingServiceMock,
   notificationControllerMock,
 } = {}) {
   jest.resetModules();
@@ -55,6 +56,10 @@ function createTestApp({
 
   if (joinRequestServiceMock) {
     jest.doMock('../../../src/services/joinRequest.service', () => joinRequestServiceMock);
+  }
+
+  if (coachingServiceMock) {
+    jest.doMock('../../../src/services/coaching.service', () => coachingServiceMock);
   }
 
   if (notificationControllerMock) {

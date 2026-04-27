@@ -4,6 +4,7 @@ const prisma = require('../config/prisma');
 const adminService = require('../services/admin.service');
 const { createSessionWithBusinessRules } = require('../services/session.service');
 const { getAdminDashboardSnapshot } = require('../services/adminDashboard.service');
+const { logAudit, AUDIT_ACTIONS, AUDIT_MODULES } = require('../utils/audit');
 const {
     ROLE_HIERARCHY,
     ROLE_LABELS,
@@ -605,10 +606,15 @@ async function updateUserRoles(req, res, next) {
 async function resetUserPassword(req, res, next) {
     try {
         const targetUserId = Number(req.params.id);
+        const adminUserId = Number(req.session?.userId);
         const newPassword = String(req.body?.newPassword || '');
 
         if (!Number.isInteger(targetUserId) || targetUserId <= 0) {
             return res.status(400).json({ error: 'Invalid user id' });
+        }
+
+        if (!Number.isInteger(adminUserId) || adminUserId <= 0) {
+            return res.status(401).json({ error: 'Not authenticated' });
         }
 
         // Encontra o user alvo atraves do ID e verifica se ele existe, esta ativo e nao foi apagado
@@ -622,7 +628,7 @@ async function resetUserPassword(req, res, next) {
             return res.status(404).json({ error: 'User not found' });
         }
 
-        const passwordHash = await bcrypt.hash(newPassword, BCRYPT_ROUNDS);
+        const passwordHash = await bcrypt.hash(newPassword, MIN_BCRYPT_ROUNDS);
 
         await prisma.user.update({
             where: { UserID: targetUserId },
@@ -632,7 +638,15 @@ async function resetUserPassword(req, res, next) {
             },
         });
 
-        return res.status(204).send();
+        logAudit({
+            userId: adminUserId,
+            action: AUDIT_ACTIONS.USER_PASSWORD_RESET,
+            module: AUDIT_MODULES.USERS,
+            targetType: 'user',
+            targetId: targetUserId,
+        });
+
+        return res.status(200).json({ message: 'Password reset successfully.' });
     } catch (error) {
         return next(error);
     }

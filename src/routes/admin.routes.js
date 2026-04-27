@@ -10,6 +10,7 @@ const {
 } = require('../middlewares/schemas/admin.schema');
 const adminController = require('../controllers/admin.controller');
 const joinRequestController = require('../controllers/joinRequest.controller');
+const availabilityController = require('../controllers/availability.controller');
 const { createSessionSchema } = require('../middlewares/schemas/session.schema');
 
 const router = express.Router();
@@ -110,6 +111,24 @@ router.post(
     ...createSessionSchema,
     validateRequest,
     adminController.createSession
+);
+
+router.get(
+    '/availability/pending',
+    ...adminAccess,
+    availabilityController.listAdminPendingAvailability
+);
+
+router.patch(
+    '/availability/:availabilityId/approve',
+    ...adminAccess,
+    availabilityController.approveAvailability
+);
+
+router.patch(
+    '/availability/:availabilityId/reject',
+    ...adminAccess,
+    availabilityController.rejectAvailability
 );
 
 module.exports = router;

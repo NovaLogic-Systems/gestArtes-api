@@ -290,9 +290,30 @@ const swaggerSpec = swaggerJsdoc({
         },
       },
       '/admin/lostfound': {
+        get: {
+          tags: ['LostFound'],
+          summary: 'List lost and found items for admin',
+          security: [{ sessionCookieAuth: [] }],
+          responses: {
+            200: {
+              description: 'List of lost and found items including archived entries',
+              content: {
+                'application/json': {
+                  schema: {
+                    type: 'array',
+                    items: { $ref: '#/components/schemas/LostFoundAdminItem' },
+                  },
+                },
+              },
+            },
+            401: { description: 'Not authenticated' },
+            403: { description: 'Forbidden' },
+          },
+        },
         post: {
           tags: ['LostFound'],
           summary: 'Create lost and found item (admin)',
+          security: [{ sessionCookieAuth: [] }],
           requestBody: {
             required: true,
             content: {
@@ -316,9 +337,36 @@ const swaggerSpec = swaggerJsdoc({
         },
       },
       '/admin/lostfound/{id}': {
+        get: {
+          tags: ['LostFound'],
+          summary: 'Get one lost and found item for admin',
+          security: [{ sessionCookieAuth: [] }],
+          parameters: [
+            {
+              in: 'path',
+              name: 'id',
+              required: true,
+              schema: { type: 'integer' },
+            },
+          ],
+          responses: {
+            200: {
+              description: 'Item found',
+              content: {
+                'application/json': {
+                  schema: { $ref: '#/components/schemas/LostFoundAdminItem' },
+                },
+              },
+            },
+            401: { description: 'Not authenticated' },
+            403: { description: 'Forbidden' },
+            404: { description: 'Not found' },
+          },
+        },
         patch: {
           tags: ['LostFound'],
           summary: 'Update lost and found item (admin)',
+          security: [{ sessionCookieAuth: [] }],
           parameters: [
             {
               in: 'path',
@@ -352,6 +400,7 @@ const swaggerSpec = swaggerJsdoc({
         delete: {
           tags: ['LostFound'],
           summary: 'Delete lost and found item (admin)',
+          security: [{ sessionCookieAuth: [] }],
           parameters: [
             {
               in: 'path',
@@ -372,6 +421,7 @@ const swaggerSpec = swaggerJsdoc({
         patch: {
           tags: ['LostFound'],
           summary: 'Mark lost and found item as claimed (admin)',
+          security: [{ sessionCookieAuth: [] }],
           parameters: [
             {
               in: 'path',
@@ -407,6 +457,7 @@ const swaggerSpec = swaggerJsdoc({
         patch: {
           tags: ['LostFound'],
           summary: 'Archive lost and found item (admin)',
+          security: [{ sessionCookieAuth: [] }],
           parameters: [
             {
               in: 'path',

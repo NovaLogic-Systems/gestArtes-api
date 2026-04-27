@@ -9,6 +9,9 @@ const router = express.Router();
 // Available to any authenticated user for the grid/slot picker
 router.get('/coaching/slots', requireAuth, coachingController.getAvailableSlots);
 
+// BR-17 (2.3): Coaching map view — occupancy and unavailability data for visual coaching grid
+router.get('/coaching/weekly-map', requireAuth, coachingController.getWeeklyMap);
+
 // BR-05: list studios compatible with a given modality
 router.get('/studios/compatible', requireAuth, coachingController.getCompatibleStudios);
 

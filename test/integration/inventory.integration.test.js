@@ -445,6 +445,39 @@ test('teacher can list and filter inventory items', async () => {
   assert.equal(body.items[0].availableQuantity, 1);
 });
 
+test('teacher can filter inventory items by status', async () => {
+  const response = await request('/inventory/items?status=AVAILABLE', {
+    headers: {
+      'x-test-user-id': '210',
+      'x-test-role': 'teacher',
+    },
+  });
+
+  assert.equal(response.status, 200);
+
+  const body = await response.json();
+  assert.ok(Array.isArray(body.items));
+  assert.equal(body.items.length, 1);
+  assert.equal(body.items[0].itemId, 1);
+});
+
+test('teacher can filter inventory items by category and price range', async () => {
+  const response = await request('/inventory/items?availability=RENTED&category=Cenario&minPrice=8&maxPrice=10', {
+    headers: {
+      'x-test-user-id': '210',
+      'x-test-role': 'teacher',
+    },
+  });
+
+  assert.equal(response.status, 200);
+
+  const body = await response.json();
+  assert.ok(Array.isArray(body.items));
+  assert.equal(body.items.length, 1);
+  assert.equal(body.items[0].itemId, 2);
+  assert.equal(body.items[0].symbolicFee, 9);
+});
+
 test('teacher inventory alias reuses the shared inventory router', async () => {
   const response = await request('/teacher/inventory/items?availableOnly=true', {
     headers: {

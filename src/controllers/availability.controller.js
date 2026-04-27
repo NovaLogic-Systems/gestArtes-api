@@ -2,6 +2,8 @@ const {
   createException,
   getAvailability,
   getPendingExceptions,
+  listPendingAvailabilityForAdmin,
+  reviewAvailability,
   submitAvailability,
   updateAvailability,
 } = require('../services/availability.service');
@@ -126,10 +128,89 @@ async function listPendingTeacherExceptions(req, res, next) {
   }
 }
 
+function getAuthenticatedAdminUserId(req, res) {
+  const userId = Number(req.session?.userId);
+  const role = String(req.session?.role || '').trim().toLowerCase();
+
+  if (!Number.isInteger(userId) || userId <= 0) {
+    res.status(401).json({ error: 'Not authenticated' });
+    return null;
+  }
+
+  if (role !== 'admin') {
+    res.status(403).json({ error: 'Forbidden' });
+    return null;
+  }
+
+  return userId;
+}
+
+async function listAdminPendingAvailability(req, res, next) {
+  try {
+    const adminUserId = getAuthenticatedAdminUserId(req, res);
+
+    if (!adminUserId) {
+      return;
+    }
+
+    const availability = await listPendingAvailabilityForAdmin();
+    res.json({ availability });
+  } catch (error) {
+    next(error);
+  }
+}
+
+async function approveAvailability(req, res, next) {
+  try {
+    const adminUserId = getAuthenticatedAdminUserId(req, res);
+
+    if (!adminUserId) {
+      return;
+    }
+
+    const availabilityId = parseAvailabilityId(req.params?.availabilityId);
+
+    if (!availabilityId) {
+      res.status(400).json({ error: 'Invalid availabilityId' });
+      return;
+    }
+
+    const result = await reviewAvailability(availabilityId, adminUserId, 'approve', req.body?.reviewNotes ?? null);
+    res.json({ availability: result });
+  } catch (error) {
+    next(error);
+  }
+}
+
+async function rejectAvailability(req, res, next) {
+  try {
+    const adminUserId = getAuthenticatedAdminUserId(req, res);
+
+    if (!adminUserId) {
+      return;
+    }
+
+    const availabilityId = parseAvailabilityId(req.params?.availabilityId);
+
+    if (!availabilityId) {
+      res.status(400).json({ error: 'Invalid availabilityId' });
+      return;
+    }
+
+    const result = await reviewAvailability(availabilityId, adminUserId, 'reject', req.body?.reviewNotes ?? null);
+    res.json({ availability: result });
+  } catch (error) {
+    next(error);
+  }
+}
+
 module.exports = {
+  approveAvailability,
   createTeacherException,
+  listAdminPendingAvailability,
   listPendingTeacherExceptions,
   listTeacherAvailability,
+  rejectAvailability,
   submitTeacherAvailability,
   updateTeacherAvailability,
 };

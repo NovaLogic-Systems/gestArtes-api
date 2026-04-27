@@ -559,10 +559,109 @@ async function getPendingExceptions(teacherId) {
   };
 }
 
+async function listPendingAvailabilityForAdmin() {
+  const pendingStatus = await prisma.teacherAvailabilityStatus.findFirst({
+    where: { StatusName: 'Pending' },
+    select: { StatusID: true },
+  });
+
+  if (!pendingStatus) {
+    throw createHttpError(500, 'Estado de disponibilidade não configurado');
+  }
+
+  const rows = await prisma.teacherAvailability.findMany({
+    where: { StatusID: pendingStatus.StatusID },
+    include: {
+      TeacherAvailabilityStatus: { select: { StatusID: true, StatusName: true } },
+      TeacherAvailabilityPunctual: true,
+      TeacherAvailabilityRecurring: {
+        include: { AcademicYear: { select: { AcademicYearID: true, Label: true } } },
+      },
+      User_TeacherAvailability_TeacherIDToUser: {
+        select: { UserID: true, FirstName: true, LastName: true, Email: true },
+      },
+    },
+    orderBy: [{ RequestedAt: 'asc' }, { AvailabilityID: 'asc' }],
+  });
+
+  return rows.map((row) => ({
+    ...serializeAvailability(row),
+    teacher: {
+      userId: row.User_TeacherAvailability_TeacherIDToUser?.UserID ?? null,
+      firstName: row.User_TeacherAvailability_TeacherIDToUser?.FirstName ?? null,
+      lastName: row.User_TeacherAvailability_TeacherIDToUser?.LastName ?? null,
+      email: row.User_TeacherAvailability_TeacherIDToUser?.Email ?? null,
+    },
+  }));
+}
+
+async function reviewAvailability(availabilityId, adminUserId, decision, reviewNotes) {
+  if (!Number.isInteger(availabilityId) || availabilityId <= 0) {
+    throw createHttpError(400, 'Availability id inválido');
+  }
+
+  const normalizedDecision = String(decision ?? '').trim().toLowerCase();
+
+  if (!['approve', 'reject'].includes(normalizedDecision)) {
+    throw createHttpError(400, 'Decisao invalida: esperado approve ou reject');
+  }
+
+  const targetStatusName = normalizedDecision === 'approve' ? 'Approved' : 'Rejected';
+
+  return prisma.$transaction(async (tx) => {
+    const existing = await tx.teacherAvailability.findUnique({
+      where: { AvailabilityID: availabilityId },
+      include: {
+        TeacherAvailabilityStatus: { select: { StatusName: true } },
+        TeacherAvailabilityPunctual: true,
+        TeacherAvailabilityRecurring: {
+          include: { AcademicYear: { select: { AcademicYearID: true, Label: true } } },
+        },
+      },
+    });
+
+    if (!existing) {
+      throw createHttpError(404, 'Disponibilidade nao encontrada');
+    }
+
+    if (existing.TeacherAvailabilityStatus?.StatusName !== 'Pending') {
+      throw createHttpError(409, 'Disponibilidade ja foi revista');
+    }
+
+    const newStatusId = await findStatusIdByName(
+      tx,
+      'teacherAvailabilityStatus',
+      targetStatusName,
+      'Estado de disponibilidade'
+    );
+
+    const updated = await tx.teacherAvailability.update({
+      where: { AvailabilityID: availabilityId },
+      data: {
+        StatusID: newStatusId,
+        ReviewedByUserID: adminUserId,
+        ReviewedAt: new Date(),
+        ReviewNotes: reviewNotes ? String(reviewNotes).trim().slice(0, 255) || null : null,
+      },
+      include: {
+        TeacherAvailabilityStatus: { select: { StatusID: true, StatusName: true } },
+        TeacherAvailabilityPunctual: true,
+        TeacherAvailabilityRecurring: {
+          include: { AcademicYear: { select: { AcademicYearID: true, Label: true } } },
+        },
+      },
+    });
+
+    return serializeAvailability(updated);
+  });
+}
+
 module.exports = {
   createException,
   getAvailability,
   getPendingExceptions,
+  listPendingAvailabilityForAdmin,
+  reviewAvailability,
   submitAvailability,
   updateAvailability,
 };

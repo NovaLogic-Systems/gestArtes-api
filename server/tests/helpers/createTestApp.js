@@ -25,6 +25,8 @@ function createTestApp({
 } = {}) {
   jest.resetModules();
 
+  process.env.CSRF_ALLOW_NO_ORIGIN = 'true';
+
   jest.doMock('dotenv', () => ({
     config: jest.fn(() => ({})),
   }));

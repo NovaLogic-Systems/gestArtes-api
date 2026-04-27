@@ -154,6 +154,16 @@ async function getSessionHistory(req, res, next) {
   }
 }
 
+async function getWeeklyMap(req, res, next) {
+  try {
+    const { weekStart, teacherId, studioId } = req.query;
+    const result = await coachingService.getWeeklyMap({ weekStart, teacherId, studioId });
+    res.json(result);
+  } catch (error) {
+    next(error);
+  }
+}
+
 module.exports = {
   cancelBooking,
   confirmCompletion,
@@ -162,4 +172,5 @@ module.exports = {
   getAvailableSlots,
   getCompatibleStudios,
   getSessionHistory,
+  getWeeklyMap,
 };

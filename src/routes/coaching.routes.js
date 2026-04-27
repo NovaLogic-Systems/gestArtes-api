@@ -1,5 +1,7 @@
 const express = require('express');
 const { requireAuth, requireRole } = require('../middlewares/auth.middleware');
+const { validateZod } = require('../middlewares/zodValidation.middleware');
+const { bookingSchema } = require('../middlewares/schemas/booking.schema');
 const coachingController = require('../controllers/coaching.controller');
 
 const router = express.Router();
@@ -23,6 +25,7 @@ router.post(
   '/coaching/bookings',
   requireAuth,
   requireRole(['STUDENT', 'TEACHER']),
+  validateZod(bookingSchema),
   coachingController.createBooking
 );
 

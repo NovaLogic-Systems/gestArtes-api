@@ -50,8 +50,9 @@ function createCoachingContext() {
       joinRequest: buildJoinRequest({ status: 'PendingTeacher' }),
       teacherUserIds: [teacherUser.UserID],
     })),
-    listJoinRequestsBySession: jest.fn(async () => [buildJoinRequest()]),
-    listTeacherPendingRequests: jest.fn(async () => [buildJoinRequest()]),
+      listJoinRequestsBySession: jest.fn(async () => [buildJoinRequest()]),
+      listTeacherPendingRequests: jest.fn(async () => [buildJoinRequest()]),
+
     teacherApprove: jest.fn(async () => ({
       joinRequest: buildJoinRequest({ status: 'PendingAdmin', reviewedByUserId: teacherUser.UserID }),
       adminUserIds: [adminUser.UserID],
@@ -72,6 +73,15 @@ function createCoachingContext() {
     listStudentRequests: jest.fn(async () => [buildJoinRequest()]),
   };
 
+  const coachingServiceMock = {
+    getAvailableSlots: jest.fn(async () => ({ weeks: [] })),
+    getCompatibleStudios: jest.fn(async () => []),
+    createBooking: jest.fn(async () => ({ SessionID: 999 })),
+    cancelBooking: jest.fn(async () => ({ cancelledSessionCount: 1 })),
+    confirmCompletion: jest.fn(async () => ({ success: true })),
+    getSessionHistory: jest.fn(async () => []),
+  };
+
   const noopHandler = (_req, res) => res.status(501).json({ error: 'Not used in coaching tests' });
 
   const notificationControllerMock = {
@@ -88,6 +98,7 @@ function createCoachingContext() {
     prismaMock,
     bcryptMock,
     joinRequestServiceMock,
+    coachingServiceMock,
     notificationControllerMock,
   });
 
@@ -97,6 +108,7 @@ function createCoachingContext() {
     teacherUser,
     adminUser,
     joinRequestServiceMock,
+    coachingServiceMock,
     notificationControllerMock,
   };
 }
@@ -114,6 +126,32 @@ describe('Coaching API (Jest + SuperTest)', () => {
 
     expect(response.status).toBe(401);
     expect(joinRequestServiceMock.createJoinRequest).not.toHaveBeenCalled();
+  });
+
+  test('POST /coaching/bookings rejects invalid booking payload', async () => {
+    const { app, studentUser, coachingServiceMock } = createCoachingContext();
+    const agent = request.agent(app);
+
+    await loginAs(agent, studentUser);
+
+    const response = await agent.post('/coaching/bookings').send({
+      teacherId: 10,
+      studioId: 20,
+      modalityId: 30,
+      startTime: '2026-04-27T10:00:00.000Z',
+      endTime: '2026-04-27T09:30:00.000Z',
+    });
+
+    expect(response.status).toBe(400);
+    expect(response.body.error).toBe('Validation failed');
+    expect(response.body.details).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          path: expect.arrayContaining(['endTime']),
+        }),
+      ]),
+    );
+    expect(coachingServiceMock.createBooking).not.toHaveBeenCalled();
   });
 
   test('POST /coaching/sessions/:id/join-requests creates a booking request for students', async () => {

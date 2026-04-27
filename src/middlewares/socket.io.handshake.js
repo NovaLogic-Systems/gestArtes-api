@@ -3,7 +3,6 @@ function bindSessionToSocket(sessionMiddleware) {
 		sessionMiddleware(socket.request, {}, next);
 	};
 }
-
 module.exports = {
 	bindSessionToSocket,
 };

@@ -1,33 +1,35 @@
-const { z } = require('zod');
+const { body } = require('express-validator');
 
-function parseBoolean(value) {
-  if (typeof value === 'boolean') {
-    return value;
-  }
-
-  if (typeof value === 'string') {
-    const normalized = value.trim().toLowerCase();
-
-    if (['true', '1', 'yes', 'on'].includes(normalized)) {
+const createTeacherSessionSchema = [
+  body('date')
+    .isISO8601().withMessage('date deve ser ISO8601')
+    .toDate()
+    .custom((value) => {
+      if (value <= new Date()) {
+        throw new Error('date deve ser no futuro');
+      }
       return true;
-    }
-
-    if (['false', '0', 'no', 'off'].includes(normalized)) {
-      return false;
-    }
-  }
-
-  return value;
-}
-
-const createTeacherSessionSchema = z.object({
-  date: z.string().datetime({ offset: true }),
-  studioId: z.coerce.number().int().positive(),
-  modalityId: z.coerce.number().int().positive(),
-  capacity: z.coerce.number().int().positive(),
-  pricePerHour: z.coerce.number().positive(),
-  isExternal: z.preprocess(parseBoolean, z.boolean()).optional().default(false),
-  isOutsideStdHours: z.preprocess(parseBoolean, z.boolean()).optional().default(false),
-});
+    }),
+  body('studioId')
+    .isInt({ min: 1 }).withMessage('studioId deve ser um inteiro positivo')
+    .toInt(),
+  body('modalityId')
+    .isInt({ min: 1 }).withMessage('modalityId deve ser um inteiro positivo')
+    .toInt(),
+  body('capacity')
+    .isInt({ min: 1 }).withMessage('capacity deve ser um inteiro positivo')
+    .toInt(),
+  body('pricingRateId')
+    .isInt({ min: 1 }).withMessage('pricingRateId deve ser um inteiro positivo')
+    .toInt(),
+  body('isExternal')
+    .optional({ values: 'falsy' })
+    .isBoolean().withMessage('isExternal deve ser booleano')
+    .toBoolean(),
+  body('isOutsideStdHours')
+    .optional({ values: 'falsy' })
+    .isBoolean().withMessage('isOutsideStdHours deve ser booleano')
+    .toBoolean(),
+];
 
 module.exports = { createTeacherSessionSchema };

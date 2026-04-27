@@ -2,6 +2,8 @@ const { Prisma } = require('@prisma/client');
 const prisma = require('../config/prisma');
 const { createSessionWithBusinessRules } = require('./session.service');
 
+// BR-11/BR-12: teacher initiatives are created pending management approval.
+// BR-19: initiative duration is one hour by default.
 const DEFAULT_TEACHER_INITIATIVE_DURATION_MS = 60 * 60 * 1000;
 const PENDING_APPROVAL_STATUS_NAME = 'PendingApproval';
 
@@ -312,7 +314,7 @@ async function getCompatibleStudios(modalityId) {
   }));
 }
 
-async function resolveOrCreateSessionStatusId(statusName) {
+async function resolveSessionStatusId(statusName) {
   const normalizedStatusName = String(statusName || '').trim();
 
   if (!normalizedStatusName) {
@@ -329,47 +331,34 @@ async function resolveOrCreateSessionStatusId(statusName) {
     select: { StatusID: true },
   });
 
-  if (existingStatus) {
-    return existingStatus.StatusID;
+  if (!existingStatus) {
+    throw createHttpError(500, `Estado de sessão "${normalizedStatusName}" não configurado`);
   }
 
-  const createdStatus = await prisma.sessionStatus.create({
-    data: { StatusName: normalizedStatusName },
-    select: { StatusID: true },
-  });
-
-  return createdStatus.StatusID;
+  return existingStatus.StatusID;
 }
 
-async function resolveOrCreatePricingRateId(pricePerHour) {
-  const hourlyRate = Number(pricePerHour);
+async function resolvePricingRateId(pricingRateId) {
+  const parsedPricingRateId = toPositiveInt(pricingRateId);
 
-  if (!Number.isFinite(hourlyRate) || hourlyRate <= 0) {
-    throw createHttpError(400, 'pricePerHour inválido');
+  if (!parsedPricingRateId) {
+    throw createHttpError(400, 'pricingRateId inválido');
   }
 
   const existingRate = await prisma.sessionPricingRate.findFirst({
-    where: { HourlyRate: hourlyRate },
+    where: { PricingRateID: parsedPricingRateId },
     select: { PricingRateID: true },
   });
 
-  if (existingRate) {
-    return existingRate.PricingRateID;
+  if (!existingRate) {
+    throw createHttpError(500, `Pricing rate ${parsedPricingRateId} não configurada`);
   }
 
-  const createdRate = await prisma.sessionPricingRate.create({
-    data: {
-      RateName: `Teacher initiative ${hourlyRate.toFixed(2)}`,
-      HourlyRate: hourlyRate,
-    },
-    select: { PricingRateID: true },
-  });
-
-  return createdRate.PricingRateID;
+  return existingRate.PricingRateID;
 }
 
 async function createSessionInitiative(
-  { date, studioId, modalityId, capacity, pricePerHour, isExternal, isOutsideStdHours },
+  { date, studioId, modalityId, capacity, pricingRateId, isExternal, isOutsideStdHours },
   requestedByUserId
 ) {
   const startTime = new Date(date);
@@ -380,9 +369,9 @@ async function createSessionInitiative(
 
   const endTime = new Date(startTime.getTime() + DEFAULT_TEACHER_INITIATIVE_DURATION_MS);
 
-  const [statusId, pricingRateId] = await Promise.all([
-    resolveOrCreateSessionStatusId(PENDING_APPROVAL_STATUS_NAME),
-    resolveOrCreatePricingRateId(pricePerHour),
+  const [statusId, resolvedPricingRateId] = await Promise.all([
+    resolveSessionStatusId(PENDING_APPROVAL_STATUS_NAME),
+    resolvePricingRateId(pricingRateId),
   ]);
 
   return createSessionWithBusinessRules(
@@ -391,7 +380,7 @@ async function createSessionInitiative(
       startTime,
       endTime,
       modalityId: Number(modalityId),
-      pricingRateId,
+      pricingRateId: resolvedPricingRateId,
       statusId,
       teacherIds: [requestedByUserId],
       maxParticipants: Number(capacity),
@@ -401,6 +390,25 @@ async function createSessionInitiative(
     },
     requestedByUserId
   );
+}
+
+async function listAdminUserIds() {
+  const rows = await prisma.userRole.findMany({
+    where: {
+      Role: {
+        RoleName: 'admin',
+      },
+      User: {
+        IsActive: true,
+        DeletedAt: null,
+      },
+    },
+    select: {
+      UserID: true,
+    },
+  });
+
+  return [...new Set(rows.map((row) => row.UserID).filter((userId) => Number.isInteger(userId) && userId > 0))];
 }
 
 async function createBooking({ teacherId, studioId, modalityId, startTime, endTime, maxParticipants, notes }, studentUserId) {
@@ -697,4 +705,5 @@ module.exports = {
   getAvailableSlots,
   getCompatibleStudios,
   getSessionHistory,
+  listAdminUserIds,
 };

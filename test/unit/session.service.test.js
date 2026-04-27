@@ -18,6 +18,7 @@ function createState() {
     createdSessions: [],
     createdSessionTeachers: [],
     lastDoubleBookingWhere: null,
+    lastAbsenceWhere: null,
   };
 }
 
@@ -66,7 +67,10 @@ const fakePrisma = {
     },
   },
   teacherAbsence: {
-    count: async ({ where }) => (state.absentTeacherIds.has(where.TeacherID) ? 1 : 0),
+    count: async ({ where }) => {
+      state.lastAbsenceWhere = where;
+      return state.absentTeacherIds.has(where.TeacherID) ? 1 : 0;
+    },
   },
   teacherAvailability: {
     count: async ({ where }) => {
@@ -87,6 +91,11 @@ const fakePrisma = {
     },
   },
   sessionStatus: {
+    findMany: async () => ([
+      { StatusID: 1, StatusName: 'Pending' },
+      { StatusID: 2, StatusName: 'Approved' },
+      { StatusID: 3, StatusName: 'Cancelled' },
+    ]),
     findUnique: async ({ where }) => (state.validStatusIds.has(where.StatusID) ? { StatusID: where.StatusID } : null),
   },
   sessionPricingRate: {
@@ -106,6 +115,9 @@ const fakePrisma = {
         .filter((id) => state.validTeacherIds.has(id))
         .map((id) => ({ UserID: id }));
     },
+  },
+  notification: {
+    createMany: async ({ data }) => ({ count: data.length }),
   },
 };
 
@@ -169,6 +181,11 @@ test('creates a session and applies to-one relation filter for teacher conflicts
   assert.deepEqual(state.lastDoubleBookingWhere.CoachingSession.is, {
     StartTime: { lt: new Date('2026-05-15T11:00:00.000Z') },
     EndTime: { gt: new Date('2026-05-15T10:00:00.000Z') },
+  });
+  assert.deepEqual(state.lastAbsenceWhere, {
+    TeacherID: 101,
+    StartDate: { lt: new Date('2026-05-15T11:00:00.000Z') },
+    EndDate: { gt: new Date('2026-05-15T10:00:00.000Z') },
   });
 });
 
@@ -236,4 +253,144 @@ test('rejects payload when assignment role value is invalid instead of falling b
       return true;
     }
   );
+});
+
+test('rejects payload when studio does not exist', async () => {
+  resetState();
+  state.studioExists = false;
+
+  await assert.rejects(
+    () => createSessionWithBusinessRules(validInput(), 900),
+    (error) => {
+      assert.equal(error.status, 404);
+      assert.equal(error.message, 'Estudio nao encontrado');
+      return true;
+    }
+  );
+});
+
+test('rejects payload when session capacity exceeds studio capacity', async () => {
+  resetState();
+  state.studioCapacity = 5;
+
+  await assert.rejects(
+    () => createSessionWithBusinessRules(validInput({ maxParticipants: 10 }), 900),
+    (error) => {
+      assert.equal(error.status, 409);
+      assert.equal(error.message, 'Capacidade da sessao excede capacidade do estudio');
+      return true;
+    }
+  );
+});
+
+test('rejects payload when studio does not support the modality', async () => {
+  resetState();
+  state.studioSupportsModality = false;
+
+  await assert.rejects(
+    () => createSessionWithBusinessRules(validInput(), 900),
+    (error) => {
+      assert.equal(error.status, 422);
+      assert.equal(error.message, 'Estudio nao suporta a modalidade selecionada');
+      return true;
+    }
+  );
+});
+
+test('rejects payload when there is a studio time overlap', async () => {
+  resetState();
+  state.studioOverlapCount = 1;
+
+  await assert.rejects(
+    () => createSessionWithBusinessRules(validInput(), 900),
+    (error) => {
+      assert.equal(error.status, 409);
+      assert.equal(error.message, 'Conflito de horario no estudio');
+      return true;
+    }
+  );
+});
+
+test('rejects payload when teacher already has a session at that time', async () => {
+  resetState();
+  state.teacherConflicts = [101];
+
+  await assert.rejects(
+    () => createSessionWithBusinessRules(validInput(), 900),
+    (error) => {
+      assert.equal(error.status, 409);
+      assert.equal(error.message, 'Professor ja tem sessao nesse horario');
+      assert.deepEqual(error.details, { teacherIds: [101] });
+      return true;
+    }
+  );
+});
+
+test('rejects payload when teacher is absent during the session period', async () => {
+  resetState();
+  state.absentTeacherIds.add(101);
+
+  await assert.rejects(
+    () => createSessionWithBusinessRules(validInput(), 900),
+    (error) => {
+      assert.equal(error.status, 409);
+      assert.equal(error.message, 'Professor indisponivel por ausencia');
+      return true;
+    }
+  );
+});
+
+test('rejects payload when teacher has no availability for the session time', async () => {
+  resetState();
+  state.availabilityByTeacherId.set(101, { punctual: false, recurring: false });
+
+  await assert.rejects(
+    () => createSessionWithBusinessRules(validInput(), 900),
+    (error) => {
+      assert.equal(error.status, 409);
+      assert.equal(error.message, 'Professor sem disponibilidade para o horario selecionado');
+      return true;
+    }
+  );
+});
+
+test('rejects payload when end time is not after start time', async () => {
+  resetState();
+
+  await assert.rejects(
+    () => createSessionWithBusinessRules(
+      validInput({ startTime: '2026-05-15T11:00:00.000Z', endTime: '2026-05-15T10:00:00.000Z' }),
+      900
+    ),
+    (error) => {
+      assert.equal(error.status, 400);
+      assert.equal(error.message, 'Intervalo temporal invalido');
+      return true;
+    }
+  );
+});
+
+test('rejects payload with empty teacher ids list', async () => {
+  resetState();
+
+  await assert.rejects(
+    () => createSessionWithBusinessRules(validInput({ teacherIds: [] }), 900),
+    (error) => {
+      assert.equal(error.status, 400);
+      assert.equal(error.message, 'Lista de professores invalida');
+      return true;
+    }
+  );
+});
+
+test('uses studio capacity when maxParticipants is not provided', async () => {
+  resetState();
+  state.studioCapacity = 15;
+
+  const created = await createSessionWithBusinessRules(
+    validInput({ maxParticipants: undefined }),
+    900
+  );
+
+  assert.equal(Number(created.MaxParticipants), 15);
 });

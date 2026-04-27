@@ -2,7 +2,11 @@ const express = require('express');
 
 const inventoryController = require('../controllers/inventory.controller');
 const validateRequest = require('../middlewares/validate.middleware');
-const { requireAuth, requireRole } = require('../middlewares/auth.middleware');
+const {
+  APP_PERMISSIONS,
+  requireAuth,
+  requirePermission,
+} = require('../middlewares/auth.middleware');
 const {
   createInventoryTransactionSchema,
   inventoryItemIdParamSchema,
@@ -10,7 +14,7 @@ const {
 } = require('../middlewares/schemas/inventory.schema');
 
 const router = express.Router();
-const inventoryAccess = [requireAuth, requireRole(['STUDENT', 'TEACHER'])];
+const inventoryAccess = [requireAuth, requirePermission(APP_PERMISSIONS.INVENTORY_ACCESS)];
 
 router.get(
   '/items',

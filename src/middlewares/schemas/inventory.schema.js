@@ -1,5 +1,24 @@
 const { body, param, query } = require('express-validator');
 
+function isValidPhotoUrl(value) {
+  if (value === undefined || value === null || value === '') {
+    return true;
+  }
+
+  const normalized = String(value).trim();
+
+  if (normalized.startsWith('/uploads/')) {
+    return true;
+  }
+
+  try {
+    const parsed = new URL(normalized);
+    return parsed.protocol === 'http:' || parsed.protocol === 'https:';
+  } catch {
+    return false;
+  }
+}
+
 const createInventoryItemSchema = [
   body('itemName')
     .trim()
@@ -18,7 +37,9 @@ const createInventoryItemSchema = [
     .escape(),
   body('photoUrl')
     .optional()
-    .isURL({ require_protocol: false }).withMessage('URL da foto inválida'),
+    .trim()
+    .isLength({ max: 255 }).withMessage('URL da foto inválida')
+    .custom((value) => isValidPhotoUrl(value)).withMessage('URL da foto inválida'),
   body('totalQuantity')
     .optional()
     .isInt({ min: 1 }).withMessage('Quantidade inválida')
@@ -79,9 +100,97 @@ const listInventoryItemsQuerySchema = [
     .toBoolean(),
 ];
 
+const updateInventoryItemSchema = [
+  body('itemName')
+    .optional()
+    .trim()
+    .isLength({ min: 1, max: 100 }).withMessage('Nome do artigo inválido')
+    .escape(),
+  body('categoryId')
+    .optional()
+    .isInt({ min: 1 }).withMessage('Categoria inválida')
+    .toInt(),
+  body('symbolicFee')
+    .optional()
+    .isFloat({ min: 0 }).withMessage('Taxa simbólica inválida')
+    .toFloat(),
+  body('description')
+    .optional({ nullable: true })
+    .trim()
+    .isLength({ max: 255 }).withMessage('Descrição inválida')
+    .escape(),
+  body('photoUrl')
+    .optional({ nullable: true })
+    .trim()
+    .isLength({ max: 255 }).withMessage('URL da foto inválida')
+    .custom((value) => isValidPhotoUrl(value)).withMessage('URL da foto inválida'),
+  body('totalQuantity')
+    .optional()
+    .isInt({ min: 0 }).withMessage('Quantidade inválida')
+    .toInt(),
+  body()
+    .custom((value) => {
+      const hasAnyField = ['itemName', 'categoryId', 'symbolicFee', 'description', 'photoUrl', 'totalQuantity']
+        .some((field) => Object.hasOwn(value || {}, field));
+
+      if (!hasAnyField) {
+        throw new Error('O corpo do pedido deve incluir pelo menos um campo');
+      }
+
+      return true;
+    }),
+];
+
+const updateInventoryAvailabilitySchema = [
+  body('isAvailable')
+    .optional()
+    .isBoolean().withMessage('Estado de disponibilidade inválido')
+    .toBoolean(),
+  body('totalQuantity')
+    .optional()
+    .isInt({ min: 0 }).withMessage('Quantidade inválida')
+    .toInt(),
+  body()
+    .custom((value) => {
+      const hasAnyField = ['isAvailable', 'totalQuantity']
+        .some((field) => Object.hasOwn(value || {}, field));
+
+      if (!hasAnyField) {
+        throw new Error('O corpo do pedido deve incluir pelo menos um campo');
+      }
+
+      return true;
+    }),
+];
+
+const inventoryRentalIdParamSchema = [
+  param('rentalId')
+    .isInt({ min: 1 }).withMessage('ID de aluguer inválido')
+    .toInt(),
+];
+
+const verifyReturnSchema = [
+  body('returnDate')
+    .isISO8601().withMessage('Data de devolução inválida')
+    .toDate(),
+  body('conditionStatus')
+    .trim()
+    .isLength({ min: 1, max: 50 }).withMessage('Estado de condição inválido')
+    .escape(),
+  body('conditionNotes')
+    .optional({ nullable: true })
+    .trim()
+    .isLength({ max: 255 }).withMessage('Notas de condição inválidas')
+    .escape(),
+];
+
 module.exports = {
   createInventoryItemSchema,
+  updateInventoryItemSchema,
   createInventoryTransactionSchema,
   inventoryItemIdParamSchema,
+  inventoryRentalIdParamSchema,
   listInventoryItemsQuerySchema,
+  updateInventoryAvailabilitySchema,
+  verifyReturnSchema,
 };

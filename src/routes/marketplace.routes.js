@@ -2,7 +2,11 @@ const express = require('express');
 const router = express.Router();
 
 const marketplaceController = require('../controllers/marketplace.controller');
-const { APP_ROLES, requireAuth, requireRole } = require('../middlewares/auth.middleware');
+const {
+  APP_PERMISSIONS,
+  requireAuth,
+  requirePermission,
+} = require('../middlewares/auth.middleware');
 const { attachMarketplacePhoto } = require('../middlewares/marketplaceUpload.middleware');
 const validateRequest = require('../middlewares/validate.middleware');
 const {
@@ -12,7 +16,7 @@ const {
   listMarketplaceListingsQuerySchema,
 } = require('../middlewares/schemas/marketplace.schema');
 
-const marketplaceAccess = [requireAuth, requireRole(APP_ROLES)];
+const marketplaceAccess = [requireAuth, requirePermission(APP_PERMISSIONS.MARKETPLACE_ACCESS)];
 
 router.get('/options', ...marketplaceAccess, marketplaceController.getMarketplaceOptions);
 

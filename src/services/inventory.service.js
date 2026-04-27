@@ -22,6 +22,10 @@ function normalizeString(value) {
     .toLowerCase();
 }
 
+function isSchoolOwnedItem(item) {
+  return item?.IsSchoolOwned !== false;
+}
+
 function buildSearchFilter(rawSearch) {
   if (rawSearch === undefined || rawSearch === null) {
     return null;
@@ -91,6 +95,7 @@ function serializeItem(item, activeRentalsCount) {
     itemName: item.ItemName,
     description: item.Description,
     photoUrl: item.PhotoURL,
+    isSchoolOwned: isSchoolOwnedItem(item),
     symbolicFee: toMoney(item.SymbolicFee),
     totalQuantity,
     reservedQuantity,
@@ -126,6 +131,13 @@ function serializeRental(record) {
       itemId: record.InventoryItem.InventoryItemID,
       itemName: record.InventoryItem.ItemName,
       photoUrl: record.InventoryItem.PhotoURL,
+    },
+    returnVerification: {
+      conditionChecked: Boolean(record.ConditionChecked),
+      returnVerified: Boolean(record.ReturnVerified),
+      conditionStatus: record.ReturnConditionStatus ?? null,
+      conditionNotes: record.ReturnConditionNotes ?? null,
+      verifiedAt: record.ReturnVerifiedAt ?? null,
     },
   };
 }
@@ -181,6 +193,7 @@ function buildInventoryInclude() {
 
 function buildInventoryWhere(filters = {}) {
   const where = {
+    IsSchoolOwned: true,
     ItemCategory: {
       is: {
         IsActive: true,
@@ -271,7 +284,7 @@ async function getItemById(itemId) {
     include: buildInventoryInclude(),
   });
 
-  if (!item || item.ItemCategory?.IsActive === false) {
+  if (!item || item.ItemCategory?.IsActive === false || !isSchoolOwnedItem(item)) {
     return null;
   }
 
@@ -330,6 +343,10 @@ async function loadRentableItem(db, itemId) {
     throw createHttpError(404, 'Artigo não encontrado');
   }
 
+  if (!isSchoolOwnedItem(item)) {
+    throw createHttpError(400, 'Apenas artigos oficiais da escola podem ser alugados');
+  }
+
   return item;
 }
 
@@ -355,6 +372,7 @@ async function createRental(data, renterId) {
     }
 
     const item = await loadRentableItem(tx, data.inventoryItemId);
+
     const paymentMethod = await ensureActivePaymentMethod(tx, data.paymentMethodId);
     await ensureItemCanBeRented(tx, lockedItem);
 
@@ -444,9 +462,270 @@ async function listRentalsByRenterId(renterId) {
   return rentals.map(serializeRental);
 }
 
+async function ensureActiveCategory(db, categoryId) {
+  const category = await db.itemCategory.findUnique({
+    where: {
+      CategoryID: categoryId,
+    },
+    select: {
+      CategoryID: true,
+      IsActive: true,
+    },
+  });
+
+  if (!category || !category.IsActive) {
+    throw createHttpError(400, 'Categoria inválida');
+  }
+
+  return category;
+}
+
+async function getAdminInventoryItems(filters = {}) {
+  return listItems(filters);
+}
+
+async function createSchoolInventoryItem(data) {
+  if (data.categoryId !== undefined) {
+    await ensureActiveCategory(prisma, data.categoryId);
+  }
+
+  const created = await prisma.inventoryItem.create({
+    data: {
+      ItemName: data.itemName,
+      CategoryID: data.categoryId,
+      SymbolicFee: data.symbolicFee,
+      Description: data.description ?? null,
+      PhotoURL: data.photoUrl ?? null,
+      TotalQuantity: data.totalQuantity ?? 1,
+      IsSchoolOwned: true,
+    },
+    include: buildInventoryInclude(),
+  });
+
+  return serializeItem(created, 0);
+}
+
+async function loadSchoolInventoryItemById(db, itemId) {
+  const item = await db.inventoryItem.findUnique({
+    where: {
+      InventoryItemID: itemId,
+    },
+    include: buildInventoryInclude(),
+  });
+
+  if (!item || !isSchoolOwnedItem(item)) {
+    return null;
+  }
+
+  return item;
+}
+
+async function updateSchoolInventoryItem(itemId, data) {
+  const existing = await loadSchoolInventoryItemById(prisma, itemId);
+
+  if (!existing) {
+    return null;
+  }
+
+  if (data.categoryId !== undefined) {
+    await ensureActiveCategory(prisma, data.categoryId);
+  }
+
+  const updated = await prisma.inventoryItem.update({
+    where: {
+      InventoryItemID: itemId,
+    },
+    data: {
+      ...(data.itemName !== undefined ? { ItemName: data.itemName } : {}),
+      ...(data.categoryId !== undefined ? { CategoryID: data.categoryId } : {}),
+      ...(data.symbolicFee !== undefined ? { SymbolicFee: data.symbolicFee } : {}),
+      ...(data.description !== undefined ? { Description: data.description || null } : {}),
+      ...(data.photoUrl !== undefined ? { PhotoURL: data.photoUrl || null } : {}),
+      ...(data.totalQuantity !== undefined ? { TotalQuantity: data.totalQuantity } : {}),
+      IsSchoolOwned: true,
+    },
+    include: buildInventoryInclude(),
+  });
+
+  const activeRentalsCount = await prisma.inventoryTransaction.count({
+    where: {
+      InventoryItemID: itemId,
+      IsCompleted: false,
+    },
+  });
+
+  return serializeItem(updated, activeRentalsCount);
+}
+
+async function deleteSchoolInventoryItem(itemId) {
+  const existing = await prisma.inventoryItem.findUnique({
+    where: {
+      InventoryItemID: itemId,
+    },
+    select: {
+      InventoryItemID: true,
+      IsSchoolOwned: true,
+    },
+  });
+
+  if (!existing || !isSchoolOwnedItem(existing)) {
+    return false;
+  }
+
+  const activeRentalsCount = await prisma.inventoryTransaction.count({
+    where: {
+      InventoryItemID: itemId,
+      IsCompleted: false,
+    },
+  });
+
+  if (activeRentalsCount > 0) {
+    throw createHttpError(409, 'Não é possível remover artigo com alugueres ativos');
+  }
+
+  await prisma.inventoryItem.delete({
+    where: {
+      InventoryItemID: itemId,
+    },
+  });
+
+  return true;
+}
+
+async function updateSchoolInventoryAvailability(itemId, data) {
+  return prisma.$transaction(async (tx) => {
+    const item = await loadSchoolInventoryItemById(tx, itemId);
+
+    if (!item) {
+      return null;
+    }
+
+    const activeRentalsCount = await tx.inventoryTransaction.count({
+      where: {
+        InventoryItemID: itemId,
+        IsCompleted: false,
+      },
+    });
+
+    let nextTotalQuantity = data.totalQuantity !== undefined
+      ? data.totalQuantity
+      : Number(item.TotalQuantity || 0);
+
+    if (data.isAvailable === false) {
+      nextTotalQuantity = 0;
+    }
+
+    if (data.isAvailable === true && nextTotalQuantity <= 0) {
+      nextTotalQuantity = Math.max(activeRentalsCount, 1);
+    }
+
+    if (nextTotalQuantity < activeRentalsCount) {
+      throw createHttpError(409, 'Quantidade total não pode ser inferior ao número de alugueres ativos');
+    }
+
+    const updated = await tx.inventoryItem.update({
+      where: {
+        InventoryItemID: itemId,
+      },
+      data: {
+        TotalQuantity: nextTotalQuantity,
+        IsSchoolOwned: true,
+      },
+      include: buildInventoryInclude(),
+    });
+
+    return serializeItem(updated, activeRentalsCount);
+  }, {
+    isolationLevel: Prisma.TransactionIsolationLevel.Serializable,
+  });
+}
+
+async function verifyRentalReturn(rentalId, data) {
+  const existing = await prisma.inventoryTransaction.findUnique({
+    where: {
+      TransactionID: rentalId,
+    },
+    include: {
+      InventoryItem: {
+        select: {
+          InventoryItemID: true,
+          ItemName: true,
+          PhotoURL: true,
+          SymbolicFee: true,
+          IsSchoolOwned: true,
+        },
+      },
+      PaymentMethod: {
+        select: {
+          PaymentMethodID: true,
+          MethodName: true,
+        },
+      },
+    },
+  });
+
+  if (!existing) {
+    return null;
+  }
+
+  if (!isSchoolOwnedItem(existing.InventoryItem)) {
+    throw createHttpError(400, 'A verificação de devolução aplica-se apenas a artigos da escola');
+  }
+
+  if (existing.IsCompleted) {
+    throw createHttpError(409, 'Este aluguer já foi concluído');
+  }
+
+  const returnDate = new Date(data.returnDate);
+
+  if (Number.isNaN(returnDate.getTime()) || returnDate < existing.StartDate) {
+    throw createHttpError(400, 'Data de devolução inválida');
+  }
+
+  const updated = await prisma.inventoryTransaction.update({
+    where: {
+      TransactionID: rentalId,
+    },
+    data: {
+      EndDate: returnDate,
+      IsCompleted: true,
+      ConditionChecked: true,
+      ReturnVerified: true,
+      ReturnConditionStatus: data.conditionStatus,
+      ReturnConditionNotes: data.conditionNotes || null,
+      ReturnVerifiedAt: new Date(),
+    },
+    include: {
+      InventoryItem: {
+        select: {
+          InventoryItemID: true,
+          ItemName: true,
+          PhotoURL: true,
+          SymbolicFee: true,
+          IsSchoolOwned: true,
+        },
+      },
+      PaymentMethod: {
+        select: {
+          PaymentMethodID: true,
+          MethodName: true,
+        },
+      },
+    },
+  });
+
+  return serializeRental(updated);
+}
+
 module.exports = {
   listItems,
   getItemById,
   createRental,
   listRentalsByRenterId,
+  getAdminInventoryItems,
+  createSchoolInventoryItem,
+  updateSchoolInventoryItem,
+  deleteSchoolInventoryItem,
+  updateSchoolInventoryAvailability,
+  verifyRentalReturn,
 };

@@ -10,6 +10,24 @@ const ROLE_LABELS = Object.freeze({
   teacher: 'Professor',
   admin: 'Direção',
 });
+const ROLE_EQUIVALENCE_HINTS = Object.freeze({
+  admin: Object.freeze([
+    'admin',
+    'management',
+    'gest',
+    'direction',
+    'direc',
+    'coordin',
+  ]),
+  teacher: Object.freeze([
+    'teacher',
+    'prof',
+  ]),
+  student: Object.freeze([
+    'student',
+    'aluno',
+  ]),
+});
 
 function normalizeRole(value) {
   return String(value || '')
@@ -19,29 +37,25 @@ function normalizeRole(value) {
     .replace(/[\u0300-\u036f]/g, '');
 }
 
+function matchesRoleHint(normalizedRole, hints) {
+  return hints.some((hint) => normalizedRole === hint || normalizedRole.includes(hint));
+}
+
 function toAppRole(roleName) {
   const normalized = normalizeRole(roleName);
+
+  if (!normalized) {
+    return null;
+  }
 
   if (APP_ROLES.includes(normalized)) {
     return normalized;
   }
 
-  if (
-    normalized.includes('admin')
-    || normalized.includes('management')
-    || normalized.includes('gest')
-    || normalized.includes('direction')
-    || normalized.includes('direc')
-  ) {
-    return 'admin';
-  }
-
-  if (normalized.includes('teacher') || normalized.includes('prof')) {
-    return 'teacher';
-  }
-
-  if (normalized.includes('student') || normalized.includes('aluno')) {
-    return 'student';
+  for (const appRole of ROLE_PRIORITY) {
+    if (matchesRoleHint(normalized, ROLE_EQUIVALENCE_HINTS[appRole] || [])) {
+      return appRole;
+    }
   }
 
   return null;
@@ -71,6 +85,7 @@ module.exports = {
   APP_ROLES,
   ROLE_HIERARCHY,
   ROLE_LABELS,
+  ROLE_EQUIVALENCE_HINTS,
   ROLE_PRIORITY,
   getHighestPriorityRole,
   getPrimaryRoleFromUser,

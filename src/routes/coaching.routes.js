@@ -42,4 +42,11 @@ router.patch(
   coachingController.confirmCompletion
 );
 
+router.patch(
+  '/sessions/:id/validate',
+  requireAuth,
+  requireRole(['STUDENT']),
+  coachingController.confirmCompletion
+);
+
 module.exports = router;

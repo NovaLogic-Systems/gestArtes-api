@@ -66,7 +66,6 @@ const loginLimiter = rateLimit({
   skipSuccessfulRequests: true,
   standardHeaders: true,
   legacyHeaders: false,
-  skipSuccessfulRequests: true,
   message: {
     error: 'Too many login attempts, please try again later.',
   },

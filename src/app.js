@@ -29,6 +29,7 @@ const auditRoutes = require('./routes/audit.routes');
 const joinRequestRoutes = require('./routes/joinRequest.routes');
 const coachingRoutes = require('./routes/coaching.routes');
 const apiRateLimiter = require('./middlewares/rateLimit.middleware');
+const { createCsrfProtection } = require('./middlewares/csrf.middleware');
 const errorHandler = require('./middlewares/error.middleware');
 const { setupSwagger } = require('./config/swagger');
 const logger = require('./utils/logger');
@@ -56,6 +57,10 @@ const CORS_ALLOW_NO_ORIGIN = parseBoolean(
   true
 );
 const CORS_ORIGINS = buildCorsAllowList();
+const CSRF_ALLOW_NO_ORIGIN = parseBoolean(
+  process.env.CSRF_ALLOW_NO_ORIGIN,
+  false
+);
 const SESSION_CROSS_SITE = parseBoolean(
   process.env.SESSION_COOKIE_CROSS_SITE,
   false
@@ -75,14 +80,10 @@ if (!HAS_SESSION_SECRET) {
   logger.warn('SESSION_SECRET not set; using an ephemeral development secret');
 }
 
-if (IS_PRODUCTION && CORS_ORIGINS.length === 0) {
+if (CORS_ORIGINS.length === 0) {
   throw new Error(
-    'At least one CORS origin is required in production (CORS_ORIGINS or CLIENT_URL)'
+    'At least one CORS origin is required (CORS_ORIGINS or CLIENT_URL)'
   );
-}
-
-if (!IS_PRODUCTION && CORS_ORIGINS.length === 0) {
-  logger.warn('No CORS origins configured; allowing all origins in non-production');
 }
 
 function parseBoolean(value, fallback) {
@@ -165,13 +166,18 @@ function createCorsOriginValidator(allowedOrigins) {
       return callback(null, CORS_ALLOW_NO_ORIGIN);
     }
 
-    if (allowList.size === 0 || allowList.has(origin)) {
+    if (allowList.has(origin)) {
       return callback(null, true);
     }
 
     return callback(null, false);
   };
 }
+
+const csrfProtection = createCsrfProtection({
+  allowedOrigins: CORS_ORIGINS,
+  allowNoOrigin: CSRF_ALLOW_NO_ORIGIN,
+});
 
 function buildCspNonceSource(req, res) {
   return `'nonce-${res.locals.cspNonce}'`;
@@ -352,11 +358,15 @@ sessionStore.on('sessionError', (error, method) => {
   logger.error(`Session store method error (${method}): ${error.message}`);
 });
 
+app.disable('x-powered-by');
+
 app.use(
   cors({
     origin: createCorsOriginValidator(CORS_ORIGINS),
     credentials: true,
     optionsSuccessStatus: 204,
+    methods: ['GET', 'HEAD', 'OPTIONS', 'POST', 'PUT', 'PATCH', 'DELETE'],
+    allowedHeaders: ['Content-Type', 'Authorization', 'X-CSRF-Token'],
   })
 );
 app.use(
@@ -378,6 +388,7 @@ app.use((req, res, next) => {
   return apiCspMiddleware(req, res, next);
 });
 app.use(express.json());
+app.use(csrfProtection);
 const uploadsStaticPath = path.resolve(__dirname, '..', 'uploads');
 const uploadsStaticOptions = {
   setHeaders: (res) => {
@@ -409,6 +420,8 @@ const sessionMiddleware = session({
 
 app.use(sessionMiddleware);
 app.use(apiRateLimiter);
+app.get('/health', (req, res) => res.json({ status: 'ok' }));
+setupSwagger(app);
 
 // Routes
 app.use('/auth', authRoutes);
@@ -422,7 +435,6 @@ app.use('/teacher/inventory', inventoryRoutes);
 app.use('/notifications', notificationRoutes);
 app.use('/', joinRequestRoutes);
 app.use('/', coachingRoutes);
-app.get('/health', (req, res) => res.json({ status: 'ok' }));
 app.use('/', financeRoutes);
 app.use('/', auditRoutes);
 app.use('/admin', adminRoutes);
@@ -430,7 +442,6 @@ app.use('/admin/marketplace', adminMarketplaceRoutes);
 app.use('/admin/inventory', adminInventoryRoutes);
 app.use('/admin/studios', adminStudiosRoutes);
 app.use('/admin/studio-occupancy', adminStudioOccupancyRoutes);
-setupSwagger(app);
 
 app.use((err, req, res, next) => {
   errorHandler(err, req, res, next);

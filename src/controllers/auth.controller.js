@@ -74,9 +74,16 @@ function regenerateSession(req) {
 async function findUserByEmail(email) {
   return prisma.user.findUnique({
     where: { Email: email },
-    include: {
+    select: {
+      UserID: true,
+      AuthUID: true,
+      FirstName: true,
+      LastName: true,
+      Email: true,
+      IsActive: true,
+      PasswordHash: true,
       UserRole: {
-        include: {
+        select: {
           Role: true,
         },
       },
@@ -87,9 +94,15 @@ async function findUserByEmail(email) {
 async function findUserById(userId) {
   return prisma.user.findUnique({
     where: { UserID: userId },
-    include: {
+    select: {
+      UserID: true,
+      AuthUID: true,
+      FirstName: true,
+      LastName: true,
+      Email: true,
+      IsActive: true,
       UserRole: {
-        include: {
+        select: {
           Role: true,
         },
       },

@@ -12,11 +12,7 @@ const {
     toAppRole,
 } = require('../utils/roles');
 
-const MIN_BCRYPT_ROUNDS = 12;
-const parsedBcryptRounds = Number.parseInt(process.env.BCRYPT_SALT_ROUNDS || '', 10);
-const BCRYPT_ROUNDS = Number.isInteger(parsedBcryptRounds)
-    ? Math.max(parsedBcryptRounds, MIN_BCRYPT_ROUNDS)
-    : MIN_BCRYPT_ROUNDS;
+const PASSWORD_HASH_ROUNDS = 12;
 
 function serializeAdminUser(user) {
     const role = getPrimaryRoleFromUser(user);
@@ -192,7 +188,7 @@ async function createUser(req, res, next) {
             }
         }
 
-        const passwordHash = await bcrypt.hash(password, BCRYPT_ROUNDS);
+        const passwordHash = await bcrypt.hash(password, PASSWORD_HASH_ROUNDS);
         const now = new Date();
 
         const createdUser = await prisma.$transaction(async (tx) => {
@@ -424,14 +420,25 @@ async function deleteUser(req, res, next) {
             return res.status(404).json({ error: 'User not found' });
         }
 
+        const deletionToken = crypto.randomUUID();
+        const deletedAt = new Date();
+        const passwordHash = await bcrypt.hash(crypto.randomUUID(), PASSWORD_HASH_ROUNDS);
+
         await prisma.user.update({
             where: {
                 UserID: targetUserId,
             },
             data: {
+                FirstName: 'Deleted',
+                LastName: null,
+                PhoneNumber: null,
+                Photo: null,
+                Email: `deleted+${targetUserId}-${deletionToken}@gestartes.local`,
+                AuthUID: `deleted-${targetUserId}-${deletionToken}`,
+                PasswordHash: passwordHash,
                 IsActive: false,
-                DeletedAt: new Date(),
-                UpdatedAt: new Date(),
+                DeletedAt: deletedAt,
+                UpdatedAt: deletedAt,
             },
         });
 
@@ -628,7 +635,7 @@ async function resetUserPassword(req, res, next) {
             return res.status(404).json({ error: 'User not found' });
         }
 
-        const passwordHash = await bcrypt.hash(newPassword, MIN_BCRYPT_ROUNDS);
+        const passwordHash = await bcrypt.hash(newPassword, PASSWORD_HASH_ROUNDS);
 
         await prisma.user.update({
             where: { UserID: targetUserId },

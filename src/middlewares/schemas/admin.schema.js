@@ -4,18 +4,22 @@ const { toAppRole } = require('../../utils/roles');
 const createUserSchema = [
     body('firstName')
         .isLength({ min: 2, max: 150 }).withMessage('Nome inválido')
-        .trim(),
+        .trim()
+        .escape(),
     body('lastName')
         .optional({ values: 'falsy' })
         .isLength({ min: 2, max: 150 }).withMessage('Apelido inválido')
-        .trim(),
+        .trim()
+        .escape(),
     body('email')
         .isEmail().withMessage('Email inválido')
+        .trim()
         .normalizeEmail(),
     body('phoneNumber')
         .optional({ values: 'falsy' })
         .isLength({ min: 3, max: 20 }).withMessage('Telefone inválido')
-        .trim(),
+        .trim()
+        .escape(),
     body('password')
         .isLength({ min: 8 }).withMessage('Password deve ter no mínimo 8 caracteres')
         .matches(/[A-Z]/).withMessage('Password deve conter pelo menos uma letra maiúscula')
@@ -23,11 +27,13 @@ const createUserSchema = [
         .matches(/[0-9]/).withMessage('Password deve conter pelo menos um número'),
     body('role')
         .custom((value) => Boolean(toAppRole(value))).withMessage('Role inválida')
-        .trim(),
+        .trim()
+        .escape(),
     body('studentNumber')
         .optional({ values: 'falsy' })
         .isLength({ min: 2, max: 100 }).withMessage('Número de aluno inválido')
-        .trim(),
+        .trim()
+        .escape(),
     body('birthDate')
         .optional({ values: 'falsy' })
         .isISO8601().withMessage('Data de nascimento inválida')
@@ -35,11 +41,13 @@ const createUserSchema = [
     body('guardianName')
         .optional({ values: 'falsy' })
         .isLength({ min: 2, max: 150 }).withMessage('Nome do encarregado inválido')
-        .trim(),
+        .trim()
+        .escape(),
     body('guardianPhone')
         .optional({ values: 'falsy' })
         .isLength({ min: 3, max: 20 }).withMessage('Telefone do encarregado inválido')
-        .trim(),
+        .trim()
+        .escape(),
     body()
         .custom((value) => {
             const role = toAppRole(value?.role);
@@ -66,19 +74,23 @@ const updateUserSchema = [
     body('firstName')
         .optional()
         .isLength({ min: 2, max: 150 }).withMessage('Nome inválido')
-        .trim(),
+        .trim()
+        .escape(),
     body('lastName')
         .optional({ values: 'falsy' })
         .isLength({ min: 2, max: 150 }).withMessage('Apelido inválido')
-        .trim(),
+        .trim()
+        .escape(),
     body('email')
         .optional()
         .isEmail().withMessage('Email inválido')
+        .trim()
         .normalizeEmail(),
     body('phoneNumber')
         .optional({ values: 'falsy' })
         .isLength({ min: 3, max: 20 }).withMessage('Telefone inválido')
-        .trim(),
+        .trim()
+        .escape(),
     body('isActive')
         .optional()
         .isBoolean().withMessage('Estado inválido')
@@ -86,7 +98,8 @@ const updateUserSchema = [
     body('studentNumber')
         .optional({ values: 'falsy' })
         .isLength({ min: 2, max: 100 }).withMessage('Número de aluno inválido')
-        .trim(),
+        .trim()
+        .escape(),
     body('birthDate')
         .optional({ values: 'falsy' })
         .isISO8601().withMessage('Data de nascimento inválida')
@@ -94,11 +107,13 @@ const updateUserSchema = [
     body('guardianName')
         .optional({ values: 'falsy' })
         .isLength({ min: 2, max: 150 }).withMessage('Nome do encarregado inválido')
-        .trim(),
+        .trim()
+        .escape(),
     body('guardianPhone')
         .optional({ values: 'falsy' })
         .isLength({ min: 3, max: 20 }).withMessage('Telefone do encarregado inválido')
-        .trim(),
+        .trim()
+        .escape(),
     body()
         .custom((value) => {
             const allowedKeys = [
@@ -132,7 +147,8 @@ const updateUserRolesSchema = [
     body('role')
         .optional({ values: 'falsy' })
         .custom((value) => Boolean(toAppRole(value))).withMessage('Role inválida')
-        .trim(),
+        .trim()
+        .escape(),
     body('roles')
         .optional()
         .isArray({ min: 1 }).withMessage('Roles inválidas'),
@@ -142,7 +158,8 @@ const updateUserRolesSchema = [
     body('studentNumber')
         .optional({ values: 'falsy' })
         .isLength({ min: 2, max: 100 }).withMessage('Número de aluno inválido')
-        .trim(),
+        .trim()
+        .escape(),
     body('birthDate')
         .optional({ values: 'falsy' })
         .isISO8601().withMessage('Data de nascimento inválida')
@@ -150,11 +167,13 @@ const updateUserRolesSchema = [
     body('guardianName')
         .optional({ values: 'falsy' })
         .isLength({ min: 2, max: 150 }).withMessage('Nome do encarregado inválido')
-        .trim(),
+        .trim()
+        .escape(),
     body('guardianPhone')
         .optional({ values: 'falsy' })
         .isLength({ min: 3, max: 20 }).withMessage('Telefone do encarregado inválido')
-        .trim(),
+        .trim()
+        .escape(),
     body()
         .custom((value) => {
             const hasRole = Object.prototype.hasOwnProperty.call(value || {}, 'role');

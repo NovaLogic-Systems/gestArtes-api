@@ -1,16 +1,8 @@
 const prisma = require('../config/prisma');
-const { createPricingService } = require('../services/pricing.service');
 
 const DEFAULT_NOTIFICATION_TYPE_ID = 1;
 const TEACHER_APPROVED_STATUS = 'TEACHER_APPROVED';
 const TEACHER_REJECTED_STATUS = 'TEACHER_REJECTED';
-const FINALIZATION_VALIDATION_PENDING_STATUS = 'FINALIZATION_VALIDATION_PENDING';
-const TEACHER_CONFIRMATION_STEP = 'TeacherConfirmation';
-const NO_SHOW_STATUS = 'NO_SHOW';
-const NO_SHOW_ATTENDANCE_STATUS = 'NO_SHOW';
-const NO_SHOW_STEP = 'NoShowRecorded';
-
-const pricingService = createPricingService(prisma);
 
 function toInteger(value) {
   if (typeof value === 'bigint') {
@@ -25,13 +17,6 @@ function normalizeString(value) {
   return String(value || '')
     .trim()
     .toLowerCase();
-}
-
-function normalizeKey(value) {
-  return String(value || '')
-    .trim()
-    .toLowerCase()
-    .replace(/[^a-z0-9]/g, '');
 }
 
 function getAuthenticatedTeacherUserId(req, res) {
@@ -124,145 +109,6 @@ function truncateNotificationMessage(message) {
   }
 
   return `${trimmed.slice(0, 252)}...`;
-}
-
-function isTerminalSessionStatus(statusName) {
-  const normalized = normalizeKey(statusName);
-
-  return normalized.includes('cancel') || normalized.includes('finalized');
-}
-
-function isNoShowSessionStatus(statusName) {
-  return normalizeKey(statusName) === normalizeKey(NO_SHOW_STATUS);
-}
-
-function hasTeacherConfirmationByUser(validations, teacherUserId) {
-  return validations.some((validation) => {
-    if (validation.ValidatedByUserID !== teacherUserId) {
-      return false;
-    }
-
-    const stepName = normalizeKey(validation.ValidationStep?.StepName);
-    return stepName.includes('teacher') && stepName.includes('confirm');
-  });
-}
-
-function appendNoShowRemark(previousNotes, remark) {
-  const prefix = 'NO_SHOW: ';
-  const incoming = `${prefix}${String(remark || '').trim()}`;
-  const existing = String(previousNotes || '').trim();
-
-  if (!existing) {
-    return incoming.slice(0, 255);
-  }
-
-  return `${existing} | ${incoming}`.slice(0, 255);
-}
-
-async function getOrCreateValidationStep(db, stepName, keywords) {
-  const allSteps = await db.validationStep.findMany({
-    select: { StepID: true, StepName: true },
-  });
-
-  const found = allSteps.find((step) => {
-    const normalized = normalizeKey(step.StepName);
-    return keywords.every((keyword) => normalized.includes(normalizeKey(keyword)));
-  });
-
-  if (found) {
-    return found.StepID;
-  }
-
-  const created = await db.validationStep.create({
-    data: { StepName: stepName },
-    select: { StepID: true },
-  });
-
-  return created.StepID;
-}
-
-async function resolveOrCreateSessionStatusId(db, desiredStatusName, aliases = []) {
-  const statuses = await db.sessionStatus.findMany({
-    select: { StatusID: true, StatusName: true },
-  });
-
-  const desiredNormalized = normalizeKey(desiredStatusName);
-  const aliasSet = new Set([desiredNormalized, ...aliases.map((alias) => normalizeKey(alias))]);
-
-  const found = statuses.find((status) => aliasSet.has(normalizeKey(status.StatusName)));
-
-  if (found) {
-    return found.StatusID;
-  }
-
-  const created = await db.sessionStatus.create({
-    data: { StatusName: desiredStatusName },
-    select: { StatusID: true },
-  });
-
-  return created.StatusID;
-}
-
-async function resolveOrCreateAttendanceStatusId(db, desiredStatusName, aliases = []) {
-  const statuses = await db.attendanceStatus.findMany({
-    select: { AttendanceStatusID: true, StatusName: true },
-  });
-
-  const desiredNormalized = normalizeKey(desiredStatusName);
-  const aliasSet = new Set([desiredNormalized, ...aliases.map((alias) => normalizeKey(alias))]);
-
-  const found = statuses.find((status) => aliasSet.has(normalizeKey(status.StatusName)));
-
-  if (found) {
-    return found.AttendanceStatusID;
-  }
-
-  const created = await db.attendanceStatus.create({
-    data: { StatusName: desiredStatusName },
-    select: { AttendanceStatusID: true },
-  });
-
-  return created.AttendanceStatusID;
-}
-
-async function listAdminUserIds(db) {
-  const rows = await db.userRole.findMany({
-    where: {
-      Role: {
-        RoleName: {
-          equals: 'admin',
-          mode: 'insensitive',
-        },
-      },
-      User: {
-        IsActive: true,
-      },
-    },
-    select: { UserID: true },
-  });
-
-  return [...new Set(rows.map((row) => row.UserID).filter((userId) => Number.isInteger(userId) && userId > 0))];
-}
-
-async function createAdminNotifications(db, { sessionId, title, message }) {
-  const adminUserIds = await listAdminUserIds(db);
-
-  if (adminUserIds.length === 0) {
-    return;
-  }
-
-  const now = new Date();
-  const payload = adminUserIds.map((userId) => ({
-    UserID: userId,
-    Message: truncateNotificationMessage(message),
-    TypeID: DEFAULT_NOTIFICATION_TYPE_ID,
-    IsRead: false,
-    CreatedAt: now,
-    Title: buildNotificationTitle(title || message),
-    SessionID: sessionId,
-  }));
-
-  await db.notification.createMany({ data: payload });
 }
 
 function toUTCDateString(date) {
@@ -672,123 +518,148 @@ async function getTodaySchedule(req, res, next) {
   }
 }
 
+const TERMINAL_SESSION_STATUSES = new Set(['cancel', 'finalized', 'no_show', 'cancelled', 'finalizado', 'no-show']);
+const FINALIZATION_VALIDATION_PENDING_STATUS = 'FINALIZATION_VALIDATION_PENDING';
+const TEACHER_CONFIRMATION_STEP = 'TeacherConfirmation';
+const NO_SHOW_STATUS = 'NO_SHOW';
+const NO_SHOW_ATTENDANCE_STATUS = 'NO_SHOW';
+const NO_SHOW_STEP = 'NoShowRecorded';
+
+function isTerminalStatus(statusName) {
+  const normalized = String(statusName || '').trim().toLowerCase().replace(/[^a-z0-9]/g, '');
+  return TERMINAL_SESSION_STATUSES.has(normalized);
+}
+
+function appendNoShowRemark(previousNotes, remark) {
+  const entry = `NO_SHOW: ${String(remark || '').trim()}`;
+  if (!previousNotes) return entry.slice(0, 255);
+  return `${previousNotes} | ${entry}`.slice(0, 255);
+}
+
+async function resolveOrCreateSessionStatusId(db, desiredName) {
+  const existing = await db.sessionStatus.findFirst({ where: { StatusName: { contains: desiredName } } });
+  if (existing) return existing.StatusID;
+  const created = await db.sessionStatus.create({ data: { StatusName: desiredName } });
+  return created.StatusID;
+}
+
+async function resolveOrCreateAttendanceStatusId(db, desiredName) {
+  const existing = await db.attendanceStatus.findFirst({
+    where: { StatusName: { contains: desiredName } },
+  });
+  if (existing) return existing.AttendanceStatusID;
+  const created = await db.attendanceStatus.create({ data: { StatusName: desiredName } });
+  return created.AttendanceStatusID;
+}
+
+async function getOrCreateValidationStep(db, stepName) {
+  const all = await db.validationStep.findMany();
+  const normalized = stepName.toLowerCase();
+  const match = all.find((s) => s.StepName.toLowerCase().includes(normalized) || normalized.includes(s.StepName.toLowerCase()));
+  if (match) return match.StepID;
+  const created = await db.validationStep.create({ data: { StepName: stepName } });
+  return created.StepID;
+}
+
+async function listAdminUserIds(db) {
+  const adminRoles = await db.userRole.findMany({
+    where: {
+      Role: { RoleName: { contains: 'admin' } },
+      User: { IsActive: true },
+    },
+    select: { UserID: true },
+  });
+  return adminRoles.map((ur) => ur.UserID);
+}
+
+async function createAdminNotifications(db, { sessionId, title, message }) {
+  const adminIds = await listAdminUserIds(db);
+  await Promise.all(
+    adminIds.map((uid) =>
+      db.notification.create({
+        data: {
+          UserID: uid,
+          Message: message.slice(0, 255),
+          TypeID: 1,
+          IsRead: false,
+          CreatedAt: new Date(),
+          Title: title.slice(0, 255),
+          SessionID: sessionId,
+        },
+      }),
+    ),
+  );
+}
+
+function hasTeacherConfirmation(validations, teacherUserId) {
+  return validations.some(
+    (sv) =>
+      sv.ValidatedByUserID === teacherUserId &&
+      sv.ValidationStep.StepName.toLowerCase().includes('teacher'),
+  );
+}
+
 async function getPendingSessions(req, res, next) {
   try {
     const teacherUserId = getAuthenticatedTeacherUserId(req, res);
-
-    if (!teacherUserId) {
-      return;
-    }
+    if (!teacherUserId) return;
 
     const now = new Date();
 
-    const sessions = await prisma.coachingSession.findMany({
+    const sessionTeachers = await prisma.sessionTeacher.findMany({
       where: {
-        EndTime: {
-          lte: now,
-        },
-        SessionTeacher: {
-          some: {
-            TeacherID: teacherUserId,
-          },
-        },
+        TeacherID: teacherUserId,
+        CoachingSession: { EndTime: { lt: now } },
       },
       include: {
-        SessionStatus: {
-          select: {
-            StatusID: true,
-            StatusName: true,
-          },
-        },
-        Studio: {
-          select: {
-            StudioName: true,
-          },
-        },
-        Modality: {
-          select: {
-            ModalityName: true,
-          },
-        },
-        SessionValidation: {
+        CoachingSession: {
           include: {
-            ValidationStep: {
-              select: {
-                StepName: true,
-              },
-            },
-          },
-        },
-        SessionStudent: {
-          include: {
-            AttendanceStatus: {
-              select: {
-                StatusName: true,
-              },
-            },
-            StudentAccount: {
+            SessionStatus: { select: { StatusName: true } },
+            Studio: { select: { StudioName: true } },
+            Modality: { select: { ModalityName: true } },
+            SessionValidation: {
               include: {
-                User: {
-                  select: {
-                    UserID: true,
-                    FirstName: true,
-                    LastName: true,
-                    Email: true,
+                ValidationStep: { select: { StepName: true } },
+              },
+            },
+            SessionStudent: {
+              include: {
+                StudentAccount: {
+                  include: {
+                    User: { select: { UserID: true, FirstName: true, LastName: true, Email: true } },
                   },
                 },
+                AttendanceStatus: { select: { StatusName: true } },
               },
             },
           },
         },
       },
-      orderBy: [
-        { EndTime: 'asc' },
-        { SessionID: 'asc' },
-      ],
+      orderBy: [{ CoachingSession: { EndTime: 'desc' } }],
     });
 
-    const pendingSessions = sessions
-      .filter((session) => {
-        const statusName = session.SessionStatus?.StatusName;
-        // Exclude cancelled/finalized; keep NO_SHOW sessions so teacher can still mark other enrolled students
-        return !isTerminalSessionStatus(statusName);
-      })
-      .map((session) => {
-        const teacherConfirmed = hasTeacherConfirmationByUser(session.SessionValidation, teacherUserId);
+    const sessions = sessionTeachers
+      .map((st) => st.CoachingSession)
+      .filter((s) => !isTerminalStatus(s.SessionStatus.StatusName))
+      .filter((s) => !hasTeacherConfirmation(s.SessionValidation, teacherUserId))
+      .map((s) => ({
+        sessionId: s.SessionID,
+        date: toUTCDateString(s.StartTime),
+        startTime: toUTCTimeString(s.StartTime),
+        endTime: toUTCTimeString(s.EndTime),
+        studioName: s.Studio.StudioName,
+        modalityName: s.Modality.ModalityName,
+        status: s.SessionStatus.StatusName,
+        students: s.SessionStudent.map((ss) => ({
+          studentAccountId: ss.StudentAccountID,
+          studentUserId: ss.StudentAccount.User.UserID,
+          studentName: `${ss.StudentAccount.User.FirstName} ${ss.StudentAccount.User.LastName || ''}`.trim(),
+          email: ss.StudentAccount.User.Email,
+          attendanceStatus: ss.AttendanceStatus.StatusName,
+        })),
+      }));
 
-        return {
-          sessionId: session.SessionID,
-          startTime: session.StartTime,
-          endTime: session.EndTime,
-          statusId: session.SessionStatus?.StatusID ?? null,
-          statusName: session.SessionStatus?.StatusName ?? null,
-          studioName: session.Studio?.StudioName ?? null,
-          modalityName: session.Modality?.ModalityName ?? null,
-          teacherConfirmed,
-          canConfirmCompletion: !teacherConfirmed,
-          students: session.SessionStudent.map((student) => ({
-            studentAccountId: student.StudentAccountID,
-            studentUserId: student.StudentAccount?.User?.UserID ?? null,
-            studentName: [
-              student.StudentAccount?.User?.FirstName,
-              student.StudentAccount?.User?.LastName,
-            ]
-              .filter(Boolean)
-              .join(' ')
-              .trim(),
-            studentEmail: student.StudentAccount?.User?.Email ?? null,
-            attendanceStatus: student.AttendanceStatus?.StatusName ?? null,
-            canRegisterNoShow: normalizeKey(student.AttendanceStatus?.StatusName) !== normalizeKey(NO_SHOW_ATTENDANCE_STATUS),
-          })),
-        };
-      });
-
-    return res.json({
-      summary: {
-        pendingCount: pendingSessions.length,
-      },
-      sessions: pendingSessions,
-    });
+    return res.json({ sessions, total: sessions.length });
   } catch (error) {
     return next(error);
   }
@@ -797,118 +668,67 @@ async function getPendingSessions(req, res, next) {
 async function confirmCompletion(req, res, next) {
   try {
     const teacherUserId = getAuthenticatedTeacherUserId(req, res);
+    if (!teacherUserId) return;
 
-    if (!teacherUserId) {
-      return;
-    }
-
-    const sessionId = Number(req.params?.id);
-
+    const sessionId = Number(req.params?.sessionId);
     if (!Number.isInteger(sessionId) || sessionId <= 0) {
-      return res.status(400).json({ error: 'Invalid session id' });
+      return res.status(400).json({ error: 'ID de sessão inválido' });
     }
+
+    const now = new Date();
 
     const session = await prisma.coachingSession.findFirst({
       where: {
         SessionID: sessionId,
-        SessionTeacher: {
-          some: {
-            TeacherID: teacherUserId,
-          },
-        },
+        SessionTeacher: { some: { TeacherID: teacherUserId } },
       },
       include: {
-        SessionStatus: {
-          select: {
-            StatusName: true,
-          },
-        },
+        SessionStatus: { select: { StatusName: true } },
         SessionValidation: {
-          include: {
-            ValidationStep: {
-              select: {
-                StepName: true,
-              },
-            },
-          },
+          include: { ValidationStep: { select: { StepName: true } } },
         },
       },
     });
 
-    if (!session) {
-      return res.status(404).json({ error: 'Session not found' });
+    if (!session) return res.status(404).json({ error: 'Sessão não encontrada' });
+    if (session.EndTime > now) return res.status(409).json({ error: 'A sessão ainda não terminou' });
+    if (isTerminalStatus(session.SessionStatus.StatusName)) {
+      return res.status(409).json({ error: 'A sessão já se encontra num estado terminal' });
+    }
+    if (hasTeacherConfirmation(session.SessionValidation, teacherUserId)) {
+      return res.status(409).json({ error: 'O professor já confirmou esta sessão' });
     }
 
-    if (new Date(session.EndTime) > new Date()) {
-      return res.status(409).json({ error: 'Session has not ended yet' });
-    }
+    const [pendingStatusId, teacherStepId] = await Promise.all([
+      resolveOrCreateSessionStatusId(prisma, FINALIZATION_VALIDATION_PENDING_STATUS),
+      getOrCreateValidationStep(prisma, TEACHER_CONFIRMATION_STEP),
+    ]);
 
-    const sessionStatusName = session.SessionStatus?.StatusName;
-    if (isTerminalSessionStatus(sessionStatusName) || isNoShowSessionStatus(sessionStatusName)) {
-      return res.status(409).json({ error: 'Session is not eligible for completion confirmation' });
-    }
+    const validation = await prisma.$transaction(async (tx) => {
+      await tx.coachingSession.update({
+        where: { SessionID: sessionId },
+        data: { StatusID: pendingStatusId },
+      });
 
-    if (hasTeacherConfirmationByUser(session.SessionValidation, teacherUserId)) {
-      return res.status(409).json({ error: 'Session was already confirmed by this teacher' });
-    }
-
-    const result = await prisma.$transaction(async (tx) => {
-      const teacherStepId = await getOrCreateValidationStep(tx, TEACHER_CONFIRMATION_STEP, ['teacher', 'confirm']);
-      const finalizationPendingStatusId = await resolveOrCreateSessionStatusId(
-        tx,
-        FINALIZATION_VALIDATION_PENDING_STATUS,
-        ['finalization validation pending', 'finalizationpending', 'finalvalidationpending'],
-      );
-
-      const createdValidation = await tx.sessionValidation.create({
+      const sv = await tx.sessionValidation.create({
         data: {
           SessionID: sessionId,
           ValidatedByUserID: teacherUserId,
-          ValidatedAt: new Date(),
+          ValidatedAt: now,
           ValidationStepID: teacherStepId,
-        },
-        select: {
-          ValidationID: true,
-          ValidatedAt: true,
-        },
-      });
-
-      const updatedSession = await tx.coachingSession.update({
-        where: {
-          SessionID: sessionId,
-        },
-        data: {
-          StatusID: finalizationPendingStatusId,
-          ValidationRequestedAt: new Date(),
-        },
-        include: {
-          SessionStatus: {
-            select: {
-              StatusName: true,
-            },
-          },
         },
       });
 
       await createAdminNotifications(tx, {
         sessionId,
-        title: 'Sessao pronta para validacao final',
-        message: `A sessao #${sessionId} foi confirmada pelo professor e aguarda validacao final da administracao.`,
+        title: 'Sessão pronta para validação final',
+        message: `Professor confirmou a sessão #${sessionId}. Aguarda validação final.`,
       });
 
-      return {
-        validationId: createdValidation.ValidationID,
-        validatedAt: createdValidation.ValidatedAt,
-        statusName: updatedSession.SessionStatus?.StatusName ?? FINALIZATION_VALIDATION_PENDING_STATUS,
-      };
+      return sv;
     });
 
-    return res.status(201).json({
-      sessionId,
-      validationId: result.validationId,
-      validatedAt: result.validatedAt,
-      status: result.statusName,
-    });
+    return res.status(201).json({ validationId: validation.ValidationID, sessionId });
   } catch (error) {
     return next(error);
   }
@@ -917,122 +737,75 @@ async function confirmCompletion(req, res, next) {
 async function registerNoShow(req, res, next) {
   try {
     const teacherUserId = getAuthenticatedTeacherUserId(req, res);
+    if (!teacherUserId) return;
 
-    if (!teacherUserId) {
-      return;
-    }
-
-    const sessionId = Number(req.params?.id);
-    const studentAccountId = Number(req.body?.studentAccountId);
-    const remarks = String(req.body?.remarks || '').trim();
-
+    const sessionId = Number(req.params?.sessionId);
     if (!Number.isInteger(sessionId) || sessionId <= 0) {
-      return res.status(400).json({ error: 'Invalid session id' });
+      return res.status(400).json({ error: 'ID de sessão inválido' });
     }
 
+    const studentAccountId = Number(req.body?.studentAccountId);
     if (!Number.isInteger(studentAccountId) || studentAccountId <= 0) {
-      return res.status(400).json({ error: 'Invalid studentAccountId' });
+      return res.status(400).json({ error: 'studentAccountId inválido' });
     }
 
+    const remarks = String(req.body?.remarks || '').trim();
     if (!remarks) {
-      return res.status(400).json({ error: 'Remarks are required for no-show registration' });
+      return res.status(400).json({ error: 'A observação é obrigatória para registar falta sem aviso (BR-16)' });
     }
+
+    const now = new Date();
 
     const session = await prisma.coachingSession.findFirst({
       where: {
         SessionID: sessionId,
-        SessionTeacher: {
-          some: {
-            TeacherID: teacherUserId,
-          },
-        },
+        SessionTeacher: { some: { TeacherID: teacherUserId } },
       },
       include: {
-        SessionStatus: {
-          select: {
-            StatusName: true,
-          },
-        },
+        SessionStatus: { select: { StatusName: true } },
         SessionStudent: {
-          where: {
-            StudentAccountID: studentAccountId,
-          },
+          where: { StudentAccountID: studentAccountId },
           include: {
-            AttendanceStatus: {
-              select: {
-                StatusName: true,
-              },
-            },
+            AttendanceStatus: { select: { StatusName: true } },
             StudentAccount: {
-              include: {
-                User: {
-                  select: {
-                    UserID: true,
-                    FirstName: true,
-                    LastName: true,
-                  },
-                },
-              },
+              include: { User: { select: { UserID: true } } },
             },
           },
         },
       },
     });
 
-    if (!session) {
-      return res.status(404).json({ error: 'Session not found' });
+    if (!session) return res.status(404).json({ error: 'Sessão não encontrada' });
+    if (session.EndTime > now) return res.status(409).json({ error: 'A sessão ainda não terminou' });
+    if (isTerminalStatus(session.SessionStatus.StatusName)) {
+      return res.status(409).json({ error: 'A sessão já se encontra num estado terminal' });
     }
-
-    if (new Date(session.EndTime) > new Date()) {
-      return res.status(409).json({ error: 'Cannot register no-show before session end' });
+    if (!session.SessionStudent.length) {
+      return res.status(404).json({ error: 'Aluno não inscrito nesta sessão' });
     }
-
-    if (isTerminalSessionStatus(session.SessionStatus?.StatusName)) {
-      return res.status(409).json({ error: 'Session is not eligible for no-show registration' });
-    }
-    // Allow no-show registration even if the session is already in NO_SHOW — another student may still need to be marked
 
     const enrollment = session.SessionStudent[0];
-
-    if (!enrollment) {
-      return res.status(404).json({ error: 'Session enrollment not found for this student' });
+    const noShowNormalized = enrollment.AttendanceStatus.StatusName.toLowerCase().replace(/[^a-z0-9]/g, '');
+    if (noShowNormalized.includes('noshow') || noShowNormalized.includes('no_show')) {
+      return res.status(409).json({ error: 'Falta sem aviso já registada para este aluno' });
     }
 
-    if (normalizeKey(enrollment.AttendanceStatus?.StatusName) === normalizeKey(NO_SHOW_ATTENDANCE_STATUS)) {
-      return res.status(409).json({ error: 'No-show already registered for this enrollment' });
-    }
+    const [noShowAttendanceStatusId, noShowStepId, noShowSessionStatusId] = await Promise.all([
+      resolveOrCreateAttendanceStatusId(prisma, NO_SHOW_ATTENDANCE_STATUS),
+      getOrCreateValidationStep(prisma, NO_SHOW_STEP),
+      resolveOrCreateSessionStatusId(prisma, NO_SHOW_STATUS),
+    ]);
 
-    const result = await prisma.$transaction(async (tx) => {
-      const noShowAttendanceStatusId = await resolveOrCreateAttendanceStatusId(
-        tx,
-        NO_SHOW_ATTENDANCE_STATUS,
-        ['no show', 'noshow'],
-      );
+    const studentUserId = enrollment.StudentAccount.User.UserID;
 
-      const noShowSessionStatusId = await resolveOrCreateSessionStatusId(
-        tx,
-        NO_SHOW_STATUS,
-        ['no show', 'noshow'],
-      );
-
-      const noShowStepId = await getOrCreateValidationStep(tx, NO_SHOW_STEP, ['no', 'show']);
-
+    await prisma.$transaction(async (tx) => {
       await tx.sessionStudent.update({
-        where: {
-          SessionID_StudentAccountID: {
-            SessionID: sessionId,
-            StudentAccountID: studentAccountId,
-          },
-        },
-        data: {
-          AttendanceStatusID: noShowAttendanceStatusId,
-        },
+        where: { SessionID_StudentAccountID: { SessionID: sessionId, StudentAccountID: studentAccountId } },
+        data: { AttendanceStatusID: noShowAttendanceStatusId },
       });
 
       await tx.coachingSession.update({
-        where: {
-          SessionID: sessionId,
-        },
+        where: { SessionID: sessionId },
         data: {
           StatusID: noShowSessionStatusId,
           ReviewNotes: appendNoShowRemark(session.ReviewNotes, remarks),
@@ -1043,67 +816,35 @@ async function registerNoShow(req, res, next) {
         data: {
           SessionID: sessionId,
           ValidatedByUserID: teacherUserId,
-          ValidatedAt: new Date(),
+          ValidatedAt: now,
           ValidationStepID: noShowStepId,
         },
       });
 
-      const existingPenalty = await tx.financialEntry.findFirst({
-        where: {
+      await tx.notification.create({
+        data: {
+          UserID: studentUserId,
+          Message: `Falta sem aviso registada para a sessão #${sessionId}. Penalização aplicada conforme BR-16. Observações: ${remarks.slice(0, 100)}`.slice(0, 255),
+          TypeID: 1,
+          IsRead: false,
+          CreatedAt: now,
+          Title: 'Falta sem aviso registada',
           SessionID: sessionId,
-          FinancialEntryType: {
-            TypeName: 'no_show_fee',
-          },
-        },
-        select: {
-          EntryID: true,
         },
       });
-
-      const penaltyEntry = existingPenalty
-        ? existingPenalty
-        : await pricingService.applyNoShowPenalty(sessionId, teacherUserId, tx);
 
       await createAdminNotifications(tx, {
         sessionId,
         title: 'No-show registado',
-        message: `Foi registado no-show na sessao #${sessionId}. A penalizacao BR-16 foi acionada.`,
+        message: `No-show registado para a sessão #${sessionId} (aluno #${studentAccountId}). Penalização BR-16 aplicada.`,
       });
-
-      if (enrollment.StudentAccount?.User?.UserID) {
-        const studentName = [
-          enrollment.StudentAccount?.User?.FirstName,
-          enrollment.StudentAccount?.User?.LastName,
-        ]
-          .filter(Boolean)
-          .join(' ')
-          .trim();
-
-        await tx.notification.create({
-          data: {
-            UserID: enrollment.StudentAccount.User.UserID,
-            Message: truncateNotificationMessage(
-              `Foi registado no-show na sessao #${sessionId}${studentName ? ` para ${studentName}` : ''}. Foi aplicada penalizacao conforme BR-16.`,
-            ),
-            TypeID: DEFAULT_NOTIFICATION_TYPE_ID,
-            IsRead: false,
-            CreatedAt: new Date(),
-            Title: buildNotificationTitle('No-show registado e penalizacao aplicada'),
-            SessionID: sessionId,
-          },
-        });
-      }
-
-      return {
-        sessionId,
-        studentAccountId,
-        attendanceStatus: NO_SHOW_ATTENDANCE_STATUS,
-        sessionStatus: NO_SHOW_STATUS,
-        penaltyEntryId: penaltyEntry.EntryID,
-      };
     });
 
-    return res.status(201).json(result);
+    const { createPricingService } = require('../services/pricing.service');
+    const pricingService = createPricingService(prisma);
+    await pricingService.applyNoShowPenalty(sessionId, teacherUserId);
+
+    return res.status(201).json({ sessionId, studentAccountId, status: 'no_show_registered' });
   } catch (error) {
     return next(error);
   }
@@ -1113,9 +854,9 @@ module.exports = {
   approveJoinRequest,
   confirmCompletion,
   getAdmissionRequests,
+  getDashboard,
   getPendingAdmissions,
   getPendingSessions,
-  getDashboard,
   getTodaySchedule,
   registerNoShow,
   rejectJoinRequest,

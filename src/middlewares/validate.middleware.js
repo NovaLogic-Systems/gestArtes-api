@@ -10,7 +10,10 @@ function validateRequest(req, res, next) {
 
   res.status(400).json({
     error: 'Validation failed',
-    details: errors.array({ onlyFirstError: true }),
+    details: errors.array({ onlyFirstError: true }).map((e) => ({
+      ...e,
+      path: Array.isArray(e.path) ? e.path : [e.path],
+    })),
   });
 }
 

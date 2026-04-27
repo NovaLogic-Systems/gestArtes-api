@@ -747,7 +747,227 @@ async function getDashboard(req, res, next) {
     }
 }
 
+function toUTCDateStr(date) {
+    if (!date) return null;
+    const d = date instanceof Date ? date : new Date(date);
+    return d.toISOString().slice(0, 10);
+}
+
+function toUTCTimeStr(date) {
+    if (!date) return null;
+    const d = date instanceof Date ? date : new Date(date);
+    return d.toISOString().slice(11, 16);
+}
+
+async function resolveOrCreateSessionStatus(tx, statusName) {
+    const existing = await tx.sessionStatus.findFirst({ where: { StatusName: { contains: statusName } } });
+    if (existing) return existing.StatusID;
+    const created = await tx.sessionStatus.create({ data: { StatusName: statusName } });
+    return created.StatusID;
+}
+
+async function listPendingApproval(req, res, next) {
+    try {
+        const allStatuses = await prisma.sessionStatus.findMany({
+            select: { StatusID: true, StatusName: true },
+        });
+
+        const pendingStatusIds = allStatuses
+            .filter((s) => s.StatusName.toLowerCase().includes('pending'))
+            .map((s) => s.StatusID);
+
+        if (!pendingStatusIds.length) {
+            return res.json({ sessions: [] });
+        }
+
+        const sessions = await prisma.coachingSession.findMany({
+            where: { StatusID: { in: pendingStatusIds } },
+            include: {
+                SessionStatus: { select: { StatusName: true } },
+                Studio: { select: { StudioName: true } },
+                Modality: { select: { ModalityName: true } },
+                SessionPricingRate: { select: { HourlyRate: true } },
+                User_CoachingSession_RequestedByUserIDToUser: {
+                    select: { FirstName: true, LastName: true, Email: true },
+                },
+                SessionTeacher: {
+                    include: {
+                        User: { select: { FirstName: true, LastName: true } },
+                    },
+                },
+                _count: { select: { SessionStudent: true } },
+            },
+            orderBy: [{ CreatedAt: 'asc' }],
+        });
+
+        const result = sessions.map((s) => {
+            const teacher = s.SessionTeacher[0]?.User;
+            const requester = s.User_CoachingSession_RequestedByUserIDToUser;
+            return {
+                sessionId: s.SessionID,
+                date: toUTCDateStr(s.StartTime),
+                startTime: toUTCTimeStr(s.StartTime),
+                endTime: toUTCTimeStr(s.EndTime),
+                studioName: s.Studio.StudioName,
+                modalityName: s.Modality.ModalityName,
+                status: s.SessionStatus.StatusName,
+                teacherName: teacher ? `${teacher.FirstName} ${teacher.LastName || ''}`.trim() : '—',
+                requesterName: requester ? `${requester.FirstName} ${requester.LastName || ''}`.trim() : '—',
+                requesterEmail: requester?.Email || null,
+                enrolledCount: s._count.SessionStudent,
+                maxParticipants: s.MaxParticipants,
+                hourlyRate: Number(s.SessionPricingRate.HourlyRate),
+                createdAt: s.CreatedAt,
+            };
+        });
+
+        return res.json({ sessions: result, total: result.length });
+    } catch (error) {
+        return next(error);
+    }
+}
+
+async function approveSession(req, res, next) {
+    try {
+        const sessionId = toPositiveInteger(req.params.id);
+        const adminUserId = toPositiveInteger(req.session?.userId);
+
+        if (!sessionId) return res.status(400).json({ error: 'Invalid session id' });
+        if (!adminUserId) return res.status(401).json({ error: 'Not authenticated' });
+
+        const session = await prisma.coachingSession.findUnique({
+            where: { SessionID: sessionId },
+            include: {
+                SessionStatus: { select: { StatusName: true } },
+                SessionTeacher: { include: { User: { select: { UserID: true } } } },
+                SessionStudent: {
+                    include: {
+                        StudentAccount: { include: { User: { select: { UserID: true } } } },
+                    },
+                },
+            },
+        });
+
+        if (!session) return res.status(404).json({ error: 'Session not found' });
+
+        if (!session.SessionStatus.StatusName.toLowerCase().includes('pending')) {
+            return res.status(409).json({ error: 'Session is not in a pending state' });
+        }
+
+        const approvedStatusId = await prisma.$transaction(async (tx) => {
+            const statusId = await resolveOrCreateSessionStatus(tx, 'Approved');
+
+            await tx.coachingSession.update({
+                where: { SessionID: sessionId },
+                data: {
+                    StatusID: statusId,
+                    ReviewedByUserID: adminUserId,
+                    ReviewedAt: new Date(),
+                },
+            });
+
+            const userIdsToNotify = [
+                ...session.SessionTeacher.map((st) => st.User.UserID),
+                ...session.SessionStudent.map((ss) => ss.StudentAccount.User.UserID),
+            ];
+
+            await Promise.all(
+                userIdsToNotify.map((uid) =>
+                    tx.notification.create({
+                        data: {
+                            UserID: uid,
+                            Message: `A sessão #${sessionId} foi aprovada pela gestão.`,
+                            TypeID: 1,
+                            IsRead: false,
+                            CreatedAt: new Date(),
+                            Title: 'Sessão aprovada',
+                            SessionID: sessionId,
+                        },
+                    }),
+                ),
+            );
+
+            return statusId;
+        });
+
+        return res.json({ sessionId, statusId: approvedStatusId });
+    } catch (error) {
+        return next(error);
+    }
+}
+
+async function rejectSession(req, res, next) {
+    try {
+        const sessionId = toPositiveInteger(req.params.id);
+        const adminUserId = toPositiveInteger(req.session?.userId);
+        const reviewNotes = String(req.body?.reason || req.body?.reviewNotes || '').trim();
+
+        if (!sessionId) return res.status(400).json({ error: 'Invalid session id' });
+        if (!adminUserId) return res.status(401).json({ error: 'Not authenticated' });
+        if (!reviewNotes) return res.status(400).json({ error: 'Reason is required when rejecting a session' });
+
+        const session = await prisma.coachingSession.findUnique({
+            where: { SessionID: sessionId },
+            include: {
+                SessionStatus: { select: { StatusName: true } },
+                SessionTeacher: { include: { User: { select: { UserID: true } } } },
+                SessionStudent: {
+                    include: {
+                        StudentAccount: { include: { User: { select: { UserID: true } } } },
+                    },
+                },
+            },
+        });
+
+        if (!session) return res.status(404).json({ error: 'Session not found' });
+
+        if (!session.SessionStatus.StatusName.toLowerCase().includes('pending')) {
+            return res.status(409).json({ error: 'Session is not in a pending state' });
+        }
+
+        await prisma.$transaction(async (tx) => {
+            const statusId = await resolveOrCreateSessionStatus(tx, 'Rejected');
+
+            await tx.coachingSession.update({
+                where: { SessionID: sessionId },
+                data: {
+                    StatusID: statusId,
+                    ReviewedByUserID: adminUserId,
+                    ReviewedAt: new Date(),
+                    ReviewNotes: reviewNotes.slice(0, 255),
+                },
+            });
+
+            const userIdsToNotify = [
+                ...session.SessionTeacher.map((st) => st.User.UserID),
+                ...session.SessionStudent.map((ss) => ss.StudentAccount.User.UserID),
+            ];
+
+            await Promise.all(
+                userIdsToNotify.map((uid) =>
+                    tx.notification.create({
+                        data: {
+                            UserID: uid,
+                            Message: `A sessão #${sessionId} foi rejeitada pela gestão. Motivo: ${reviewNotes.slice(0, 100)}`.slice(0, 255),
+                            TypeID: 1,
+                            IsRead: false,
+                            CreatedAt: new Date(),
+                            Title: 'Sessão rejeitada',
+                            SessionID: sessionId,
+                        },
+                    }),
+                ),
+            );
+        });
+
+        return res.json({ sessionId });
+    } catch (error) {
+        return next(error);
+    }
+}
+
 module.exports = {
+    approveSession,
     createUser,
     updateUser,
     deleteUser,
@@ -755,7 +975,9 @@ module.exports = {
     finalizeSessionValidation,
     getPostSessionValidations,
     getStudioOccupancy,
+    listPendingApproval,
     listUsers,
+    rejectSession,
     resetUserPassword,
     createSession,
     getDashboard,

@@ -96,8 +96,12 @@ async function createBooking(req, res, next) {
           type: 'coaching',
           message: `Nova solicitação de sessão de coaching para ${startLabel}. Sessão #${session.SessionID}.`,
         });
-      } catch {
-        // Notification failure must not block the booking response
+      } catch (notificationError) {
+        logger.warn('Failed to notify teacher about new coaching booking request', {
+          sessionId: session.SessionID,
+          teacherUserId: parsedTeacherId,
+          error: notificationError?.message,
+        });
       }
     }
 

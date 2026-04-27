@@ -20,6 +20,7 @@ const createTeacherSessionSchema = [
     .isInt({ min: 1 }).withMessage('capacity deve ser um inteiro positivo')
     .toInt(),
   body('pricingRateId')
+    .optional()
     .isInt({ min: 1 }).withMessage('pricingRateId deve ser um inteiro positivo')
     .toInt(),
   body('isExternal')

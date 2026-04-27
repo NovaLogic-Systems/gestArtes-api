@@ -20,6 +20,8 @@ function createTestApp({
   coachingServiceMock,
   notificationControllerMock,
   pricingServiceMock,
+  useRealAuthMiddleware = false,
+  useRealValidationMiddleware = false,
 } = {}) {
   jest.resetModules();
 
@@ -38,31 +40,35 @@ function createTestApp({
     createCsrfProtection: jest.fn(() => (_req, _res, next) => next()),
   }));
 
-  jest.doMock('../../../src/middlewares/validate.middleware', () => {
-    const validateRequest = (_req, _res, next) => next();
-    return Object.assign(validateRequest, { validateRequest });
-  });
+  if (!useRealValidationMiddleware) {
+    jest.doMock('../../../src/middlewares/validate.middleware', () => {
+      const validateRequest = (_req, _res, next) => next();
+      return Object.assign(validateRequest, { validateRequest });
+    });
+  }
 
-  jest.doMock('../../../src/middlewares/auth.middleware', () => ({
-    APP_ROLES: {
-      ADMIN: 'ADMIN',
-      STUDENT: 'STUDENT',
-      TEACHER: 'TEACHER',
-    },
-    APP_PERMISSIONS: {
-      SESSION_ACCESS: 'SESSION_ACCESS',
-      ADMIN_PORTAL_ACCESS: 'ADMIN_PORTAL_ACCESS',
-    },
-    requireAuth: (_req, _res, next) => next(),
-    requireSessionAuth: (_req, _res, next) => next(),
-    requireRole: () => (_req, _res, next) => next(),
-    requireRoles: () => (_req, _res, next) => next(),
-    requirePermission: () => (_req, _res, next) => next(),
-    requirePermissions: () => (_req, _res, next) => next(),
-    requireAllPermissions: () => (_req, _res, next) => next(),
-    requireAdminRole: (_req, _res, next) => next(),
-    requireInternalToken: (_req, _res, next) => next(),
-  }));
+  if (!useRealAuthMiddleware) {
+    jest.doMock('../../../src/middlewares/auth.middleware', () => ({
+      APP_ROLES: {
+        ADMIN: 'ADMIN',
+        STUDENT: 'STUDENT',
+        TEACHER: 'TEACHER',
+      },
+      APP_PERMISSIONS: {
+        SESSION_ACCESS: 'SESSION_ACCESS',
+        ADMIN_PORTAL_ACCESS: 'ADMIN_PORTAL_ACCESS',
+      },
+      requireAuth: (_req, _res, next) => next(),
+      requireSessionAuth: (_req, _res, next) => next(),
+      requireRole: () => (_req, _res, next) => next(),
+      requireRoles: () => (_req, _res, next) => next(),
+      requirePermission: () => (_req, _res, next) => next(),
+      requirePermissions: () => (_req, _res, next) => next(),
+      requireAllPermissions: () => (_req, _res, next) => next(),
+      requireAdminRole: (_req, _res, next) => next(),
+      requireInternalToken: (_req, _res, next) => next(),
+    }));
+  }
 
   const io = createIoMock();
 

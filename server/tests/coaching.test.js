@@ -123,6 +123,8 @@ function createCoachingContext() {
     joinRequestServiceMock,
     coachingServiceMock,
     notificationControllerMock,
+    useRealAuthMiddleware: true,
+    useRealValidationMiddleware: true,
   });
 
   return {
@@ -179,7 +181,7 @@ describe('Coaching API (Jest + SuperTest)', () => {
     expect(response.status).toBe(201);
     expect(coachingServiceMock.createSessionInitiative).toHaveBeenCalledWith(
       expect.objectContaining({
-        date: futureDate.toISOString(),
+        date: expect.any(Date),
         studioId: 12,
         modalityId: 7,
         capacity: 8,

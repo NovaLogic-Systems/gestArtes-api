@@ -1,4 +1,3 @@
-const { Prisma } = require('@prisma/client');
 const prisma = require('../config/prisma');
 const { createSessionWithBusinessRules } = require('./session.service');
 
@@ -341,20 +340,33 @@ async function resolveSessionStatusId(statusName) {
 async function resolvePricingRateId(pricingRateId) {
   const parsedPricingRateId = toPositiveInt(pricingRateId);
 
-  if (!parsedPricingRateId) {
+  if (pricingRateId !== undefined && pricingRateId !== null && !parsedPricingRateId) {
     throw createHttpError(400, 'pricingRateId inválido');
   }
 
-  const existingRate = await prisma.sessionPricingRate.findFirst({
-    where: { PricingRateID: parsedPricingRateId },
-    select: { PricingRateID: true },
-  });
+  if (parsedPricingRateId) {
+    const existingRate = await prisma.sessionPricingRate.findUnique({
+      where: { PricingRateID: parsedPricingRateId },
+      select: { PricingRateID: true },
+    });
 
-  if (!existingRate) {
-    throw createHttpError(500, `Pricing rate ${parsedPricingRateId} não configurada`);
+    if (!existingRate) {
+      throw createHttpError(400, 'pricingRateId inválido');
+    }
+
+    return existingRate.PricingRateID;
   }
 
-  return existingRate.PricingRateID;
+  try {
+    const defaultRate = await prisma.sessionPricingRate.findFirstOrThrow({
+      orderBy: { PricingRateID: 'asc' },
+      select: { PricingRateID: true },
+    });
+
+    return defaultRate.PricingRateID;
+  } catch {
+    throw createHttpError(500, 'Nenhuma tabela de preços configurada para iniciativas de teacher');
+  }
 }
 
 async function createSessionInitiative(

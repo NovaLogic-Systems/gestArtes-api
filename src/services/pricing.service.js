@@ -57,8 +57,8 @@ function createPricingService(prismaClient) {
     });
   }
 
-  async function applyNoShowPenalty(sessionId, userId) {
-    const { entry, finalPrice } = await prismaClient.$transaction(async (tx) => {
+  async function applyNoShowPenalty(sessionId, userId, client = prismaClient) {
+    const run = async (tx) => {
       const finalPrice = await calculateFinalPrice(sessionId, tx);
 
       const entryType = await tx.financialEntryType.findUnique({
@@ -80,7 +80,11 @@ function createPricingService(prismaClient) {
       });
 
       return { entry, finalPrice };
-    });
+    };
+
+    const { entry, finalPrice } = client === prismaClient
+      ? await prismaClient.$transaction(async (tx) => run(tx))
+      : await run(client);
 
     logAudit({
       userId,

@@ -14,16 +14,18 @@ router.get('/admissions/pending', ...teacherAccess, teacherController.getPending
 router.patch('/admissions/:joinRequestId/approve', ...teacherAccess, teacherController.approveJoinRequest);
 router.patch('/admissions/:joinRequestId/reject', ...teacherAccess, teacherController.rejectJoinRequest);
 
+router.get('/sessions/pending', ...teacherAccess, teacherController.getPendingSessions);
+router.patch('/sessions/:id/confirm-completion', ...teacherAccess, teacherController.confirmCompletion);
+router.post('/sessions/:id/no-show', ...teacherAccess, teacherController.registerNoShow);
+
 router.get('/admission-requests', ...teacherAccess, teacherController.getAdmissionRequests);
 router.get('/dashboard', ...teacherAccess, teacherController.getDashboard);
 router.get('/schedule/today', ...teacherAccess, teacherController.getTodaySchedule);
 router.patch('/admission-requests/:joinRequestId/review', ...teacherAccess, teacherController.reviewAdmissionRequest);
 
-router.post('/schedule', ...teacherAccess, teacherController.submitSchedule);
-router.get('/schedule/pending', ...teacherAccess, teacherController.getPendingSchedules);
-router.patch('/schedule/:availabilityId', ...teacherAccess, teacherController.updatePendingSchedule);
-router.patch('/schedule/pending/:availabilityId', ...teacherAccess, teacherController.updatePendingSchedule);
-router.get('/schedule/status', ...teacherAccess, teacherController.getScheduleStatus);
+router.get('/sessions/pending', ...teacherAccess, teacherController.getPendingSessions);
+router.patch('/sessions/:sessionId/confirm-completion', ...teacherAccess, teacherController.confirmCompletion);
+router.post('/sessions/:sessionId/no-show', ...teacherAccess, teacherController.registerNoShow);
 
 router.post('/availability', ...teacherAccess, availabilityController.submitTeacherAvailability);
 router.get('/availability', ...teacherAccess, availabilityController.listTeacherAvailability);

@@ -10,7 +10,7 @@ const {
 } = require('../middlewares/schemas/admin.schema');
 const adminController = require('../controllers/admin.controller');
 const joinRequestController = require('../controllers/joinRequest.controller');
-const availabilityController = require('../controllers/availability.controller');
+const notificationController = require('../controllers/notification.controller');
 const { createSessionSchema } = require('../middlewares/schemas/session.schema');
 
 const router = express.Router();
@@ -58,6 +58,24 @@ router.patch(
     ...updateUserRolesSchema,
     validateRequest,
     adminController.updateUserRoles
+);
+
+router.get(
+    '/validations/pending-approval',
+    ...adminAccess,
+    adminController.listPendingApproval
+);
+
+router.patch(
+    '/validations/:id/approve',
+    ...adminAccess,
+    adminController.approveSession
+);
+
+router.patch(
+    '/validations/:id/reject',
+    ...adminAccess,
+    adminController.rejectSession
 );
 
 router.get(
@@ -113,22 +131,11 @@ router.post(
     adminController.createSession
 );
 
-router.get(
-    '/availability/pending',
+router.post(
+    '/notifications/broadcast',
     ...adminAccess,
-    availabilityController.listAdminPendingAvailability
-);
-
-router.patch(
-    '/availability/:availabilityId/approve',
-    ...adminAccess,
-    availabilityController.approveAvailability
-);
-
-router.patch(
-    '/availability/:availabilityId/reject',
-    ...adminAccess,
-    availabilityController.rejectAvailability
+    notificationController.broadcastNotification
 );
 
 module.exports = router;
+

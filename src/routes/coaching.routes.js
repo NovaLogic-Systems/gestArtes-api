@@ -1,6 +1,7 @@
 const express = require('express');
 const { requireAuth, requireRole } = require('../middlewares/auth.middleware');
-const { validateZod } = require('../middlewares/zodValidation.middleware');
+const validateRequest = require('../middlewares/validate.middleware');
+const { createTeacherSessionSchema } = require('../middlewares/schemas/coaching.schema');
 const { bookingSchema } = require('../middlewares/schemas/booking.schema');
 const coachingController = require('../controllers/coaching.controller');
 
@@ -15,6 +16,16 @@ router.get('/coaching/weekly-map', requireAuth, coachingController.getWeeklyMap)
 // BR-05: list studios compatible with a given modality
 router.get('/studios/compatible', requireAuth, coachingController.getCompatibleStudios);
 
+// BR-11/BR-12: teacher-initiated coaching sessions start in pending approval.
+router.post(
+  '/coaching/sessions',
+  requireAuth,
+  requireRole(['TEACHER']),
+  ...createTeacherSessionSchema,
+  validateRequest,
+  coachingController.createSession
+);
+
 // Student session history (past + future)
 router.get(
   '/coaching/sessions/history',
@@ -28,7 +39,8 @@ router.post(
   '/coaching/bookings',
   requireAuth,
   requireRole(['STUDENT', 'TEACHER']),
-  validateZod(bookingSchema),
+  ...bookingSchema,
+  validateRequest,
   coachingController.createBooking
 );
 

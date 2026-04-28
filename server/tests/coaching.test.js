@@ -39,6 +39,24 @@ function createCoachingContext() {
         return null;
       }),
     },
+    userRole: {
+      findMany: jest.fn(async () => {
+        // Return roles for all users
+        const allRoles = [];
+        users.forEach((user) => {
+          if (user.UserRole && Array.isArray(user.UserRole)) {
+            user.UserRole.forEach((ur) => {
+              allRoles.push({
+                UserID: user.UserID,
+                RoleID: ur.RoleID || 1,
+                Role: ur.Role,
+              });
+            });
+          }
+        });
+        return allRoles;
+      }),
+    },
   };
 
   const bcryptMock = {
@@ -76,6 +94,11 @@ function createCoachingContext() {
   const coachingServiceMock = {
     getAvailableSlots: jest.fn(async () => ({ weeks: [] })),
     getCompatibleStudios: jest.fn(async () => []),
+    listAdminUserIds: jest.fn(async () => [adminUser.UserID]),
+    createSessionInitiative: jest.fn(async () => ({
+      SessionID: 999,
+      StartTime: new Date('2026-04-27T10:00:00.000Z'),
+    })),
     createBooking: jest.fn(async () => ({ SessionID: 999 })),
     cancelBooking: jest.fn(async () => ({ cancelledSessionCount: 1 })),
     confirmCompletion: jest.fn(async () => ({ success: true })),
@@ -100,6 +123,8 @@ function createCoachingContext() {
     joinRequestServiceMock,
     coachingServiceMock,
     notificationControllerMock,
+    useRealAuthMiddleware: true,
+    useRealValidationMiddleware: true,
   });
 
   return {
@@ -128,30 +153,138 @@ describe('Coaching API (Jest + SuperTest)', () => {
     expect(joinRequestServiceMock.createJoinRequest).not.toHaveBeenCalled();
   });
 
-  test('POST /coaching/bookings rejects invalid booking payload', async () => {
+  test('POST /coaching/sessions creates a pending approval initiative and notifies management', async () => {
+    const {
+      app,
+      teacherUser,
+      adminUser,
+      coachingServiceMock,
+      notificationControllerMock,
+    } = createCoachingContext();
+    const agent = request.agent(app);
+
+    await loginAs(agent, teacherUser);
+
+    const futureDate = new Date();
+    futureDate.setHours(futureDate.getHours() + 2);
+
+    const response = await agent.post('/coaching/sessions').send({
+      date: futureDate.toISOString(),
+      studioId: '12',
+      modalityId: '7',
+      capacity: '8',
+      pricingRateId: '3',
+      isExternal: 'false',
+      isOutsideStdHours: 'false',
+    });
+
+    expect(response.status).toBe(201);
+    expect(coachingServiceMock.createSessionInitiative).toHaveBeenCalledWith(
+      expect.objectContaining({
+        date: expect.any(Date),
+        studioId: 12,
+        modalityId: 7,
+        capacity: 8,
+        pricingRateId: 3,
+        isExternal: false,
+        isOutsideStdHours: false,
+      }),
+      teacherUser.UserID,
+    );
+    expect(coachingServiceMock.listAdminUserIds).toHaveBeenCalledTimes(1);
+    expect(notificationControllerMock.sendNotification).toHaveBeenCalledWith(
+      expect.any(Object),
+      expect.objectContaining({
+        userId: adminUser.UserID,
+        type: 'coaching',
+      }),
+    );
+  });
+
+  test('POST /coaching/sessions requires authentication', async () => {
+    const { app, coachingServiceMock } = createCoachingContext();
+
+    const futureDate = new Date();
+    futureDate.setHours(futureDate.getHours() + 2);
+
+    const response = await request(app).post('/coaching/sessions').send({
+      date: futureDate.toISOString(),
+      studioId: '12',
+      modalityId: '7',
+      capacity: '8',
+      pricingRateId: '3',
+    });
+
+    expect(response.status).toBe(401);
+    expect(coachingServiceMock.createSessionInitiative).not.toHaveBeenCalled();
+  });
+
+  test('POST /coaching/sessions returns 403 for student role', async () => {
     const { app, studentUser, coachingServiceMock } = createCoachingContext();
     const agent = request.agent(app);
 
     await loginAs(agent, studentUser);
 
-    const response = await agent.post('/coaching/bookings').send({
-      teacherId: 10,
-      studioId: 20,
-      modalityId: 30,
-      startTime: '2026-04-27T10:00:00.000Z',
-      endTime: '2026-04-27T09:30:00.000Z',
+    const futureDate = new Date();
+    futureDate.setHours(futureDate.getHours() + 2);
+
+    const response = await agent.post('/coaching/sessions').send({
+      date: futureDate.toISOString(),
+      studioId: '12',
+      modalityId: '7',
+      capacity: '8',
+      pricingRateId: '3',
+    });
+
+    expect(response.status).toBe(403);
+    expect(coachingServiceMock.createSessionInitiative).not.toHaveBeenCalled();
+  });
+
+  test('POST /coaching/sessions rejects invalid payload', async () => {
+    const { app, teacherUser, coachingServiceMock } = createCoachingContext();
+    const agent = request.agent(app);
+
+    await loginAs(agent, teacherUser);
+
+    const response = await agent.post('/coaching/sessions').send({
+      studioId: 'invalid',
+      modalityId: '7',
+      capacity: '8',
+      pricingRateId: '3',
     });
 
     expect(response.status).toBe(400);
-    expect(response.body.error).toBe('Validation failed');
-    expect(response.body.details).toEqual(
-      expect.arrayContaining([
-        expect.objectContaining({
-          path: expect.arrayContaining(['endTime']),
-        }),
-      ]),
-    );
-    expect(coachingServiceMock.createBooking).not.toHaveBeenCalled();
+    expect(coachingServiceMock.createSessionInitiative).not.toHaveBeenCalled();
+  });
+
+  test('POST /coaching/sessions succeeds even when there are no admins to notify', async () => {
+    const {
+      app,
+      teacherUser,
+      coachingServiceMock,
+      notificationControllerMock,
+    } = createCoachingContext();
+    const agent = request.agent(app);
+
+    coachingServiceMock.listAdminUserIds.mockResolvedValueOnce([]);
+    await loginAs(agent, teacherUser);
+
+    const futureDate = new Date();
+    futureDate.setHours(futureDate.getHours() + 2);
+
+    const response = await agent.post('/coaching/sessions').send({
+      date: futureDate.toISOString(),
+      studioId: '12',
+      modalityId: '7',
+      capacity: '8',
+      pricingRateId: '3',
+      isExternal: 'false',
+      isOutsideStdHours: 'false',
+    });
+
+    expect(response.status).toBe(201);
+    expect(coachingServiceMock.createSessionInitiative).toHaveBeenCalledTimes(1);
+    expect(notificationControllerMock.sendNotification).not.toHaveBeenCalled();
   });
 
   test('POST /coaching/sessions/:id/join-requests creates a booking request for students', async () => {

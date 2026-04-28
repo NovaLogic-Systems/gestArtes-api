@@ -10,6 +10,12 @@ const ALLOWED_NOTIFICATION_TYPES = new Set([
     'join_request',
 ]);
 
+const BROADCAST_ROLE_TO_APP_ROLE = Object.freeze({
+    students: 'student',
+    teachers: 'teacher',
+    admin: 'admin',
+});
+
 const sendNotification = async (req, { userId, type, message }) => {
     const parsedUserId = Number.parseInt(userId, 10);
 
@@ -53,6 +59,35 @@ const sendNotification = async (req, { userId, type, message }) => {
     return notification;
 };
 
+const getBroadcastRecipients = async (normalizedRole) => {
+    if (normalizedRole === 'all') {
+        return prisma.user.findMany({
+            where: { IsActive: true },
+            select: { UserID: true },
+        });
+    }
+
+    const appRole = BROADCAST_ROLE_TO_APP_ROLE[normalizedRole];
+
+    if (!appRole) {
+        return [];
+    }
+
+    return prisma.user.findMany({
+        where: {
+            IsActive: true,
+            UserRole: {
+                some: {
+                    Role: {
+                        RoleName: appRole,
+                    },
+                },
+            },
+        },
+        select: { UserID: true },
+    });
+};
+
 const broadcastNotification = async (req, res) => {
     try {
         const { message, targetRole } = req.body;
@@ -63,7 +98,7 @@ const broadcastNotification = async (req, res) => {
 
         const allowedRoles = new Set(['all', 'students', 'teachers', 'admin']);
         const normalizedRole = String(targetRole || 'all').trim().toLowerCase();
-        
+
         if (!allowedRoles.has(normalizedRole)) {
             return res.status(400).json({ error: 'Invalid targetRole' });
         }
@@ -73,6 +108,11 @@ const broadcastNotification = async (req, res) => {
             targetRole: normalizedRole,
             createdAt: new Date().toISOString(),
         };
+
+        const recipients = await getBroadcastRecipients(normalizedRole);
+        const createdNotifications = await Promise.all(
+            recipients.map((recipient) => notificationService.create(recipient.UserID, message.trim()))
+        );
 
         const io = req.app.get('io');
         if (io) {
@@ -86,6 +126,8 @@ const broadcastNotification = async (req, res) => {
         res.status(201).json({
             success: true,
             broadcast: notification,
+            recipients: recipients.length,
+            notifications: createdNotifications,
         });
     } catch (err) {
         res.status(500).json({ error: err.message });

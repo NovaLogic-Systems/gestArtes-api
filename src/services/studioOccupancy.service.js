@@ -1,4 +1,5 @@
 const prisma = require('../config/prisma');
+const { createHttpError } = require('../utils/http-error');
 
 const APPROVED_STATUS_CANDIDATES = new Set([
   'approved',
@@ -41,16 +42,6 @@ function normalizeStatusName(value) {
     .replace(/[^a-z0-9]/g, '');
 }
 
-function createHttpError(status, message, details) {
-  const error = new Error(message);
-  error.status = status;
-
-  if (details) {
-    error.details = details;
-  }
-
-  return error;
-}
 
 function parseDateOrDefault(value, fallback) {
   if (!value) {

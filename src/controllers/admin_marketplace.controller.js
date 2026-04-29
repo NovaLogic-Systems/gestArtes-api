@@ -1,15 +1,11 @@
 const prisma = require('../config/prisma');
-
+const { createHttpError } = require('../utils/http-error');
+const { createAdminMarketplaceUseCases } = require('../application/use-cases/admin-marketplace');
 const PENDING_STATUS_NAMES = ['pending', 'pendente', 'pending_review', 'pending approval'];
 const APPROVED_STATUS_NAMES = ['approved', 'aprovado', 'published', 'publicado', 'active', 'ativo'];
 const REJECTED_STATUS_NAMES = ['rejected', 'rejeitado', 'declined', 'recusado'];
 const REMOVED_STATUS_NAMES = ['removed', 'removido', 'hidden', 'oculto', 'inactive', 'inativo'];
-
-function createHttpError(status, message) {
-  const error = new Error(message);
-  error.status = status;
-  return error;
-}
+const adminMarketplaceUseCases = createAdminMarketplaceUseCases({ prisma });
 
 function normalizeString(value) {
   return String(value || '').trim().toLowerCase();
@@ -288,35 +284,8 @@ async function getListings(req, res, next) {
 
 async function approveListing(req, res, next) {
   try {
-    const existing = await prisma.marketplaceItem.findUnique({
-      where: {
-        MarketplaceItemID: req.params.id,
-      },
-      select: {
-        MarketplaceItemID: true,
-      },
-    });
-
-    if (!existing) {
-      throw createHttpError(404, 'Anúncio não encontrado');
-    }
-
-    const approvedStatusId = await resolveStatusId(APPROVED_STATUS_NAMES);
-
-    if (!approvedStatusId) {
-      throw createHttpError(500, 'Estado aprovado de anúncio não configurado');
-    }
-
-    const updated = await prisma.marketplaceItem.update({
-      where: {
-        MarketplaceItemID: req.params.id,
-      },
-      data: {
-        StatusID: approvedStatusId,
-        IsActive: true,
-        RejectionReason: null,
-      },
-      include: buildListingInclude(true),
+    const updated = await adminMarketplaceUseCases.approveListing.execute({
+      listingId: req.params.id,
     });
 
     res.json({
@@ -329,37 +298,9 @@ async function approveListing(req, res, next) {
 
 async function rejectListing(req, res, next) {
   try {
-    const existing = await prisma.marketplaceItem.findUnique({
-      where: {
-        MarketplaceItemID: req.params.id,
-      },
-      select: {
-        MarketplaceItemID: true,
-      },
-    });
-
-    if (!existing) {
-      throw createHttpError(404, 'Anúncio não encontrado');
-    }
-
-    const rejectedStatusId = await resolveStatusId(REJECTED_STATUS_NAMES);
-
-    if (!rejectedStatusId) {
-      throw createHttpError(500, 'Estado rejeitado de anúncio não configurado');
-    }
-
-    const reason = String(req.body.reason || '').trim();
-
-    const updated = await prisma.marketplaceItem.update({
-      where: {
-        MarketplaceItemID: req.params.id,
-      },
-      data: {
-        StatusID: rejectedStatusId,
-        IsActive: false,
-        RejectionReason: reason,
-      },
-      include: buildListingInclude(true),
+    const updated = await adminMarketplaceUseCases.rejectListing.execute({
+      listingId: req.params.id,
+      reason: req.body.reason,
     });
 
     res.json({

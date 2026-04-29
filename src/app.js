@@ -467,6 +467,17 @@ const httpServer = http.createServer(app);
 const io = initSocket(httpServer, sessionMiddleware);
 app.set('io', io);
 
+// Carrega jobs agendados se ativado via variáveis de ambiente.
+// Por segurança, não habilita os jobs durante testes por omissão.
+if (parseBoolean(process.env.ENABLE_JOBS, false)) {
+  try {
+    require('./jobs/autoCancel');
+    logger.info('Background jobs: autoCancel carregado');
+  } catch (err) {
+    logger.error('Falha ao carregar jobs:', err.message);
+  }
+}
+
 if (require.main === module) {
   if (HAS_SSL) {
     let credentials;

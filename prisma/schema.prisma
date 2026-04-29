@@ -250,6 +250,27 @@ model MarketplaceTransaction {
   MarketplaceItem   MarketplaceItem @relation(fields: [MarketplaceItemID], references: [MarketplaceItemID], onUpdate: NoAction, map: "FKMarketplac794520")
 }
 
+model AuditLog {
+  AuditLogID    Int       @id @default(autoincrement())
+  AuditTimestamp DateTime  @db.DateTime2
+  UserID        Int?
+  UserName      String?   @db.VarChar(100)
+  UserRole      String?   @db.VarChar(50)
+  Action        String    @db.VarChar(80)
+  Module        String    @db.VarChar(50)
+  TargetType    String?   @db.VarChar(100)
+  TargetID      String?   @db.VarChar(100)
+  Result        String    @db.VarChar(20)
+  Detail        String?   @db.VarChar(255)
+  User          User?     @relation(fields: [UserID], references: [UserID], onDelete: NoAction, onUpdate: NoAction)
+
+  @@index([AuditTimestamp], map: "IX_AuditLog_AuditTimestamp")
+  @@index([Module], map: "IX_AuditLog_Module")
+  @@index([Action], map: "IX_AuditLog_Action")
+  @@index([UserID], map: "IX_AuditLog_UserID")
+  @@index([Result], map: "IX_AuditLog_Result")
+}
+
 model Modality {
   ModalityID      Int               @id(map: "PK__Modality__C179441B1ADC4F85") @default(autoincrement())
   ModalityName    String            @unique(map: "UQ__Modality__2C2AEFDF50A354AF") @db.VarChar(50)
@@ -585,6 +606,7 @@ model User {
   TeacherAbsence_TeacherAbsence_TeacherIDToUser                  TeacherAbsence[]         @relation("TeacherAbsence_TeacherIDToUser")
   TeacherAvailability_TeacherAvailability_ReviewedByUserIDToUser TeacherAvailability[]    @relation("TeacherAvailability_ReviewedByUserIDToUser")
   TeacherAvailability_TeacherAvailability_TeacherIDToUser        TeacherAvailability[]    @relation("TeacherAvailability_TeacherIDToUser")
+  AuditLog                                                       AuditLog[]
   TeacherModality                                                TeacherModality[]
   UserRole                                                       UserRole[]
 

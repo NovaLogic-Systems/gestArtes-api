@@ -7,9 +7,9 @@ const missingEnv = ['DATABASE_URL'].filter((key) => !process.env[key]);
 const shouldRun = process.env.RUN_DB_INTEGRATION_TESTS === 'true';
 
 if (!shouldRun) {
-  test('Lost & Found integration tests are skipped unless RUN_DB_INTEGRATION_TESTS=true', { skip: true }, () => {});
+  test('Testes de integração de Perdidos e Achados ignorados salvo RUN_DB_INTEGRATION_TESTS=true', { skip: true }, () => {});
 } else if (missingEnv.length > 0) {
-  test(`Lost & Found integration tests are skipped due to missing env vars: ${missingEnv.join(', ')}`, { skip: true }, () => {});
+  test(`Testes de integração de Perdidos e Achados ignorados por falta de variáveis de ambiente: ${missingEnv.join(', ')}`, { skip: true }, () => {});
 } else {
   const signature = require('cookie-signature');
   const app = require('../../src/app');
@@ -152,9 +152,10 @@ if (!shouldRun) {
     await prisma.$disconnect();
   });
 
-  test('public listing excludes archived items', async (t) => {
+  // Lista pública e detalhe público
+  test('lista pública não mostra itens arquivados', async (t) => {
     if (!registeredByUserId) {
-      t.skip('No active user available to register lost and found item');
+      t.skip('Não existe utilizador ativo para registar item de perdidos e achados');
       return;
     }
 
@@ -174,9 +175,9 @@ if (!shouldRun) {
     assert.equal(ids.includes(archived.LostItemID), false);
   });
 
-  test('public get by id returns 404 for archived item', async (t) => {
+  test('pedido público por id devolve 404 para item arquivado', async (t) => {
     if (!registeredByUserId) {
-      t.skip('No active user available to register lost and found item');
+      t.skip('Não existe utilizador ativo para registar item de perdidos e achados');
       return;
     }
 
@@ -190,9 +191,10 @@ if (!shouldRun) {
     assert.equal(response.status, 404);
   });
 
-  test('admin claim endpoint is idempotent', async (t) => {
+  // Endpoints de administração: claim e archive
+  test('endpoint de claim do admin é idempotente', async (t) => {
     if (!registeredByUserId) {
-      t.skip('No active user available to register lost and found item');
+      t.skip('Não existe utilizador ativo para registar item de perdidos e achados');
       return;
     }
 
@@ -230,9 +232,9 @@ if (!shouldRun) {
     assert.equal(second.body.adminNotes, 'Claimed twice');
   });
 
-  test('admin archive endpoint stores admin notes', async (t) => {
+  test('endpoint de archive do admin guarda notas de administração', async (t) => {
     if (!registeredByUserId) {
-      t.skip('No active user available to register lost and found item');
+      t.skip('Não existe utilizador ativo para registar item de perdidos e achados');
       return;
     }
 
@@ -264,9 +266,9 @@ if (!shouldRun) {
     assert.ok(updated.ArchivedAt instanceof Date);
   });
 
-  test('admin listing returns archived items and admin notes', async (t) => {
+  test('listagem de admin devolve itens arquivados e notas de admin', async (t) => {
     if (!registeredByUserId) {
-      t.skip('No active user available to register lost and found item');
+      t.skip('Não existe utilizador ativo para registar item de perdidos e achados');
       return;
     }
 
@@ -305,9 +307,10 @@ if (!shouldRun) {
     assert.equal(archivedItem.isArchived, true);
   });
 
-  test('public lost and found responses never expose admin notes', async (t) => {
+  // Segurança de resposta pública
+  test('respostas públicas nunca expõem notas de administração', async (t) => {
     if (!registeredByUserId) {
-      t.skip('No active user available to register lost and found item');
+      t.skip('Não existe utilizador ativo para registar item de perdidos e achados');
       return;
     }
 
@@ -329,9 +332,9 @@ if (!shouldRun) {
     assert.equal(Object.hasOwn(detailResponse.body, 'adminNotes'), false);
   });
 
-  test('admin get by id returns 404 for missing item', async (t) => {
+  test('pedido de admin por id devolve 404 para item inexistente', async (t) => {
     if (!registeredByUserId) {
-      t.skip('No active user available to register lost and found item');
+      t.skip('Não existe utilizador ativo para registar item de perdidos e achados');
       return;
     }
 
@@ -350,9 +353,9 @@ if (!shouldRun) {
     assert.equal(response.status, 404);
   });
 
-  test('admin endpoints reject missing and non-admin sessions', async (t) => {
+  test('endpoints de admin rejeitam sessões em falta e não admin', async (t) => {
     if (!registeredByUserId) {
-      t.skip('No active user available to register lost and found item');
+      t.skip('Não existe utilizador ativo para registar item de perdidos e achados');
       return;
     }
 
@@ -371,7 +374,7 @@ if (!shouldRun) {
 
     const studentCookie = await createSessionCookie(registeredByUserId, 'student');
     if (!studentCookie) {
-      t.skip('SESSION_SECRET is required to create signed test session cookies');
+      t.skip('SESSION_SECRET é necessário para criar cookies de sessão assinados');
       return;
     }
 

@@ -3,29 +3,31 @@ const assert = require('node:assert/strict');
 const { spawn } = require('node:child_process');
 
 /**
- * TEST-2: Core API Endpoint Tests
+ * TEST-2: Testes dos endpoints nucleares da API
  *
- * Covers BE-10, BE-11, BE-12 with:
- * - Role authorization + input validation + error handling
- * - Pricing logic and penalties (base, outside hours, external, no-show)
- * - 48h timeout (mocked)
- * - Dual approval join requests flow
+ * Cobre BE-10, BE-11 e BE-12 com:
+ * - autorização por função, validação de entradas e tratamento de erros
+ * - lógica de preços e penalizações (base, fora de horário, externo, no-show)
+ * - timeout de 48h (simulado)
+ * - fluxo de dupla aprovação de pedidos de inscrição
  *
- * Goal: ≥ 70% coverage in core modules
+ * Objetivo: cobertura >= 70% nos módulos nucleares
  *
- * Run with: RUN_DB_INTEGRATION_TESTS=true npm run test:node:integration
+ * Executar com: RUN_DB_INTEGRATION_TESTS=true npm run test:node:integration
  */
 
-if (process.env.RUN_DB_INTEGRATION_TESTS !== 'true') {
-  console.log('⏭️  Skipping: Set RUN_DB_INTEGRATION_TESTS=true to run');
-  process.exit(0);
+const shouldRun = process.env.RUN_DB_INTEGRATION_TESTS === 'true';
+
+if (!shouldRun) {
+  test('Core endpoint integration tests are skipped unless RUN_DB_INTEGRATION_TESTS=true', { skip: true }, () => {});
 }
 
+if (shouldRun) {
 const BASE_URL = process.env.TEST_API_URL || 'http://localhost:3001';
 const prisma = require('../../src/config/prisma');
 const { createPricingService } = require('../../src/services/pricing.service');
 
-// Helpers
+// Funções auxiliares
 function createError(status, message) {
   const err = new Error(message);
   err.status = status;
@@ -53,7 +55,7 @@ async function makeRequest(method, path, body = null, headers = {}) {
 }
 
 async function setupTestData() {
-  // Create test academic year if needed
+  // Criar ano letivo de teste, se necessário
   const activeYear = await prisma.academicYear.findFirst({
     where: { IsActive: true },
   });
@@ -72,7 +74,7 @@ async function setupTestData() {
     academicYearId = created.AcademicYearID;
   }
 
-  // Create test users
+  // Criar utilizadores de teste
   const adminUser = await prisma.user.create({
     data: {
       FirstName: 'Admin',
@@ -106,7 +108,7 @@ async function setupTestData() {
     },
   });
 
-  // Create student account
+  // Criar conta de aluno
   const studentAccount = await prisma.studentAccount.create({
     data: {
       StudentNumber: `S${Date.now()}`,
@@ -114,7 +116,7 @@ async function setupTestData() {
     },
   });
 
-  // Create studio
+  // Criar estúdio
   const studio = await prisma.studio.create({
     data: {
       StudioCode: `ST${Date.now()}`,
@@ -122,14 +124,14 @@ async function setupTestData() {
     },
   });
 
-  // Create modality
+  // Criar modalidade
   const modality = await prisma.modality.create({
     data: {
       ModalityName: 'Piano',
     },
   });
 
-  // Create pricing rate
+  // Criar tabela de preços
   const pricingRate = await prisma.sessionPricingRate.create({
     data: {
       RateName: 'Standard',
@@ -137,7 +139,7 @@ async function setupTestData() {
     },
   });
 
-  // Create session status
+  // Criar estado da sessão
   const sessionStatus = await prisma.sessionStatus.findUnique({
     where: { StatusName: 'Pending' },
   });
@@ -225,7 +227,7 @@ async function cleanupTestData(sessionIds = [], userIds = [], otherIds = {}) {
 }
 
 // ─────────────────────────────────────────────────────────────────────────
-// TEST SUITES
+// CONJUNTOS DE TESTES
 // ─────────────────────────────────────────────────────────────────────────
 
 test('BE-10: Coaching Session 48h Validation Timeout', async (t) => {
@@ -261,7 +263,7 @@ test('BE-10: Coaching Session 48h Validation Timeout', async (t) => {
 
       sessionIds.push(session.SessionID);
 
-      // Simulate validation request
+      // Simular pedido de validação
       const validated = await prisma.coachingSession.update({
         where: { SessionID: session.SessionID },
         data: {
@@ -273,7 +275,7 @@ test('BE-10: Coaching Session 48h Validation Timeout', async (t) => {
     });
 
     await t.test('tracking: session timeout flag would be set after 48 hours (cron simulation)', async () => {
-      // This test simulates what a cron job would do
+      // Este teste simula o que uma tarefa agendada faria
       const session = await createTestSession({
         studioId: testData.studio.StudioID,
         teacherUserIds: [testData.teacherUser.UserID],
@@ -284,7 +286,7 @@ test('BE-10: Coaching Session 48h Validation Timeout', async (t) => {
 
       sessionIds.push(session.SessionID);
 
-      // Simulate 48h + validation not done
+      // Simular 48h + validação não efetuada
       const past48h = new Date(Date.now() - 49 * 60 * 60 * 1000);
       const staleSession = await prisma.coachingSession.update({
         where: { SessionID: session.SessionID },
@@ -391,7 +393,7 @@ test('BE-11: Pricing Logic - Base, Outside Hours, External, No-Show', async (t) 
 
       sessionIds.push(session.SessionID);
 
-      // Create financial entry type if needed
+      // Criar tipo de lançamento financeiro, se necessário
       const entryType = await prisma.financialEntryType.findUnique({
         where: { TypeName: 'no_show_fee' },
       });
@@ -451,7 +453,7 @@ test('BE-12: Dual Approval Join Request Flow', async (t) => {
 
       sessionIds.push(session.SessionID);
 
-      // Create join request (would normally be via API endpoint)
+      // Criar pedido de inscrição (normalmente seria através do endpoint da API)
       const pendingTeacherStatus = await prisma.coachingJoinRequestStatus.findUnique({
         where: { StatusName: 'PendingTeacher' },
       });
@@ -543,7 +545,7 @@ test('BE-12: Dual Approval Join Request Flow', async (t) => {
         where: { StatusName: 'Approved' },
       });
 
-      // Teacher approves
+      // O professor aprova
       let updatedRequest = await prisma.coachingJoinRequest.update({
         where: { JoinRequestID: joinRequest.JoinRequestID },
         data: {
@@ -553,7 +555,7 @@ test('BE-12: Dual Approval Join Request Flow', async (t) => {
         },
       });
 
-      // Admin approves
+      // O administrador aprova
       updatedRequest = await prisma.coachingJoinRequest.update({
         where: { JoinRequestID: joinRequest.JoinRequestID },
         data: {
@@ -565,7 +567,7 @@ test('BE-12: Dual Approval Join Request Flow', async (t) => {
 
       assert.equal(updatedRequest.StatusID, approvedStatus?.StatusID || 3);
 
-      // Verify student is enrolled
+      // Verificar se o aluno ficou inscrito
       const defaultAttendanceStatus = await prisma.attendanceStatus.findFirst();
 
       if (defaultAttendanceStatus) {
@@ -632,7 +634,7 @@ test('BE-12: Dual Approval Join Request Flow', async (t) => {
 
       sessionIds.push(session.SessionID);
 
-      // Fill the session with max participants
+      // Preencher a sessão até ao máximo de participantes
       const updatedSession = await prisma.coachingSession.update({
         where: { SessionID: session.SessionID },
         data: { MaxParticipants: 1 },
@@ -640,7 +642,7 @@ test('BE-12: Dual Approval Join Request Flow', async (t) => {
 
       const defaultAttendanceStatus = await prisma.attendanceStatus.findFirst();
 
-      // Add one student to fill capacity
+      // Adicionar um aluno para atingir a capacidade máxima
       const otherStudent = await prisma.studentAccount.create({
         data: {
           StudentNumber: `S${Date.now()}`,
@@ -658,7 +660,7 @@ test('BE-12: Dual Approval Join Request Flow', async (t) => {
         });
       }
 
-      // Try to join when full
+      // Tentar inscrever quando a sessão está cheia
       const countEnrolled = await prisma.sessionStudent.count({
         where: { SessionID: session.SessionID },
       });
@@ -762,7 +764,7 @@ test('Authorization & Input Validation', async (t) => {
         where: { StatusName: 'PendingTeacher' },
       });
 
-      // Create first request
+      // Criar o primeiro pedido
       const joinRequest1 = await prisma.coachingJoinRequest.create({
         data: {
           SessionID: session.SessionID,
@@ -772,7 +774,7 @@ test('Authorization & Input Validation', async (t) => {
         },
       });
 
-      // Check if duplicate would be allowed
+      // Verificar se o duplicado seria aceite
       const existingRequest = await prisma.coachingJoinRequest.findFirst({
         where: {
           SessionID: session.SessionID,
@@ -803,7 +805,7 @@ test('Error Handling', async (t) => {
     });
 
     await t.test('handles database transaction rollback on error', async () => {
-      // This is tested indirectly through the transaction logic
+      // Isto é testado indiretamente através da lógica transacional
       const session = await createTestSession({
         studioId: testData.studio.StudioID,
         teacherUserIds: [testData.teacherUser.UserID],
@@ -828,7 +830,7 @@ test('Error Handling', async (t) => {
 
       sessionIds.push(session.SessionID);
 
-      // Simulate concurrent requests
+      // Simular pedidos concorrentes
       const pendingTeacherStatus = await prisma.coachingJoinRequestStatus.findUnique({
         where: { StatusName: 'PendingTeacher' },
       });
@@ -851,8 +853,8 @@ test('Error Handling', async (t) => {
         },
       });
 
-      // Both might succeed in DB due to no unique constraint on pair
-      // This would be caught by application logic
+      // Ambos podem ter sucesso na BD por não existir restrição única no par
+      // Isto seria apanhado pela lógica da aplicação
       const results = await Promise.allSettled([req1, req2]);
       assert.equal(results.length, 2);
     });
@@ -860,3 +862,4 @@ test('Error Handling', async (t) => {
     await cleanupTestData(sessionIds, userIds);
   }
 });
+}

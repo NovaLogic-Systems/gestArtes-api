@@ -1,5 +1,9 @@
 const joinRequestService = require('../services/joinRequest.service');
 const { sendNotification } = require('./notification.controller');
+const logger = require('../utils/logger');
+const { createJoinRequestUseCases } = require('../application/use-cases/join-request');
+
+const joinRequestUseCases = createJoinRequestUseCases({ joinRequestService });
 
 function toPositiveInt(value) {
   const parsed = Number.parseInt(value, 10);
@@ -7,13 +11,20 @@ function toPositiveInt(value) {
 }
 
 async function notifyUsers(req, userIds, message) {
-  for (const userId of userIds) {
-    await sendNotification(req, {
-      userId,
-      type: 'join_request',
-      message,
-    });
-  }
+  await Promise.allSettled(
+    userIds.map((userId) =>
+      sendNotification(req, {
+        userId,
+        type: 'join_request',
+        message,
+      }).catch((err) => {
+        logger.warn('[JoinRequest] Notification delivery failed', {
+          userId,
+          reason: err?.message,
+        });
+      })
+    )
+  );
 }
 
 async function createJoinRequest(req, res, next) {
@@ -30,18 +41,19 @@ async function createJoinRequest(req, res, next) {
       return res.status(401).json({ error: 'Não autenticado' });
     }
 
-    const result = await joinRequestService.createJoinRequest({
-      sessionId,
-      requesterUserId,
+    const { joinRequest, teacherUserIds } = await joinRequestUseCases.createJoinRequest.execute({
+      req,
+      studentUserId: requesterUserId,
+      payload: { sessionId },
     });
 
     await notifyUsers(
       req,
-      result.teacherUserIds,
+      teacherUserIds,
       `Novo pedido de adesão à sessão #${sessionId} pendente da sua aprovação.`
     );
 
-    return res.status(201).json(result.joinRequest);
+    return res.status(201).json(joinRequest);
   } catch (error) {
     return next(error);
   }
@@ -105,18 +117,19 @@ async function teacherApprove(req, res, next) {
       return res.status(401).json({ error: 'Não autenticado' });
     }
 
-    const result = await joinRequestService.teacherApprove({
-      joinRequestId,
+    const { joinRequest, adminUserIds } = await joinRequestUseCases.teacherApprove.execute({
+      req,
       teacherUserId,
+      payload: { joinRequestId },
     });
 
     await notifyUsers(
       req,
-      result.adminUserIds,
+      adminUserIds,
       `O pedido de adesão #${joinRequestId} foi aprovado pelo professor e aguarda aprovação da gestão.`
     );
 
-    return res.json(result.joinRequest);
+    return res.json(joinRequest);
   } catch (error) {
     return next(error);
   }
@@ -176,20 +189,21 @@ async function adminApprove(req, res, next) {
       return res.status(401).json({ error: 'Não autenticado' });
     }
 
-    const result = await joinRequestService.adminApprove({
-      joinRequestId,
+    const { joinRequest, studentUserId } = await joinRequestUseCases.adminApprove.execute({
+      req,
       adminUserId,
+      payload: { joinRequestId },
     });
 
-    if (result.studentUserId) {
+    if (studentUserId) {
       await sendNotification(req, {
-        userId: result.studentUserId,
+        userId: studentUserId,
         type: 'join_request',
         message: `O seu pedido de adesão #${joinRequestId} foi aprovado. Já está inscrito na sessão.`,
       });
     }
 
-    return res.json(result.joinRequest);
+    return res.json(joinRequest);
   } catch (error) {
     return next(error);
   }
@@ -256,3 +270,4 @@ module.exports = {
   adminReject,
   getStudentRequests,
 };
+

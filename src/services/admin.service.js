@@ -1,13 +1,8 @@
 const prisma = require('../config/prisma');
 const { createPricingService } = require('./pricing.service');
+const { createHttpError } = require('../utils/http-error');
 
 const pricingService = createPricingService(prisma);
-
-function createHttpError(status, message) {
-  const error = new Error(message);
-  error.status = status;
-  return error;
-}
 
 function toInteger(value) {
   if (typeof value === 'bigint') {

@@ -1,44 +1,65 @@
 const test = require('node:test');
 const assert = require('node:assert/strict');
-const { EventEmitter } = require('node:events');
-const fs = require('node:fs');
-const readline = require('node:readline');
+const Module = require('node:module');
+
+const state = {
+  rows: [],
+};
+
+const fakePrisma = {
+  auditLog: {
+    findMany: async ({ where } = {}) => {
+      const rows = state.rows.filter((row) => {
+        if (where?.Module && row.Module !== where.Module) return false;
+        if (where?.Action && row.Action !== where.Action) return false;
+        if (where?.UserID !== undefined && row.UserID !== where.UserID) return false;
+        if (where?.Result && row.Result !== where.Result) return false;
+
+        const timestamp = new Date(row.AuditTimestamp);
+        if (where?.AuditTimestamp?.gte && timestamp < new Date(where.AuditTimestamp.gte)) return false;
+        if (where?.AuditTimestamp?.lte && timestamp > new Date(where.AuditTimestamp.lte)) return false;
+
+        return true;
+      });
+
+      return rows;
+    },
+  },
+};
+
+const originalLoad = Module._load;
+Module._load = function patchedLoad(request, parent, isMain) {
+  if (request === '../config/prisma') {
+    return fakePrisma;
+  }
+  return originalLoad.apply(this, arguments);
+};
+
 const { createAuditService } = require('../../src/services/audit.service');
+
+function resetState(rows = []) {
+  state.rows = rows;
+}
 
 function makeEvent(overrides = {}) {
   return {
-    category: 'audit',
-    level: 'info',
-    message: 'audit',
-    auditTimestamp: '2026-04-22T10:00:00.000Z',
-    userId: 1,
-    userName: 'Admin',
-    userRole: 'admin',
-    action: 'FINANCE_EXPORT',
-    module: 'finance',
-    targetType: null,
-    targetId: null,
-    result: 'success',
-    detail: 'Exported 3 entries',
+    AuditLogID: 1,
+    AuditTimestamp: '2026-04-22T10:00:00.000Z',
+    UserID: 1,
+    UserName: 'Admin',
+    UserRole: 'admin',
+    Action: 'FINANCE_EXPORT',
+    Module: 'finance',
+    TargetType: null,
+    TargetID: null,
+    Result: 'success',
+    Detail: 'Exported 3 entries',
     ...overrides,
   };
 }
 
-function patchFsWithEvents(t, events) {
-  t.mock.method(fs, 'existsSync', () => true);
-  t.mock.method(fs, 'createReadStream', () => new EventEmitter());
-  t.mock.method(readline, 'createInterface', () => {
-    const rl = new EventEmitter();
-    setImmediate(() => {
-      for (const e of events) rl.emit('line', JSON.stringify(e));
-      rl.emit('close');
-    });
-    return rl;
-  });
-}
-
 test('listEvents: returns all events when no filters', async (t) => {
-  patchFsWithEvents(t, [makeEvent(), makeEvent({ action: 'SESSION_FINALIZED', module: 'coaching' })]);
+  resetState([makeEvent(), makeEvent({ Action: 'SESSION_FINALIZED', Module: 'coaching' })]);
   const svc = createAuditService();
   const result = await svc.listEvents({});
   assert.equal(result.total, 2);
@@ -46,7 +67,7 @@ test('listEvents: returns all events when no filters', async (t) => {
 });
 
 test('listEvents: filters by module', async (t) => {
-  patchFsWithEvents(t, [makeEvent({ module: 'finance' }), makeEvent({ module: 'coaching' })]);
+  resetState([makeEvent({ Module: 'finance' }), makeEvent({ Module: 'coaching' })]);
   const svc = createAuditService();
   const result = await svc.listEvents({ module: 'finance' });
   assert.equal(result.total, 1);
@@ -54,7 +75,7 @@ test('listEvents: filters by module', async (t) => {
 });
 
 test('listEvents: filters by action', async (t) => {
-  patchFsWithEvents(t, [makeEvent({ action: 'FINANCE_EXPORT' }), makeEvent({ action: 'SESSION_FINALIZED' })]);
+  resetState([makeEvent({ Action: 'FINANCE_EXPORT' }), makeEvent({ Action: 'SESSION_FINALIZED' })]);
   const svc = createAuditService();
   const result = await svc.listEvents({ action: 'FINANCE_EXPORT' });
   assert.equal(result.total, 1);
@@ -62,9 +83,9 @@ test('listEvents: filters by action', async (t) => {
 });
 
 test('listEvents: filters by periodStart', async (t) => {
-  patchFsWithEvents(t, [
-    makeEvent({ auditTimestamp: '2026-04-01T00:00:00.000Z' }),
-    makeEvent({ auditTimestamp: '2026-04-22T10:00:00.000Z' }),
+  resetState([
+    makeEvent({ AuditTimestamp: '2026-04-01T00:00:00.000Z' }),
+    makeEvent({ AuditTimestamp: '2026-04-22T10:00:00.000Z' }),
   ]);
   const svc = createAuditService();
   const result = await svc.listEvents({ periodStart: new Date('2026-04-10T00:00:00Z') });
@@ -72,8 +93,8 @@ test('listEvents: filters by periodStart', async (t) => {
 });
 
 test('listEvents: paginates correctly', async (t) => {
-  const events = Array.from({ length: 5 }, (_, i) => makeEvent({ action: `ACTION_${i}` }));
-  patchFsWithEvents(t, events);
+  const events = Array.from({ length: 5 }, (_, i) => makeEvent({ Action: `ACTION_${i}` }));
+  resetState(events);
   const svc = createAuditService();
   const result = await svc.listEvents({ limit: 2, offset: 1 });
   assert.equal(result.total, 5);
@@ -81,7 +102,7 @@ test('listEvents: paginates correctly', async (t) => {
 });
 
 test('listEvents: items contain expected fields', async (t) => {
-  patchFsWithEvents(t, [makeEvent()]);
+  resetState([makeEvent()]);
   const svc = createAuditService();
   const result = await svc.listEvents({});
   const item = result.items[0];
@@ -93,20 +114,20 @@ test('listEvents: items contain expected fields', async (t) => {
 });
 
 test('listEvents: skips non-audit log lines', async (t) => {
-  patchFsWithEvents(t, [
-    { category: 'audit', action: 'FINANCE_EXPORT', module: 'finance', result: 'success', auditTimestamp: '2026-04-22T10:00:00.000Z', level: 'info', message: 'audit' },
-    { category: 'system', action: 'BOOT', module: 'system', result: 'success', auditTimestamp: '2026-04-22T10:00:00.000Z', level: 'info', message: 'boot' },
+  resetState([
+    makeEvent({ Action: 'FINANCE_EXPORT', Module: 'finance' }),
+    makeEvent({ AuditLogID: 2, Action: 'BOOT', Module: 'system', Result: 'success' }),
   ]);
   const svc = createAuditService();
-  const result = await svc.listEvents({});
+  const result = await svc.listEvents({ module: 'finance' });
   assert.equal(result.total, 1);
 });
 
 test('getSummary: counts by module and result', async (t) => {
-  patchFsWithEvents(t, [
-    makeEvent({ module: 'finance', result: 'success' }),
-    makeEvent({ module: 'finance', result: 'failure' }),
-    makeEvent({ module: 'coaching', result: 'success' }),
+  resetState([
+    makeEvent({ Module: 'finance', Result: 'success' }),
+    makeEvent({ Module: 'finance', Result: 'failure' }),
+    makeEvent({ Module: 'coaching', Result: 'success' }),
   ]);
   const svc = createAuditService();
   const result = await svc.getSummary({});
@@ -118,7 +139,7 @@ test('getSummary: counts by module and result', async (t) => {
 });
 
 test('getSummary: returns zero counts when no events', async (t) => {
-  patchFsWithEvents(t, []);
+  resetState([]);
   const svc = createAuditService();
   const result = await svc.getSummary({});
   assert.equal(result.total, 0);
@@ -129,9 +150,9 @@ test('getSummary: returns zero counts when no events', async (t) => {
 test('getSummary: auditedActionsLast24h counts only recent events', async (t) => {
   const recentTs = new Date(Date.now() - 60_000).toISOString(); // 1 minute ago
   const oldTs = new Date(Date.now() - 48 * 60 * 60 * 1000).toISOString(); // 48 hours ago
-  patchFsWithEvents(t, [
-    makeEvent({ auditTimestamp: recentTs }),
-    makeEvent({ auditTimestamp: oldTs }),
+  resetState([
+    makeEvent({ AuditTimestamp: recentTs }),
+    makeEvent({ AuditTimestamp: oldTs }),
   ]);
   const svc = createAuditService();
   const result = await svc.getSummary({});
@@ -146,9 +167,9 @@ test('getSummary: auditedActionsLast24h is consistent with period filter', async
 
   const periodEnd = new Date(Date.now() - 15 * 60 * 1000); // 15 min ago (cuts out 30-min event)
 
-  patchFsWithEvents(t, [
-    makeEvent({ auditTimestamp: withinTs }),
-    makeEvent({ auditTimestamp: outsideTs }),
+  resetState([
+    makeEvent({ AuditTimestamp: withinTs }),
+    makeEvent({ AuditTimestamp: outsideTs }),
   ]);
   const svc = createAuditService();
   const result = await svc.getSummary({ periodEnd });

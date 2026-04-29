@@ -3,19 +3,19 @@ const assert = require('node:assert/strict');
 const Module = require('node:module');
 
 /**
- * Unit Tests for Coaching Availability Search (Issue #50)
+ * Testes unitários da pesquisa de disponibilidade de coaching (Issue #50)
  *
- * Tests the date range filtering and multi-filter capabilities:
- * - Date range validation (startDate/endDate)
- * - Teacher ID filtering
- * - Modality/style filtering
- * - Recurring availability generation across date ranges
- * - Backwards compatibility with weekStart parameter
+ * Valida a filtragem por intervalo de datas e múltiplos filtros:
+ * - validação do intervalo de datas (startDate/endDate)
+ * - filtragem por ID do professor
+ * - filtragem por modalidade/estilo
+ * - geração de disponibilidade recorrente ao longo de intervalos de datas
+ * - compatibilidade retroativa com o parâmetro weekStart
  *
- * Run with: npm run test:node:unit
+ * Executar com: npm run test:node:unit
  */
 
-// Mock state for test data
+// Estado simulado para os dados de teste
 function createState() {
   return {
     activeYear: { AcademicYearID: 1 },
@@ -31,7 +31,7 @@ function createState() {
 
 let state = createState();
 
-// Mock Prisma client
+// Cliente Prisma simulado
 const fakePrisma = {
   academicYear: {
     findFirst: async () => state.activeYear,
@@ -40,12 +40,12 @@ const fakePrisma = {
     findMany: async ({ where, select, orderBy }) => {
       let filtered = [...state.teachers];
 
-      // Filter by teacher ID if specified
+      // Filtrar por ID do professor, se especificado
       if (where?.UserID) {
         filtered = filtered.filter((t) => t.UserID === where.UserID);
       }
 
-      // Filter by modality if specified
+      // Filtrar por modalidade, se especificado
       if (where?.TeacherModality?.some?.ModalityID) {
         const modalityId = where.TeacherModality.some.ModalityID;
         filtered = filtered.filter((t) =>
@@ -53,7 +53,7 @@ const fakePrisma = {
         );
       }
 
-      // Filter by role
+      // Filtrar por função
       if (where?.UserRole?.some?.Role?.RoleName) {
         filtered = filtered.filter((t) =>
           t.UserRole?.some?.((ur) => ur.Role?.RoleName === where.UserRole.some.Role.RoleName)
@@ -71,12 +71,12 @@ const fakePrisma = {
   },
   teacherAvailability: {
     findMany: async ({ where, select }) => {
-      // Recurring availabilities
+      // Disponibilidades recorrentes
       if (where?.TeacherAvailabilityRecurring?.is) {
         return state.recurringAvailabilities;
       }
 
-      // Punctual availabilities
+      // Disponibilidades pontuais
       if (where?.TeacherAvailabilityPunctual?.is) {
         return state.punctualAvailabilities;
       }
@@ -92,7 +92,7 @@ const fakePrisma = {
   },
 };
 
-// Patch Module._load to use fake Prisma
+// Substituir Module._load para usar o Prisma falso
 const originalLoad = Module._load;
 Module._load = function patchedLoad(request, parent, isMain) {
   if (request === '../config/prisma') {
@@ -116,7 +116,7 @@ function resetState(overrides = {}) {
   };
 }
 
-// Helper to create test teachers
+// Função auxiliar para criar professores de teste
 function createTeacher(id, name, modalities = []) {
   return {
     UserID: id,
@@ -128,7 +128,7 @@ function createTeacher(id, name, modalities = []) {
   };
 }
 
-// Helper to create test modalities
+// Função auxiliar para criar modalidades de teste
 function createModality(id, name) {
   return {
     ModalityID: id,
@@ -136,7 +136,7 @@ function createModality(id, name) {
   };
 }
 
-// Helper to create test studios
+// Função auxiliar para criar estúdios de teste
 function createStudio(id, name, capacity, modalities = []) {
   return {
     StudioID: id,
@@ -146,7 +146,7 @@ function createStudio(id, name, capacity, modalities = []) {
   };
 }
 
-// Date range tests
+// Testes de intervalo de datas
 test('Date range validation - rejects invalid start date', async () => {
   resetState({
     teachers: [],
@@ -159,7 +159,7 @@ test('Date range validation - rejects invalid start date', async () => {
       startDate: 'invalid-date',
       endDate: '2026-05-04',
     });
-    assert.fail('Should have thrown error for invalid start date');
+    assert.fail('Devia ter lançado erro para data inicial inválida');
   } catch (error) {
     assert.match(error.message, /Data de início ou fim inválida/);
     assert.equal(error.status, 400);
@@ -178,7 +178,7 @@ test('Date range validation - rejects end date before start date', async () => {
       startDate: '2026-05-04',
       endDate: '2026-04-27',
     });
-    assert.fail('Should have thrown error for end date before start date');
+    assert.fail('Devia ter lançado erro para data final antes da inicial');
   } catch (error) {
     assert.match(error.message, /Data de fim deve ser posterior/);
     assert.equal(error.status, 400);
@@ -206,7 +206,7 @@ test('Date range - returns correct range bounds in response', async () => {
   assert.equal(result.rangeEnd, '2026-05-04');
 });
 
-// Teacher filtering tests
+// Testes de filtragem por professor
 test('Teacher filter - filters by teacher ID', async () => {
   const ana = createTeacher(5, 'Ana Silva', [1]);
   const rui = createTeacher(6, 'Rui Costa', [1]);
@@ -250,14 +250,14 @@ test('Teacher filter - invalid teacher ID returns error', async () => {
       endDate: '2026-05-04',
       teacherId: 'invalid',
     });
-    assert.fail('Should have thrown error for invalid teacher ID');
+    assert.fail('Devia ter lançado erro para ID de professor inválido');
   } catch (error) {
     assert.match(error.message, /teacherId inválido/);
     assert.equal(error.status, 400);
   }
 });
 
-// Modality filtering tests
+// Testes de filtragem por modalidade
 test('Modality filter - filters by modality ID', async () => {
   const ana = createTeacher(5, 'Ana Silva', [1, 2]);
   const rui = createTeacher(6, 'Rui Costa', [2, 3]);
@@ -301,14 +301,14 @@ test('Modality filter - invalid modality ID returns error', async () => {
       endDate: '2026-05-04',
       modalityId: 'invalid',
     });
-    assert.fail('Should have thrown error for invalid modality ID');
+    assert.fail('Devia ter lançado erro para ID de modalidade inválido');
   } catch (error) {
     assert.match(error.message, /modalityId inválido/);
     assert.equal(error.status, 400);
   }
 });
 
-// Combined filters tests
+// Testes de filtros combinados
 test('Combined filters - teacher AND modality', async () => {
   const ana = createTeacher(5, 'Ana Silva', [1, 2]);
   const rui = createTeacher(6, 'Rui Costa', [2, 3]);
@@ -339,8 +339,8 @@ test('Combined filters - teacher AND modality', async () => {
   assert.equal(result.teachers[0].teacherId, 5);
 });
 
-// Backwards compatibility tests
-test('Backwards compatibility - weekStart parameter still works', async () => {
+// Testes de compatibilidade retroativa
+test('Compatibilidade retroativa - o parâmetro weekStart continua a funcionar', async () => {
   resetState({
     activeYear: { AcademicYearID: 1 },
     teachers: [],
@@ -357,11 +357,11 @@ test('Backwards compatibility - weekStart parameter still works', async () => {
   });
 
   assert.equal(result.rangeStart, '2026-04-27');
-  // Should be 7 days later (weekStart + 7 days)
+  // Deve ser 7 dias depois (weekStart + 7 dias)
   assert.equal(result.rangeEnd, '2026-05-04');
 });
 
-test('Backwards compatibility - date range takes precedence over weekStart', async () => {
+test('Compatibilidade retroativa - o intervalo de datas tem precedência sobre weekStart', async () => {
   resetState({
     activeYear: { AcademicYearID: 1 },
     teachers: [],
@@ -376,14 +376,14 @@ test('Backwards compatibility - date range takes precedence over weekStart', asy
   const result = await coachingService.getAvailableSlots({
     startDate: '2026-04-20',
     endDate: '2026-05-10',
-    weekStart: '2026-04-27', // Should be ignored
+    weekStart: '2026-04-27', // Deve ser ignorado
   });
 
   assert.equal(result.rangeStart, '2026-04-20');
   assert.equal(result.rangeEnd, '2026-05-10');
 });
 
-// Empty results tests
+// Testes de resultados vazios
 test('Empty results - no teachers found returns empty array', async () => {
   resetState({
     activeYear: { AcademicYearID: 1 },
@@ -416,15 +416,15 @@ test('No active academic year returns error', async () => {
       startDate: '2026-04-27',
       endDate: '2026-05-04',
     });
-    assert.fail('Should have thrown error for no active academic year');
+    assert.fail('Devia ter lançado erro por não existir ano letivo ativo');
   } catch (error) {
     assert.match(error.message, /Nenhum ano letivo ativo encontrado/);
     assert.equal(error.status, 503);
   }
 });
 
-// Response structure tests
-test('Response structure - includes all expected fields', async () => {
+// Testes da estrutura da resposta
+test('Estrutura da resposta - inclui todos os campos esperados', async () => {
   const ana = createTeacher(5, 'Ana Silva', [1]);
 
   resetState({

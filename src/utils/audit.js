@@ -1,3 +1,4 @@
+const prisma = require('../config/prisma');
 const logger = require('./logger');
 
 const AUDIT_ACTIONS = Object.freeze({
@@ -44,18 +45,42 @@ function logAudit({
     return;
   }
 
-  logger.info('audit', {
-    category: 'audit',
-    auditTimestamp: new Date().toISOString(),
-    userId,
-    userName,
-    userRole,
-    action,
-    module,
-    targetType,
-    targetId,
-    result,
-    detail,
+  if (!prisma?.auditLog?.create) {
+    logger.info('audit', {
+      category: 'audit',
+      auditTimestamp: new Date().toISOString(),
+      userId,
+      userName,
+      userRole,
+      action,
+      module,
+      targetType,
+      targetId,
+      result,
+      detail,
+    });
+    return;
+  }
+
+  void prisma.auditLog.create({
+    data: {
+      AuditTimestamp: new Date(),
+      UserID: userId,
+      UserName: userName,
+      UserRole: userRole,
+      Action: action,
+      Module: module,
+      TargetType: targetType,
+      TargetID: targetId,
+      Result: result,
+      Detail: detail,
+    },
+  }).catch((error) => {
+    logger.error('Falha ao registar auditoria na base de dados', {
+      action,
+      module,
+      error: error?.message,
+    });
   });
 }
 

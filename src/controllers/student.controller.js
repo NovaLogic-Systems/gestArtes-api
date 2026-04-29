@@ -453,13 +453,17 @@ async function getDashboard(req, res, next) {
   }
 }
 
+const { createStudentUseCases } = require('../application/use-cases/student');
+
+// Factory de use-cases: injeção de Prisma ao arranque
+// Controller delega orquestração ao use-case e mantém responsabilidade de IO/HTTP
+const studentUseCases = createStudentUseCases({ prisma });
+
 async function getUpcomingSchedule(req, res, next) {
   try {
     const userId = getAuthenticatedStudentUserId(req, res);
 
-    if (!userId) {
-      return;
-    }
+    if (!userId) return;
 
     const student = await loadStudentProfile(userId);
 
@@ -468,7 +472,7 @@ async function getUpcomingSchedule(req, res, next) {
       return;
     }
 
-    const schedule = await listUpcomingSchedule(student.studentAccountId, 5);
+    const schedule = await studentUseCases.getUpcomingSchedule.execute({ studentAccountId: student.studentAccountId, limit: 5 });
     res.json({ schedule });
   } catch (error) {
     next(error);

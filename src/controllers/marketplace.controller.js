@@ -1,13 +1,8 @@
 const prisma = require('../config/prisma');
+const { createHttpError } = require('../utils/http-error');
 
 const PENDING_STATUS_NAMES = ['pending', 'pendente', 'pending_review', 'pending approval'];
 const REMOVED_STATUS_NAMES = ['removed', 'removido', 'hidden', 'oculto', 'inactive', 'inativo'];
-
-function createHttpError(status, message) {
-  const error = new Error(message);
-  error.status = status;
-  return error;
-}
 
 function normalizeString(value) {
   return String(value || '').trim().toLowerCase();
@@ -383,6 +378,10 @@ async function createListing(req, res, next) {
   }
 }
 
+async function publish(req, res, next) {
+  return createListing(req, res, next);
+}
+
 async function getMyListings(req, res, next) {
   try {
     const listings = await prisma.marketplaceItem.findMany({
@@ -488,6 +487,18 @@ async function updateListing(req, res, next) {
   }
 }
 
+async function reserve(req, res, next) {
+  return updateListing(req, res, next);
+}
+
+async function close(req, res, next) {
+  return deleteListing(req, res, next);
+}
+
+async function complete(req, res, next) {
+  return deleteListing(req, res, next);
+}
+
 async function deleteListing(req, res, next) {
   try {
     const listingId = req.params.id;
@@ -542,7 +553,11 @@ module.exports = {
   getMarketplaceOptions,
   getListings,
   getListingById,
+  publish,
   createListing,
+  reserve,
+  close,
+  complete,
   updateListing,
   deleteListing,
   getMyListings,

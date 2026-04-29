@@ -5,7 +5,7 @@ const STATUS_AWAITING_APPROVAL = 1;
 const STATUS_CANCELLED = 5;
 const EXPIRATION_HOURS = 48;
 
-// Schedule the job to run every hour
+// Agenda a execução da tarefa para correr de hora a hora
 cron.schedule('0 * * * *', async () => {
     console.log('Sistema de cancelamento automático em execução...');
 

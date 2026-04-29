@@ -3,30 +3,30 @@ const assert = require('node:assert/strict');
 const Module = require('node:module');
 
 // ---------------------------------------------------------------------------
-// State factory
+// Fábrica de estado
 // ---------------------------------------------------------------------------
 
 function buildState() {
   return {
-    // coachingJoinRequest.findMany / findFirst results
+    // resultados de coachingJoinRequest.findMany / findFirst
     joinRequests: [],
-    // coachingJoinRequest.findUnique (for getAdmissionRequestForTeacher)
+    // coachingJoinRequest.findUnique (para getAdmissionRequestForTeacher)
     joinRequestById: null,
     // coachingJoinRequestStatus.findFirst
     statusRows: [
       { StatusID: 10, StatusName: 'TEACHER_APPROVED' },
       { StatusID: 11, StatusName: 'TEACHER_REJECTED' },
     ],
-    // counters returned by prisma.sessionTeacher.count etc.
+    // contadores devolvidos por prisma.sessionTeacher.count, etc.
     classesToday: 3,
     pendingConfirmations: 1,
     admissionRequests: 2,
     noShows: 0,
-    // sessionTeacher.findMany for today's schedule
+    // sessionTeacher.findMany para o horário de hoje
     sessionTeacherRows: [],
-    // captured values from coachingJoinRequest.update
+    // valores capturados de coachingJoinRequest.update
     updatedJoinRequestData: null,
-    // notification.create captured
+    // captura de notification.create
     createdNotification: null,
   };
 }
@@ -34,7 +34,7 @@ function buildState() {
 let state = buildState();
 
 // ---------------------------------------------------------------------------
-// Fake prisma
+// Prisma falso
 // ---------------------------------------------------------------------------
 
 const fakePrisma = {
@@ -99,7 +99,7 @@ const fakePrisma = {
 };
 
 // ---------------------------------------------------------------------------
-// Module patching
+// Substituição de módulos
 // ---------------------------------------------------------------------------
 
 const originalLoad = Module._load;
@@ -116,7 +116,7 @@ try {
 }
 
 // ---------------------------------------------------------------------------
-// Helpers
+// Funções auxiliares
 // ---------------------------------------------------------------------------
 
 function createResponse() {
@@ -167,7 +167,7 @@ function buildJoinRequest(overrides = {}) {
 }
 
 // ---------------------------------------------------------------------------
-// getAuthenticatedTeacherUserId (tested indirectly through getDashboard)
+// getAuthenticatedTeacherUserId (testado indiretamente através de getDashboard)
 // ---------------------------------------------------------------------------
 
 test('getDashboard: returns 401 when session has no userId', async () => {
@@ -231,7 +231,7 @@ test('getPendingAdmissions: returns empty requests array when no pending admissi
 
 test('getPendingAdmissions: returns mapped admission requests', async () => {
   resetState();
-  // The prisma.coachingJoinRequest.findMany returns an array that the controller maps
+  // prisma.coachingJoinRequest.findMany devolve um array que o controlador mapeia
   state.joinRequests = [
     {
       JoinRequestID: 1,
@@ -395,7 +395,7 @@ test('reviewAdmissionRequest: reject succeeds with observations', async () => {
 });
 
 // ---------------------------------------------------------------------------
-// approveJoinRequest / rejectJoinRequest (shortcut handlers)
+// approveJoinRequest / rejectJoinRequest (handlers de atalho)
 // ---------------------------------------------------------------------------
 
 test('approveJoinRequest: forces decision=approve regardless of body', async () => {
@@ -404,7 +404,7 @@ test('approveJoinRequest: forces decision=approve regardless of body', async () 
   const req = {
     session: buildSession(),
     params: { joinRequestId: '1' },
-    body: {}, // no decision in body — forced by the handler
+    body: {}, // sem decisão no corpo — imposta pelo handler
   };
   const res = createResponse();
   await teacherController.approveJoinRequest(req, res, (err) => { assert.fail(`unexpected next: ${err}`); });

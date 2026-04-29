@@ -2,32 +2,34 @@ const test = require('node:test');
 const assert = require('node:assert/strict');
 
 /**
- * Integration Tests for Coaching Availability Search Endpoint (Issue #50)
+ * Testes de integração do endpoint de pesquisa de disponibilidade de coaching (Issue #50)
  *
- * Tests the full HTTP endpoint flow:
- * - GET /coaching/slots with various query parameter combinations
- * - Date range filtering with validation
- * - Teacher and modality filtering
- * - Response format and data correctness
- * - Error handling and status codes
+ * Valida o fluxo completo do endpoint HTTP:
+ * - GET /coaching/slots com várias combinações de parâmetros
+ * - filtragem por intervalo de datas com validação
+ * - filtragem por professor e modalidade
+ * - formato da resposta e correção dos dados
+ * - tratamento de erros e códigos de estado
  *
- * Prerequisites:
- * - Active academic year in database
- * - Test data (teachers, modalities, studios, availability windows)
- * - Running API server on BASE_URL
+ * Pré-requisitos:
+ * - ano letivo ativo na base de dados
+ * - dados de teste (professores, modalidades, estúdios, janelas de disponibilidade)
+ * - servidor da API em execução em BASE_URL
  *
- * Run with: RUN_DB_INTEGRATION_TESTS=true npm run test:node:integration
+ * Executar com: RUN_DB_INTEGRATION_TESTS=true npm run test:node:integration
  */
 
-if (process.env.RUN_DB_INTEGRATION_TESTS !== 'true') {
-  console.log('⏭️  Skipping: Set RUN_DB_INTEGRATION_TESTS=true to run');
-  process.exit(0);
+const shouldRun = process.env.RUN_DB_INTEGRATION_TESTS === 'true';
+
+if (!shouldRun) {
+  test('Coaching availability integration tests are skipped unless RUN_DB_INTEGRATION_TESTS=true', { skip: true }, () => {});
 }
 
+if (shouldRun) {
 const BASE_URL = process.env.TEST_API_URL || 'http://localhost:3001';
 const prisma = require('../../src/config/prisma');
 
-// Helper to make HTTP requests
+// Função auxiliar para fazer pedidos HTTP
 async function makeRequest(method, path, body = null, headers = {}) {
   const options = {
     method,
@@ -53,10 +55,10 @@ async function makeRequest(method, path, body = null, headers = {}) {
   }
 }
 
-// Setup test data
+// Preparação dos dados de teste
 async function setupTestData() {
   // Create or get active academic year
-  let activeYear = await prisma.academicYear.findFirst({
+    let activeYear = await prisma.academicYear.findFirst({
     where: { IsActive: true },
   });
 
@@ -206,7 +208,7 @@ test('GET /coaching/slots - filters by modality ID', async () => {
 
   assert.equal(status, 200);
   // Modalities array should always have all modalities
-  assert.ok(data.modalities.length > 0);
+    assert.ok(data.modalities.length > 0, 'Modalities array should not be empty');
   // Teachers should only have those teaching this modality
   if (data.teachers.length > 0) {
     data.teachers.forEach((teacher) => {
@@ -364,3 +366,4 @@ test('GET /coaching/slots - response has correct structure', async () => {
 });
 
 console.log('✓ All coaching availability search integration tests passed');
+}

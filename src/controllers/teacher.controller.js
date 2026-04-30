@@ -58,8 +58,8 @@ function isPendingAvailabilityStatus(statusName) {
 }
 
 function getAuthenticatedTeacherUserId(req, res) {
-  const userId = Number(req.session?.userId);
-  const role = normalizeString(req.session?.role);
+  const userId = Number(req.auth?.userId);
+  const role = normalizeString(req.auth?.role);
 
   if (!Number.isInteger(userId) || userId <= 0) {
     res.status(401).json({ error: 'Not authenticated' });

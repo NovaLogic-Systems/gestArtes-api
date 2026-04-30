@@ -6,8 +6,6 @@ const express = require('express');
 const http = require('node:http');
 const https = require('node:https');
 const fs = require('node:fs');
-const session = require('express-session');
-const MSSQLStore = require('connect-mssql-v2');
 const cors = require('cors');
 const helmet = require('helmet');
 const morgan = require('morgan');
@@ -38,15 +36,6 @@ const { initSocket } = require('./socket');
 const app = express();
 const DEFAULT_API_PORT = 3001;
 
-const SESSION_COOKIE_NAME = 'connect.sid';
-const SESSION_TTL_MS = parsePositiveInt(
-  process.env.SESSION_TTL_MS,
-  1000 * 60 * 60 * 2
-);
-const SESSION_TABLE_NAME = 'Sessions';
-const SESSION_AUTO_REMOVE_INTERVAL_MS = 1000 * 60 * 10;
-const SESSION_STORE_RETRIES = 1;
-const SESSION_STORE_RETRY_DELAY_MS = 1000;
 const CSP_NONCE_BYTE_LENGTH = 16;
 const IS_PRODUCTION = process.env.NODE_ENV === 'production';
 const SSL_KEY_PATH = process.env.SSL_KEY_PATH || '';
@@ -62,24 +51,12 @@ const CSRF_ALLOW_NO_ORIGIN = parseBoolean(
   process.env.CSRF_ALLOW_NO_ORIGIN,
   false
 );
-const SESSION_CROSS_SITE = parseBoolean(
-  process.env.SESSION_COOKIE_CROSS_SITE,
+const REFRESH_COOKIE_CROSS_SITE = parseBoolean(
+  process.env.REFRESH_COOKIE_CROSS_SITE ?? process.env.SESSION_COOKIE_CROSS_SITE,
   false
 );
-const SESSION_COOKIE_SAMESITE = SESSION_CROSS_SITE ? 'none' : 'lax';
-const SESSION_COOKIE_SECURE = SESSION_CROSS_SITE ? true : (IS_PRODUCTION || HAS_SSL);
-const HAS_SESSION_SECRET = Boolean(process.env.SESSION_SECRET);
-const SESSION_SECRET = HAS_SESSION_SECRET
-  ? process.env.SESSION_SECRET
-  : crypto.randomBytes(32).toString('hex');
-
-if (IS_PRODUCTION && !HAS_SESSION_SECRET) {
-  throw new Error('SESSION_SECRET is required in production');
-}
-
-if (!HAS_SESSION_SECRET) {
-  logger.warn('SESSION_SECRET not set; using an ephemeral development secret');
-}
+const REFRESH_COOKIE_SAMESITE = REFRESH_COOKIE_CROSS_SITE ? 'none' : 'lax';
+const REFRESH_COOKIE_SECURE = REFRESH_COOKIE_CROSS_SITE ? true : (IS_PRODUCTION || HAS_SSL);
 
 if (CORS_ORIGINS.length === 0) {
   throw new Error(
@@ -107,30 +84,6 @@ function parseBoolean(value, fallback) {
   }
 
   return fallback;
-}
-
-function parsePositiveInt(value, fallback) {
-  const parsed = Number(value);
-
-  if (Number.isInteger(parsed) && parsed > 0) {
-    return parsed;
-  }
-
-  return fallback;
-}
-
-function resolveSecureCookieSetting(value, fallback) {
-  if (value === undefined || value === null || value === '') {
-    return fallback;
-  }
-
-  const normalized = String(value).trim().toLowerCase();
-
-  if (normalized === 'auto') {
-    return 'auto';
-  }
-
-  return parseBoolean(value, fallback);
 }
 
 function parseCsv(value) {
@@ -226,32 +179,6 @@ const docsCspMiddleware = helmet.contentSecurityPolicy({
   },
 });
 
-function sanitizeConnectionString(value) {
-  if (!value) {
-    return '';
-  }
-
-  const trimmed = String(value).trim();
-
-  if (trimmed.startsWith('"') && trimmed.endsWith('"')) {
-    return trimmed.slice(1, -1);
-  }
-
-  return trimmed;
-}
-
-function safeDecode(value) {
-  if (!value) {
-    return '';
-  }
-
-  try {
-    return decodeURIComponent(value);
-  } catch {
-    return String(value);
-  }
-}
-
 function normalizeFilePath(value) {
   if (!value) {
     return '';
@@ -268,96 +195,6 @@ function normalizeFilePath(value) {
 
   return trimmed;
 }
-
-function buildMssqlSessionConfig() {
-  const rawConnectionString = sanitizeConnectionString(
-    process.env.DATABASE_URL
-  );
-
-  if (!rawConnectionString) {
-    throw new Error('DATABASE_URL is required for session store');
-  }
-
-  if (rawConnectionString.startsWith('sqlserver://') && rawConnectionString.includes(';')) {
-    const withoutScheme = rawConnectionString.slice('sqlserver://'.length);
-    const parts = withoutScheme.split(';').map((part) => part.trim()).filter(Boolean);
-
-    const server = safeDecode(parts[0] || '');
-    const pairs = Object.fromEntries(
-      parts
-        .slice(1)
-        .map((part) => {
-          const separatorIndex = part.indexOf('=');
-
-          if (separatorIndex < 0) {
-            return null;
-          }
-
-          const key = part.slice(0, separatorIndex).trim().toLowerCase();
-          const val = part.slice(separatorIndex + 1).trim();
-          return [key, val];
-        })
-        .filter(Boolean)
-    );
-
-    const user = safeDecode(pairs.user || pairs.uid || '');
-    const password = safeDecode(pairs.password || pairs.pwd || '');
-    const database = safeDecode(pairs.database || '');
-    const port = Number(pairs.port || '') || undefined;
-
-    if (!server || !user || !database) {
-      throw new Error('Invalid SQL Server connection string for session store');
-    }
-
-    return {
-      user,
-      password,
-      server,
-      database,
-      port,
-      options: {
-        encrypt: parseBoolean(pairs.encrypt, true),
-        trustServerCertificate: parseBoolean(pairs.trustservercertificate, false),
-      },
-    };
-  }
-
-  const parsed = new URL(rawConnectionString);
-  const database = parsed.pathname.replace(/^\/+/, '');
-
-  return {
-    user: safeDecode(parsed.username),
-    password: safeDecode(parsed.password),
-    server: parsed.hostname,
-    database,
-    port: Number(parsed.port || '') || undefined,
-    options: {
-      encrypt: parseBoolean(parsed.searchParams.get('encrypt'), true),
-      trustServerCertificate: parseBoolean(
-        parsed.searchParams.get('trustServerCertificate'),
-        false
-      ),
-    },
-  };
-}
-
-const sessionStore = new MSSQLStore(buildMssqlSessionConfig(), {
-  table: SESSION_TABLE_NAME,
-  ttl: SESSION_TTL_MS,
-  autoRemove: true,
-  autoRemoveInterval: SESSION_AUTO_REMOVE_INTERVAL_MS,
-  useUTC: true,
-  retries: SESSION_STORE_RETRIES,
-  retryDelay: SESSION_STORE_RETRY_DELAY_MS,
-});
-
-sessionStore.on('error', (error) => {
-  logger.error(`Session store error: ${error.message}`);
-});
-
-sessionStore.on('sessionError', (error, method) => {
-  logger.error(`Session store method error (${method}): ${error.message}`);
-});
 
 app.disable('x-powered-by');
 
@@ -402,24 +239,13 @@ app.use(morgan('dev'));
 if (parseBoolean(process.env.TRUST_PROXY, false)) {
   app.set('trust proxy', 1);
 }
-app.set('sessionCookieName', SESSION_COOKIE_NAME);
-app.set('sessionCookieOptions', {
+app.set('refreshCookieName', process.env.REFRESH_TOKEN_COOKIE_NAME || 'gestartes.refresh_token');
+app.set('refreshCookieOptions', {
   httpOnly: true,
-  secure: SESSION_COOKIE_SECURE,
-  sameSite: SESSION_COOKIE_SAMESITE,
-  maxAge: SESSION_TTL_MS,
+  secure: REFRESH_COOKIE_SECURE,
+  sameSite: REFRESH_COOKIE_SAMESITE,
+  path: '/',
 });
-const sessionMiddleware = session({
-  name: SESSION_COOKIE_NAME,
-  store: sessionStore,
-  secret: SESSION_SECRET,
-  resave: false,
-  saveUninitialized: false,
-  rolling: true,
-  cookie: app.get('sessionCookieOptions'),
-});
-
-app.use(sessionMiddleware);
 app.use(apiRateLimiter);
 app.get('/health', (req, res) => res.json({ status: 'ok' }));
 setupSwagger(app);
@@ -464,7 +290,7 @@ function loadSslCredentials() {
 
 const httpServer = http.createServer(app);
 
-const io = initSocket(httpServer, sessionMiddleware);
+const io = initSocket(httpServer);
 app.set('io', io);
 
 // Carrega jobs agendados se ativado via variáveis de ambiente.
@@ -489,7 +315,7 @@ if (require.main === module) {
     }
 
     const httpsServer = https.createServer(credentials, app);
-    const httpsIo = initSocket(httpsServer, sessionMiddleware);
+    const httpsIo = initSocket(httpsServer);
     app.set('io', httpsIo);
 
     const httpsPort = Number(process.env.PORT) || DEFAULT_API_PORT;

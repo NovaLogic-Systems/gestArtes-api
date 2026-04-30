@@ -10,8 +10,8 @@ function normalizeString(value) {
 }
 
 function getAuthenticatedInventoryUserId(req) {
-  const userId = Number(req.session?.userId);
-  const role = normalizeString(req.session?.role);
+  const userId = Number(req.auth?.userId);
+  const role = normalizeString(req.auth?.role);
 
   if (!Number.isInteger(userId) || userId <= 0) {
     throw createHttpError(401, 'Unauthorized');

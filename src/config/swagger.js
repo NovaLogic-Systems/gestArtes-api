@@ -21,10 +21,10 @@ const swaggerSpec = swaggerJsdoc({
     ],
     components: {
       securitySchemes: {
-        sessionCookieAuth: {
-          type: 'apiKey',
-          in: 'cookie',
-          name: 'connect.sid',
+        bearerAuth: {
+          type: 'http',
+          scheme: 'bearer',
+          bearerFormat: 'JWT',
         },
       },
       schemas: {
@@ -293,7 +293,7 @@ const swaggerSpec = swaggerJsdoc({
         get: {
           tags: ['LostFound'],
           summary: 'List lost and found items for admin',
-          security: [{ sessionCookieAuth: [] }],
+          security: [{ bearerAuth: [] }],
           responses: {
             200: {
               description: 'List of lost and found items including archived entries',
@@ -313,7 +313,7 @@ const swaggerSpec = swaggerJsdoc({
         post: {
           tags: ['LostFound'],
           summary: 'Create lost and found item (admin)',
-          security: [{ sessionCookieAuth: [] }],
+          security: [{ bearerAuth: [] }],
           requestBody: {
             required: true,
             content: {
@@ -340,7 +340,7 @@ const swaggerSpec = swaggerJsdoc({
         get: {
           tags: ['LostFound'],
           summary: 'Get one lost and found item for admin',
-          security: [{ sessionCookieAuth: [] }],
+          security: [{ bearerAuth: [] }],
           parameters: [
             {
               in: 'path',
@@ -366,7 +366,7 @@ const swaggerSpec = swaggerJsdoc({
         patch: {
           tags: ['LostFound'],
           summary: 'Update lost and found item (admin)',
-          security: [{ sessionCookieAuth: [] }],
+          security: [{ bearerAuth: [] }],
           parameters: [
             {
               in: 'path',
@@ -400,7 +400,7 @@ const swaggerSpec = swaggerJsdoc({
         delete: {
           tags: ['LostFound'],
           summary: 'Delete lost and found item (admin)',
-          security: [{ sessionCookieAuth: [] }],
+          security: [{ bearerAuth: [] }],
           parameters: [
             {
               in: 'path',
@@ -421,7 +421,7 @@ const swaggerSpec = swaggerJsdoc({
         patch: {
           tags: ['LostFound'],
           summary: 'Mark lost and found item as claimed (admin)',
-          security: [{ sessionCookieAuth: [] }],
+          security: [{ bearerAuth: [] }],
           parameters: [
             {
               in: 'path',
@@ -457,7 +457,7 @@ const swaggerSpec = swaggerJsdoc({
         patch: {
           tags: ['LostFound'],
           summary: 'Archive lost and found item (admin)',
-          security: [{ sessionCookieAuth: [] }],
+          security: [{ bearerAuth: [] }],
           parameters: [
             {
               in: 'path',
@@ -493,7 +493,7 @@ const swaggerSpec = swaggerJsdoc({
         get: {
           tags: ['StudioOccupancy'],
           summary: 'Get real-time occupancy snapshot for all studios',
-          security: [{ sessionCookieAuth: [] }],
+          security: [{ bearerAuth: [] }],
           parameters: [
             {
               in: 'query',
@@ -522,7 +522,7 @@ const swaggerSpec = swaggerJsdoc({
         get: {
           tags: ['StudioOccupancy'],
           summary: 'Get occupancy forecast analytics for a time window',
-          security: [{ sessionCookieAuth: [] }],
+          security: [{ bearerAuth: [] }],
           parameters: [
             {
               in: 'query',
@@ -558,7 +558,7 @@ const swaggerSpec = swaggerJsdoc({
         post: {
           tags: ['StudioOccupancy'],
           summary: 'Create a temporary global studio block (ex: maintenance)',
-          security: [{ sessionCookieAuth: [] }],
+          security: [{ bearerAuth: [] }],
           requestBody: {
             required: true,
             content: {
@@ -603,7 +603,7 @@ const swaggerSpec = swaggerJsdoc({
         patch: {
           tags: ['StudioOccupancy'],
           summary: 'Set manual occupancy status override for a studio',
-          security: [{ sessionCookieAuth: [] }],
+          security: [{ bearerAuth: [] }],
           parameters: [
             {
               in: 'path',

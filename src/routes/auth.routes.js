@@ -5,13 +5,13 @@ const validateRequest = require('../middlewares/validate.middleware');
 const authController = require('../controllers/auth.controller');
 const { loginLimiter } = require('../middlewares/rateLimit.middleware');
 const {
-  APP_PERMISSIONS,
   requireAuth,
-  requirePermission,
 } = require('../middlewares/auth.middleware');
 
 router.post('/login', loginLimiter, ...loginSchema, validateRequest, authController.login);
+router.post('/refresh', authController.refresh);
 router.post('/logout', authController.logout);
-router.get('/me', requireAuth, requirePermission(APP_PERMISSIONS.SESSION_ACCESS), authController.me);
+router.post('/logout-all', requireAuth, authController.logoutAll);
+router.get('/me', requireAuth, authController.me);
 
 module.exports = router;

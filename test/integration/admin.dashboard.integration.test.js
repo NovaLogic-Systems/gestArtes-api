@@ -123,7 +123,11 @@ function createApp() {
   const app = express();
   app.use(express.json());
   app.use((req, res, next) => {
-    req.session = {
+    req.auth = {
+      userId: 500,
+      role: 'admin',
+    };
+    req.user = {
       userId: 500,
       role: 'admin',
     };

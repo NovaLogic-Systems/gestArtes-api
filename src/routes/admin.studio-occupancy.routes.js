@@ -1,6 +1,6 @@
 const express = require('express');
 const validateRequest = require('../middlewares/validate.middleware');
-const { requireSessionAuth, requireAdminRole } = require('../middlewares/auth.middleware');
+const { requireAuth, requireAdminRole } = require('../middlewares/auth.middleware');
 const studioController = require('../controllers/studio.controller');
 const {
   getStudioOccupancySchema,
@@ -10,7 +10,7 @@ const {
 } = require('../middlewares/schemas/studioOccupancy.schema');
 
 const router = express.Router();
-const adminAccess = [requireSessionAuth, requireAdminRole];
+const adminAccess = [requireAuth, requireAdminRole];
 
 router.get(
   '/real-time',

@@ -35,7 +35,7 @@ async function createJoinRequest(req, res, next) {
       return res.status(400).json({ error: 'ID de sessão inválido' });
     }
 
-    const requesterUserId = toPositiveInt(req.session?.userId);
+    const requesterUserId = toPositiveInt(req.auth?.userId);
 
     if (!requesterUserId) {
       return res.status(401).json({ error: 'Não autenticado' });
@@ -67,8 +67,8 @@ async function listBySession(req, res, next) {
       return res.status(400).json({ error: 'ID de sessão inválido' });
     }
 
-    const requesterUserId = toPositiveInt(req.session?.userId);
-    const requesterRole = String(req.session?.role || '').trim().toLowerCase();
+    const requesterUserId = toPositiveInt(req.auth?.userId);
+    const requesterRole = String(req.auth?.role || '').trim().toLowerCase();
 
     if (!requesterUserId) {
       return res.status(401).json({ error: 'Não autenticado' });
@@ -88,7 +88,7 @@ async function listBySession(req, res, next) {
 
 async function getTeacherPending(req, res, next) {
   try {
-    const teacherUserId = toPositiveInt(req.session?.userId);
+    const teacherUserId = toPositiveInt(req.auth?.userId);
 
     if (!teacherUserId) {
       return res.status(401).json({ error: 'Não autenticado' });
@@ -107,7 +107,7 @@ async function getTeacherPending(req, res, next) {
 async function teacherApprove(req, res, next) {
   try {
     const joinRequestId = toPositiveInt(req.params.id);
-    const teacherUserId = toPositiveInt(req.session?.userId);
+    const teacherUserId = toPositiveInt(req.auth?.userId);
 
     if (!joinRequestId) {
       return res.status(400).json({ error: 'ID de pedido de adesão inválido' });
@@ -138,7 +138,7 @@ async function teacherApprove(req, res, next) {
 async function teacherReject(req, res, next) {
   try {
     const joinRequestId = toPositiveInt(req.params.id);
-    const teacherUserId = toPositiveInt(req.session?.userId);
+    const teacherUserId = toPositiveInt(req.auth?.userId);
 
     if (!joinRequestId) {
       return res.status(400).json({ error: 'ID de pedido de adesão inválido' });
@@ -179,7 +179,7 @@ async function getAdminPending(req, res, next) {
 async function adminApprove(req, res, next) {
   try {
     const joinRequestId = toPositiveInt(req.params.id);
-    const adminUserId = toPositiveInt(req.session?.userId);
+    const adminUserId = toPositiveInt(req.auth?.userId);
 
     if (!joinRequestId) {
       return res.status(400).json({ error: 'ID de pedido de adesão inválido' });
@@ -212,7 +212,7 @@ async function adminApprove(req, res, next) {
 async function adminReject(req, res, next) {
   try {
     const joinRequestId = toPositiveInt(req.params.id);
-    const adminUserId = toPositiveInt(req.session?.userId);
+    const adminUserId = toPositiveInt(req.auth?.userId);
 
     if (!joinRequestId) {
       return res.status(400).json({ error: 'ID de pedido de adesão inválido' });
@@ -243,7 +243,7 @@ async function adminReject(req, res, next) {
 
 async function getStudentRequests(req, res, next) {
   try {
-    const studentUserId = toPositiveInt(req.session?.userId);
+    const studentUserId = toPositiveInt(req.auth?.userId);
 
     if (!studentUserId) {
       return res.status(401).json({ error: 'Não autenticado' });

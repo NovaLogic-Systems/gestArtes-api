@@ -41,7 +41,7 @@ async function getCompatibleStudios(req, res, next) {
 
 async function createSession(req, res, next) {
   try {
-    const teacherUserId = toPositiveInt(req.session?.userId);
+    const teacherUserId = toPositiveInt(req.auth?.userId);
     if (!teacherUserId) {
       return res.status(500).json({ error: 'Sessão autenticada inválida' });
     }
@@ -67,7 +67,7 @@ async function createSession(req, res, next) {
 
 async function createBooking(req, res, next) {
   try {
-    const studentUserId = toPositiveInt(req.session?.userId);
+    const studentUserId = toPositiveInt(req.auth?.userId);
     if (!studentUserId) return res.status(401).json({ error: 'Não autenticado' });
 
     const { session } = await coachingUseCases.createBookingRequest.execute({
@@ -84,7 +84,7 @@ async function createBooking(req, res, next) {
 
 async function cancelBooking(req, res, next) {
   try {
-    const studentUserId = toPositiveInt(req.session?.userId);
+    const studentUserId = toPositiveInt(req.auth?.userId);
     if (!studentUserId) return res.status(401).json({ error: 'Não autenticado' });
 
     const sessionId = toPositiveInt(req.params.id);
@@ -100,7 +100,7 @@ async function cancelBooking(req, res, next) {
 
 async function confirmCompletion(req, res, next) {
   try {
-    const studentUserId = toPositiveInt(req.session?.userId);
+    const studentUserId = toPositiveInt(req.auth?.userId);
     if (!studentUserId) return res.status(401).json({ error: 'Não autenticado' });
 
     const sessionId = toPositiveInt(req.params.id);
@@ -115,7 +115,7 @@ async function confirmCompletion(req, res, next) {
 
 async function getSessionHistory(req, res, next) {
   try {
-    const studentUserId = toPositiveInt(req.session?.userId);
+    const studentUserId = toPositiveInt(req.auth?.userId);
     if (!studentUserId) return res.status(401).json({ error: 'Não autenticado' });
 
     const sessions = await coachingService.getSessionHistory(studentUserId);

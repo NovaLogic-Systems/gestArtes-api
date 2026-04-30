@@ -6,7 +6,7 @@ Backend REST API do projeto gestArtes, desenvolvido para a Escola Entartes.
 
 - Node.js + Express
 - Prisma ORM com SQL Server
-- dotenv, cors, express-session, helmet
+- dotenv, cors, helmet, jsonwebtoken
 - morgan (logs HTTP no console)
 - winston (logs estruturados para ficheiro)
 - express-rate-limit (rate limiting básico)
@@ -37,6 +37,8 @@ Variáveis de segurança relevantes:
 
 - `CORS_ORIGINS`: lista separada por vírgula com origins permitidas (fallback para `CLIENT_URL`).
 - `CORS_ALLOW_NO_ORIGIN`: permite requests sem Origin (ex.: curl/Postman).
+- `JWT_ACCESS_SECRET` e `JWT_REFRESH_SECRET`: segredos distintos para access token e refresh token.
+- `REFRESH_TOKEN_COOKIE_NAME`: nome do cookie `httpOnly` usado para o refresh token.
 - Em produção, é obrigatório configurar pelo menos uma origin em `CORS_ORIGINS` ou `CLIENT_URL`.
 
 3. Executar em desenvolvimento:

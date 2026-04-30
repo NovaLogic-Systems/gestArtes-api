@@ -45,7 +45,7 @@ async function getRevenue(req, res, next) {
 async function exportTransactions(req, res, next) {
   try {
     const { periodStart, periodEnd, studentAccountId, studentNumber, includeExported } = req.body;
-    const userId = req.session?.userId ?? null;
+    const userId = req.auth?.userId ?? null;
 
     const { csv, count } = await financeService.exportTransactions({
       periodStart,

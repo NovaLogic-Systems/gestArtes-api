@@ -66,9 +66,14 @@ function createResponse() {
   return {
     statusCode: null,
     payload: null,
+    cookies: [],
     status(code) { this.statusCode = code; return this; },
     json(body) { this.payload = body; return this; },
     send() { return this; },
+    cookie(name, value, options) {
+      this.cookies.push({ name, value, options });
+      return this;
+    },
     clearCookie() { return this; },
   };
 }
@@ -90,32 +95,10 @@ function buildUser(overrides = {}) {
   };
 }
 
-function buildSession(overrides = {}) {
-  let saveError = null;
-  let regenerateError = null;
-  let destroyError = null;
-
-  const session = {
-    userId: null,
-    role: null,
-    user: null,
-    cookie: { maxAge: 3600000 },
-    save(cb) { cb(saveError); },
-    regenerate(cb) { cb(regenerateError); },
-    destroy(cb) { cb(destroyError); },
-    _setSaveError(e) { saveError = e; },
-    _setRegenerateError(e) { regenerateError = e; },
-    _setDestroyError(e) { destroyError = e; },
-    ...overrides,
-  };
-
-  return session;
-}
-
 function buildApp(overrides = {}) {
   const store = new Map();
-  store.set('sessionCookieName', 'connect.sid');
-  store.set('sessionCookieOptions', { httpOnly: true, sameSite: 'strict' });
+  store.set('refreshCookieName', 'gestartes.refresh_token');
+  store.set('refreshCookieOptions', { httpOnly: true, sameSite: 'strict', path: '/' });
   Object.entries(overrides).forEach(([k, v]) => store.set(k, v));
   return { get: (key) => store.get(key) };
 }
@@ -137,7 +120,6 @@ test('login: returns 401 when user does not exist', async () => {
 
   const req = {
     body: { email: 'nope@test.com', password: 'secret' },
-    session: buildSession(),
     app: buildApp(),
     ip: '127.0.0.1',
     headers: {},
@@ -158,7 +140,6 @@ test('login: returns 401 when user is inactive', async () => {
 
   const req = {
     body: { email: 'ana@test.com', password: 'secret' },
-    session: buildSession(),
     app: buildApp(),
     ip: '127.0.0.1',
     headers: {},
@@ -180,7 +161,6 @@ test('login: returns 401 when password is wrong', async () => {
 
   const req = {
     body: { email: 'ana@test.com', password: 'wrong' },
-    session: buildSession(),
     app: buildApp(),
     ip: '127.0.0.1',
     headers: {},
@@ -201,10 +181,8 @@ test('login: succeeds and returns user + role', async () => {
   mockState.userByEmail = user;
   mockState.bcryptResult = true;
 
-  const session = buildSession();
   const req = {
     body: { email: 'ana@test.com', password: 'correct' },
-    session,
     app: buildApp(),
     ip: '127.0.0.1',
     headers: {},
@@ -220,7 +198,10 @@ test('login: succeeds and returns user + role', async () => {
   assert.equal(res.payload.user.userId, 1);
   assert.equal(res.payload.user.email, 'ana@test.com');
   assert.ok(['student', 'teacher', 'admin'].includes(res.payload.role));
-  assert.equal(session.userId, 1);
+  assert.equal(typeof res.payload.accessToken, 'string');
+  assert.equal(res.payload.tokenType, 'Bearer');
+  assert.equal(res.cookies.length, 1);
+  assert.equal(res.cookies[0].name, 'gestartes.refresh_token');
 });
 
 test('login: logs a security success entry on success', async () => {
@@ -230,7 +211,6 @@ test('login: logs a security success entry on success', async () => {
 
   const req = {
     body: { email: 'ana@test.com', password: 'correct' },
-    session: buildSession(),
     app: buildApp(),
     ip: '10.0.0.1',
     headers: {},
@@ -249,7 +229,6 @@ test('login: logs a security failure entry on bad password', async () => {
 
   const req = {
     body: { email: 'ana@test.com', password: 'bad' },
-    session: buildSession(),
     app: buildApp(),
     ip: '10.0.0.1',
     headers: {},
@@ -265,12 +244,10 @@ test('login: logs a security failure entry on bad password', async () => {
 // me
 // ---------------------------------------------------------------------------
 
-test('me: returns 401 when session has no userId', async () => {
+test('me: returns 401 when request has no authenticated user', async () => {
   resetState();
 
-  const req = {
-    session: { userId: null },
-  };
+  const req = {};
   const res = createResponse();
   await authController.me(req, res, (err) => { assert.fail(`unexpected next: ${err}`); });
 
@@ -278,52 +255,47 @@ test('me: returns 401 when session has no userId', async () => {
   assert.deepEqual(res.payload, { error: 'Not authenticated' });
 });
 
-test('me: returns 401 and destroys session when user no longer exists in DB', async () => {
+test('me: returns 401 when authenticated user no longer exists in DB', async () => {
   resetState();
   mockState.userById = null;
 
-  let sessionDestroyed = false;
   const req = {
-    session: {
+    auth: {
       userId: 99,
-      destroy(cb) { sessionDestroyed = true; if (cb) cb(); },
+      role: 'student',
     },
   };
   const res = createResponse();
   await authController.me(req, res, () => {});
 
-  assert.ok(sessionDestroyed);
   assert.equal(res.statusCode, 401);
 });
 
-test('me: returns 401 and destroys session when user is inactive', async () => {
+test('me: returns 401 when authenticated user is inactive', async () => {
   resetState();
   mockState.userById = buildUser({ IsActive: false });
 
-  let sessionDestroyed = false;
   const req = {
-    session: {
+    auth: {
       userId: 1,
-      destroy(cb) { sessionDestroyed = true; if (cb) cb(); },
+      role: 'student',
     },
   };
   const res = createResponse();
   await authController.me(req, res, () => {});
 
-  assert.ok(sessionDestroyed);
   assert.equal(res.statusCode, 401);
 });
 
-test('me: returns serialized user when session is valid', async () => {
+test('me: returns serialized user when auth context is valid', async () => {
   resetState();
   const user = buildUser();
   mockState.userById = user;
 
   const req = {
-    session: {
+    auth: {
       userId: 1,
       role: 'student',
-      user: null,
     },
   };
   const res = createResponse();
@@ -339,49 +311,19 @@ test('me: returns serialized user when session is valid', async () => {
 // logout
 // ---------------------------------------------------------------------------
 
-test('logout: returns 204 immediately when session is null', () => {
-  const req = { session: null };
+test('logout: returns 204 without session dependency', () => {
+  const req = {};
   const res = createResponse();
   authController.logout(req, res, (err) => { assert.fail(`unexpected next: ${err}`); });
 
   assert.equal(res.statusCode, 204);
 });
 
-test('logout: destroys session and returns 204', (t, done) => {
-  resetState();
-  let destroyed = false;
-
+test('logout: returns 204 with request metadata present', () => {
   const req = {
-    session: {
+    auth: {
       userId: 1,
-      destroy(cb) { destroyed = true; cb(null); },
-    },
-    app: buildApp(),
-    ip: '127.0.0.1',
-    headers: {},
-    get: () => 'ua',
-  };
-  const res = {
-    statusCode: null,
-    status(code) { this.statusCode = code; return this; },
-    send() {
-      assert.ok(destroyed);
-      assert.equal(this.statusCode, 204);
-      done();
-      return this;
-    },
-    clearCookie() { return this; },
-  };
-
-  authController.logout(req, res, (err) => { assert.fail(`unexpected next: ${err}`); });
-});
-
-test('logout: calls next with error when session.destroy fails', (t, done) => {
-  const destroyError = new Error('destroy failed');
-  const req = {
-    session: {
-      userId: 1,
-      destroy(cb) { cb(destroyError); },
+      role: 'student',
     },
     app: buildApp(),
     ip: '127.0.0.1',
@@ -390,8 +332,7 @@ test('logout: calls next with error when session.destroy fails', (t, done) => {
   };
   const res = createResponse();
 
-  authController.logout(req, res, (err) => {
-    assert.equal(err, destroyError);
-    done();
-  });
+  authController.logout(req, res, (err) => { assert.fail(`unexpected next: ${err}`); });
+
+  assert.equal(res.statusCode, 204);
 });

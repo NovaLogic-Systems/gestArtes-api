@@ -1,5 +1,5 @@
 const prisma = require('../config/prisma');
-const { getSessionRole } = require('../middlewares/auth.middleware');
+const { getAuthenticatedRole } = require('../utils/auth-context');
 
 const ATTENDED_STATUS_KEYWORDS = [
   'attended',
@@ -53,8 +53,8 @@ function toStudentCode(studentAccountId) {
 }
 
 function getAuthenticatedStudentUserId(req, res) {
-  const userId = Number(req.session?.userId);
-  const role = getSessionRole(req.session);
+  const userId = Number(req.auth?.userId);
+  const role = getAuthenticatedRole(req);
 
   if (!Number.isInteger(userId) || userId <= 0) {
     res.status(401).json({ error: 'Not authenticated' });

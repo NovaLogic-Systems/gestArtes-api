@@ -521,7 +521,7 @@ async function updateUserRoles(req, res, next) {
 async function resetUserPassword(req, res, next) {
     try {
         const targetUserId = Number(req.params.id);
-        const adminUserId = Number(req.session?.userId);
+        const adminUserId = Number(req.auth?.userId);
         const newPassword = String(req.body?.newPassword || '');
 
         if (!Number.isInteger(targetUserId) || targetUserId <= 0) {
@@ -587,7 +587,7 @@ async function getPostSessionValidations(req, res, next) {
 async function finalizeSessionValidation(req, res, next) {
     try {
         const sessionId = toPositiveInteger(req.params.id);
-        const adminUserId = toPositiveInteger(req.session?.userId);
+        const adminUserId = toPositiveInteger(req.auth?.userId);
 
         if (!sessionId) {
             return res.status(400).json({ error: 'Invalid session id' });
@@ -623,7 +623,7 @@ async function getStudioOccupancy(req, res, next) {
 
 async function createSession(req, res, next) {
     try {
-        const requestedByUserId = Number(req.session?.userId);
+        const requestedByUserId = Number(req.auth?.userId);
         if (!Number.isInteger(requestedByUserId) || requestedByUserId <= 0) {
             return res.status(401).json({ error: 'Not authenticated' });
         }
@@ -738,7 +738,7 @@ async function listPendingApproval(req, res, next) {
 async function approveSession(req, res, next) {
     try {
         const sessionId = toPositiveInteger(req.params.id);
-        const adminUserId = toPositiveInteger(req.session?.userId);
+        const adminUserId = toPositiveInteger(req.auth?.userId);
 
         if (!sessionId) return res.status(400).json({ error: 'Invalid session id' });
         if (!adminUserId) return res.status(401).json({ error: 'Not authenticated' });
@@ -767,7 +767,7 @@ async function approveSession(req, res, next) {
 async function rejectSession(req, res, next) {
     try {
         const sessionId = toPositiveInteger(req.params.id);
-        const adminUserId = toPositiveInteger(req.session?.userId);
+        const adminUserId = toPositiveInteger(req.auth?.userId);
         const reviewNotes = String(req.body?.reason || req.body?.reviewNotes || '').trim();
 
         if (!sessionId) return res.status(400).json({ error: 'Invalid session id' });

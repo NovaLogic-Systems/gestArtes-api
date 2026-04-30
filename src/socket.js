@@ -1,7 +1,7 @@
 // server/socket.js
 const { Server } = require('socket.io');
-const { bindSessionToSocket } = require('./middlewares/socket.io.handshake');
-const { getSessionRole } = require('./middlewares/auth.middleware');
+const { verifyAccessToken } = require('./services/jwt.service');
+const { getAuthenticatedRole } = require('./utils/auth-context');
 const {
   emitAdminDashboardUpdate,
 } = require('./services/adminDashboard.service');
@@ -67,7 +67,24 @@ function createSocketCorsOriginValidator(allowedOrigins, allowNoOrigin) {
   };
 }
 
-function initSocket(httpServer, sessionMiddleware) {
+function extractSocketAccessToken(socket) {
+  const authToken = socket.handshake?.auth?.accessToken;
+
+  if (typeof authToken === 'string' && authToken.trim()) {
+    return authToken.trim();
+  }
+
+  const authorization = socket.handshake?.headers?.authorization || '';
+  const match = String(authorization || '').match(/^Bearer\s+(.+)$/i);
+
+  if (match) {
+    return match[1].trim() || null;
+  }
+
+  return null;
+}
+
+function initSocket(httpServer) {
   const socketCorsAllowList = buildSocketCorsAllowList();
   const socketAllowNoOrigin = parseBoolean(process.env.CORS_ALLOW_NO_ORIGIN, true);
 
@@ -79,14 +96,32 @@ function initSocket(httpServer, sessionMiddleware) {
     },
   });
 
-  io.use(bindSessionToSocket(sessionMiddleware));
-
   io.use((socket, next) => {
-    // Authentication: Ve se a Cookie da sessao e Valida
-    const session = socket.request.session;
-    if (!session?.userId) return next(new Error('Unauthorized'));
-    socket.userId = session.userId;
-    next();
+    const accessToken = extractSocketAccessToken(socket);
+
+    if (!accessToken) {
+      return next(new Error('Unauthorized'));
+    }
+
+    try {
+      const payload = verifyAccessToken(accessToken);
+      const userId = Number(payload.userId || payload.sub);
+
+      if (!Number.isInteger(userId) || userId <= 0) {
+        return next(new Error('Unauthorized'));
+      }
+
+      socket.auth = {
+        userId,
+        role: payload.role || null,
+        source: 'jwt',
+      };
+      socket.userId = userId;
+      socket.userRole = payload.role || null;
+      return next();
+    } catch (_error) {
+      return next(new Error('Unauthorized'));
+    }
   });
 
   const adminDashboardIntervalMs = Number(process.env.ADMIN_DASHBOARD_RT_INTERVAL_MS) || 30000;
@@ -114,7 +149,7 @@ function initSocket(httpServer, sessionMiddleware) {
     socket.join('broadcast');
     
     // Adiciona à sala de broadcast específica da role (se existir)
-    const userRole = getSessionRole(socket.request.session);
+    const userRole = socket.userRole || getAuthenticatedRole(socket.auth || socket.request || {});
     if (userRole) {
       socket.join(`broadcast:${userRole}`);
 

@@ -607,11 +607,29 @@ model User {
   TeacherAvailability_TeacherAvailability_ReviewedByUserIDToUser TeacherAvailability[]    @relation("TeacherAvailability_ReviewedByUserIDToUser")
   TeacherAvailability_TeacherAvailability_TeacherIDToUser        TeacherAvailability[]    @relation("TeacherAvailability_TeacherIDToUser")
   AuditLog                                                       AuditLog[]
+  RefreshToken                                                   RefreshToken[]
   TeacherModality                                                TeacherModality[]
   UserRole                                                       UserRole[]
 
   @@index([IsActive], map: "IX_User_IsActive")
   @@index([CreatedAt], map: "IX_User_CreatedAt")
+}
+
+model RefreshToken {
+  RefreshTokenID    Int       @id(map: "PK__RefreshT__0D3C4A0B1E72A5BE") @default(autoincrement())
+  UserID            Int
+  TokenJti          String    @unique(map: "UQ__RefreshT__7C8FE9B5C2A4B6AF") @db.VarChar(128)
+  TokenHash         String    @unique(map: "UQ__RefreshT__A7B3B5AE6C9A4B13") @db.Char(64)
+  CreatedAt         DateTime  @db.DateTime
+  ExpiresAt         DateTime  @db.DateTime
+  RevokedAt         DateTime? @db.DateTime
+  CreatedByIp       String?   @db.VarChar(45)
+  CreatedByUserAgent String?  @db.VarChar(255)
+  User              User      @relation(fields: [UserID], references: [UserID], onDelete: Cascade, onUpdate: NoAction, map: "FKRefreshTok_User")
+
+  @@index([UserID], map: "IX_RefreshToken_UserID")
+  @@index([ExpiresAt], map: "IX_RefreshToken_ExpiresAt")
+  @@index([RevokedAt], map: "IX_RefreshToken_RevokedAt")
 }
 
 model UserRole {

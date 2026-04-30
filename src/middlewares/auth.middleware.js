@@ -1,12 +1,18 @@
 const crypto = require('crypto');
+const { verifyAccessToken } = require('../services/jwt.service');
+const {
+  getAuthenticatedRole,
+  getAuthenticatedRoles,
+  getAuthenticatedUserId,
+} = require('../utils/auth-context');
 const {
   APP_ROLES,
   APP_PERMISSIONS,
   ROLE_PERMISSIONS,
   getRolePermissions,
-  getSessionRole,
-  getSessionPermissions,
-  hasSessionPermission,
+  getRoleFromActor,
+  getPermissionsForActor,
+  hasPermissionForActor,
   requireRole,
   requireRoles,
   requirePermission,
@@ -14,14 +20,79 @@ const {
   requireAllPermissions,
 } = require('./rbac.middleware');
 
+function extractBearerToken(req) {
+  const authorization = req.get('authorization') || req.headers?.authorization || '';
+  const match = String(authorization || '').match(/^Bearer\s+(.+)$/i);
+
+  if (!match) {
+    return null;
+  }
+
+  return match[1].trim() || null;
+}
+
+function buildRequestAuthContext(req) {
+  const preResolvedUserId = getAuthenticatedUserId(req);
+  const preResolvedRole = getAuthenticatedRole(req);
+  const preResolvedRoles = getAuthenticatedRoles(req);
+
+  if (preResolvedUserId && preResolvedRole) {
+    return {
+      userId: preResolvedUserId,
+      role: preResolvedRole,
+      roles: preResolvedRoles,
+      tokenType: 'context',
+      source: 'context',
+    };
+  }
+
+  const bearerToken = extractBearerToken(req);
+
+  if (!bearerToken) {
+    return null;
+  }
+
+  const payload = verifyAccessToken(bearerToken);
+  const userId = Number(payload.userId || payload.sub);
+
+  if (!Number.isInteger(userId) || userId <= 0) {
+    throw new Error('Unauthorized');
+  }
+
+  return {
+    userId,
+    role: getAuthenticatedRole({ auth: payload }),
+    roles: getAuthenticatedRoles({ auth: payload }),
+    tokenType: 'access',
+    source: 'jwt',
+    token: bearerToken,
+    payload,
+  };
+}
+
 const requireAuth = (req, res, next) => {
-  if (!req.session || !req.session.userId) {
+  try {
+    const authContext = buildRequestAuthContext(req);
+
+    if (!authContext) {
+      return res.status(401).json({ error: 'Not authenticated' });
+    }
+
+    req.auth = authContext;
+
+    if (!req.user) {
+      req.user = {
+        userId: authContext.userId,
+        role: authContext.role,
+        roles: authContext.roles,
+      };
+    }
+
+    return next();
+  } catch (_error) {
     return res.status(401).json({ error: 'Not authenticated' });
   }
-  next();
 };
-
-const requireSessionAuth = requireAuth;
 
 const requireAdminRole = requirePermission(APP_PERMISSIONS.ADMIN_PORTAL_ACCESS);
 
@@ -54,11 +125,10 @@ module.exports = {
   APP_PERMISSIONS,
   ROLE_PERMISSIONS,
   getRolePermissions,
-  getSessionRole,
-  getSessionPermissions,
-  hasSessionPermission,
+  getRoleFromActor,
+  getPermissionsForActor,
+  hasPermissionForActor,
   requireAuth,
-  requireSessionAuth,
   requireRole,
   requireRoles,
   requirePermission,

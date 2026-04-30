@@ -1,5 +1,6 @@
 const prisma = require('../config/prisma');
 const { createHttpError } = require('../utils/http-error');
+const { getAuthenticatedUserId } = require('../utils/auth-context');
 
 const PENDING_STATUS_NAMES = ['pending', 'pendente', 'pending_review', 'pending approval'];
 const REMOVED_STATUS_NAMES = ['removed', 'removido', 'hidden', 'oculto', 'inactive', 'inativo'];
@@ -315,6 +316,8 @@ async function getListings(req, res, next) {
 
 async function getListingById(req, res, next) {
   try {
+    const authenticatedUserId = getAuthenticatedUserId(req);
+
     const listing = await prisma.marketplaceItem.findFirst({
       where: {
         MarketplaceItemID: req.params.id,
@@ -323,7 +326,7 @@ async function getListingById(req, res, next) {
             IsActive: true,
           },
           {
-            SellerID: req.session.userId,
+            SellerID: authenticatedUserId,
           },
         ],
       },
@@ -355,7 +358,7 @@ async function createListing(req, res, next) {
 
     const listing = await prisma.marketplaceItem.create({
       data: {
-        SellerID: req.session.userId,
+        SellerID: getAuthenticatedUserId(req),
         CategoryID: req.body.categoryId ?? null,
         Title: req.body.title,
         Description: req.body.description ?? null,
@@ -384,9 +387,11 @@ async function publish(req, res, next) {
 
 async function getMyListings(req, res, next) {
   try {
+    const authenticatedUserId = getAuthenticatedUserId(req);
+
     const listings = await prisma.marketplaceItem.findMany({
       where: {
-        SellerID: req.session.userId,
+        SellerID: authenticatedUserId,
       },
       include: buildListingInclude(false),
       orderBy: {
@@ -420,7 +425,7 @@ async function updateListing(req, res, next) {
       throw createHttpError(404, 'Anúncio não encontrado');
     }
 
-    if (existing.SellerID !== req.session.userId) {
+    if (existing.SellerID !== getAuthenticatedUserId(req)) {
       throw createHttpError(403, 'Sem permissão para editar este anúncio');
     }
 
@@ -517,7 +522,7 @@ async function deleteListing(req, res, next) {
       throw createHttpError(404, 'Anúncio não encontrado');
     }
 
-    if (existing.SellerID !== req.session.userId) {
+    if (existing.SellerID !== getAuthenticatedUserId(req)) {
       throw createHttpError(403, 'Sem permissão para remover este anúncio');
     }
 

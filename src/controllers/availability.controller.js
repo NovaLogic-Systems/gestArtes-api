@@ -16,8 +16,8 @@ const availabilityService = require('../services/availability.service');
 const availabilityUseCases = createAvailabilityUseCases({ availabilityService });
 
 function getAuthenticatedTeacherUserId(req, res) {
-  const userId = Number(req.session?.userId);
-  const role = String(req.session?.role || '').trim().toLowerCase();
+  const userId = Number(req.auth?.userId);
+  const role = String(req.auth?.role || '').trim().toLowerCase();
 
   if (!Number.isInteger(userId) || userId <= 0) {
     res.status(401).json({ error: 'Not authenticated' });
@@ -138,8 +138,8 @@ async function listPendingTeacherExceptions(req, res, next) {
 }
 
 function getAuthenticatedAdminUserId(req, res) {
-  const userId = Number(req.session?.userId);
-  const role = String(req.session?.role || '').trim().toLowerCase();
+  const userId = Number(req.auth?.userId);
+  const role = String(req.auth?.role || '').trim().toLowerCase();
 
   if (!Number.isInteger(userId) || userId <= 0) {
     res.status(401).json({ error: 'Not authenticated' });

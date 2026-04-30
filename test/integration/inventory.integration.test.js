@@ -359,13 +359,13 @@ app.use((req, res, next) => {
     const userId = Number(rawUserId);
 
     if (Number.isFinite(userId) && userId > 0) {
-      req.session = {
+      req.auth = {
         userId,
         role,
-        user: {
-          userId,
-          role,
-        },
+      };
+      req.user = {
+        userId,
+        role,
       };
     }
   }
@@ -679,7 +679,7 @@ if (!shouldRun) {
 
   let server;
   let baseUrl = '';
-  let sessionCookie = '';
+  let accessToken = '';
   let createdRentalId = null;
 
   async function request(path, options = {}) {
@@ -687,25 +687,14 @@ if (!shouldRun) {
       ...(options.headers || {}),
     };
 
-    if (sessionCookie) {
-      headers.Cookie = sessionCookie;
+    if (accessToken) {
+      headers.Authorization = `Bearer ${accessToken}`;
     }
 
-    const response = await fetch(`${baseUrl}${path}`, {
+    return fetch(`${baseUrl}${path}`, {
       ...options,
       headers,
     });
-
-    const setCookieHeader =
-      (typeof response.headers.getSetCookie === 'function'
-        ? response.headers.getSetCookie()[0]
-        : null) || response.headers.get('set-cookie');
-
-    if (setCookieHeader) {
-      sessionCookie = setCookieHeader.split(';')[0];
-    }
-
-    return response;
   }
 
   async function loginAsStudent() {
@@ -723,13 +712,15 @@ if (!shouldRun) {
     assert.equal(loginResponse.status, 200, 'Falha no login de teste para inventory');
 
     const body = await loginResponse.json();
+    accessToken = body.accessToken || '';
+
     const role = String(body.user?.role || '').toLowerCase();
 
     if (role !== 'student') {
       return false;
     }
 
-    return true;
+    return Boolean(accessToken);
   }
 
   test.before(async () => {

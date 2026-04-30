@@ -2,9 +2,25 @@ const bcrypt = require('bcrypt');
 const prisma = require('../config/prisma');
 const { getPrimaryRoleFromUser } = require('../utils/roles');
 const logger = require('../utils/logger');
+const {
+  issueAuthTokens,
+  rotateRefreshToken,
+  revokeAllRefreshTokensForUser,
+  revokeRefreshToken,
+  verifyAccessToken,
+  getAuthCookieDefaults,
+  getAccessTokenTtlMs,
+  getRefreshTokenTtlMs,
+} = require('../services/jwt.service');
+const {
+  getAuthenticatedRole,
+  getAuthenticatedUserId,
+} = require('../utils/auth-context');
+
+const REFRESH_COOKIE_NAME = process.env.REFRESH_TOKEN_COOKIE_NAME || 'gestartes.refresh_token';
 
 function getClientIp(req) {
-  const forwardedFor = req.headers['x-forwarded-for'];
+  const forwardedFor = req?.headers?.['x-forwarded-for'];
 
   if (typeof forwardedFor === 'string' && forwardedFor.trim()) {
     return forwardedFor.split(',')[0].trim();
@@ -45,30 +61,80 @@ function serializeUser(user, role) {
   };
 }
 
-function saveSession(req) {
-  return new Promise((resolve, reject) => {
-    req.session.save((error) => {
-      if (error) {
-        reject(error);
-        return;
-      }
+function extractBearerToken(req) {
+  const authorization = req.get?.('authorization') || req.headers?.authorization || '';
+  const match = String(authorization || '').match(/^Bearer\s+(.+)$/i);
 
-      resolve();
-    });
+  if (!match) {
+    return null;
+  }
+
+  return match[1].trim() || null;
+}
+
+function getRefreshCookieName(req) {
+  return req.app?.get?.('refreshCookieName') || REFRESH_COOKIE_NAME;
+}
+
+function getRefreshCookieOptions(req) {
+  const appOptions = req.app?.get?.('refreshCookieOptions') || {};
+  return {
+    ...getAuthCookieDefaults(),
+    ...appOptions,
+  };
+}
+
+function setRefreshCookie(req, res, token, expiresAt) {
+  if (typeof res.cookie !== 'function') {
+    return;
+  }
+
+  res.cookie(getRefreshCookieName(req), token, {
+    ...getRefreshCookieOptions(req),
+    maxAge: expiresAt ? Math.max(0, expiresAt.getTime() - Date.now()) : getRefreshTokenTtlMs(),
   });
 }
 
-function regenerateSession(req) {
-  return new Promise((resolve, reject) => {
-    req.session.regenerate((error) => {
-      if (error) {
-        reject(error);
-        return;
-      }
+function clearRefreshCookie(req, res) {
+  if (typeof res.clearCookie !== 'function') {
+    return;
+  }
 
-      resolve();
-    });
-  });
+  const { maxAge, expires, ...cookieOptions } = getRefreshCookieOptions(req);
+  res.clearCookie(getRefreshCookieName(req), cookieOptions);
+}
+
+function getRefreshTokenFromRequest(req) {
+  const cookieHeader = req.get?.('cookie') || req.headers?.cookie || '';
+  const cookieName = getRefreshCookieName(req);
+
+  if (!cookieHeader) {
+    return null;
+  }
+
+  const entries = cookieHeader.split(';');
+
+  for (const entry of entries) {
+    const separatorIndex = entry.indexOf('=');
+
+    if (separatorIndex < 0) {
+      continue;
+    }
+
+    const key = entry.slice(0, separatorIndex).trim();
+
+    if (key !== cookieName) {
+      continue;
+    }
+
+    return decodeURIComponent(entry.slice(separatorIndex + 1).trim());
+  }
+
+  return null;
+}
+
+function getRequestUserId(req) {
+  return getAuthenticatedUserId(req);
 }
 
 async function findUserByEmail(email) {
@@ -138,17 +204,17 @@ async function login(req, res, next) {
       return;
     }
 
-    await regenerateSession(req);
-
     const role = getPrimaryRoleFromUser(user);
     const sessionUser = serializeUser(user, role);
 
-    req.session.userId = user.UserID;
-    req.session.role = role;
-    req.session.user = sessionUser;
-    req.session.cookie.maxAge = req.app.get('sessionCookieOptions')?.maxAge;
+    const tokens = await issueAuthTokens({
+      user,
+      role,
+      ip: getClientIp(req),
+      userAgent: req.get('user-agent') || 'unknown',
+    });
 
-    await saveSession(req);
+    setRefreshCookie(req, res, tokens.refreshToken, tokens.refreshTokenExpiresAt);
 
     logLoginAttempt(req, {
       success: true,
@@ -160,6 +226,9 @@ async function login(req, res, next) {
     res.json({
       user: sessionUser,
       role,
+      accessToken: tokens.accessToken,
+      tokenType: 'Bearer',
+      expiresIn: getAccessTokenTtlMs(),
     });
   } catch (error) {
     next(error);
@@ -168,23 +237,25 @@ async function login(req, res, next) {
 
 async function me(req, res, next) {
   try {
-    if (!req.session?.userId) {
+    const userId = getRequestUserId(req);
+
+    if (!userId) {
       res.status(401).json({ error: 'Not authenticated' });
       return;
     }
 
-    const user = await findUserById(req.session.userId);
+    const user = await findUserById(userId);
 
     if (!user || !user.IsActive) {
-      req.session.destroy(() => {});
       res.status(401).json({ error: 'Not authenticated' });
       return;
     }
 
-    const role = req.session.role || getPrimaryRoleFromUser(user);
+    const role = getAuthenticatedRole(req) || getPrimaryRoleFromUser(user);
     const sessionUser = serializeUser(user, role);
-    req.session.role = role;
-    req.session.user = sessionUser;
+
+    req.auth = req.auth || { userId, role };
+    req.user = req.user || { userId, role, roles: role ? [role] : [] };
 
     res.json({
       user: sessionUser,
@@ -195,45 +266,102 @@ async function me(req, res, next) {
   }
 }
 
-function logout(req, res, next) {
-  const cookieName = req.app?.get?.('sessionCookieName') || 'connect.sid';
-  const cookieOptions = req.app?.get?.('sessionCookieOptions') || {};
-  const { maxAge, expires, ...clearCookieOptions } = cookieOptions || {};
+async function refresh(req, res, next) {
+  try {
+    const refreshToken = getRefreshTokenFromRequest(req);
 
-  if (!req.session) {
-    if (typeof res.clearCookie === 'function') {
-      res.clearCookie(cookieName, clearCookieOptions);
-    }
-    res.status(204).send();
-    return;
-  }
-
-  const previousUserId = req.session.userId || null;
-
-  req.session.destroy((error) => {
-    if (typeof res.clearCookie === 'function') {
-      res.clearCookie(cookieName, clearCookieOptions);
-    }
-
-    if (error) {
-      next(error);
+    if (!refreshToken) {
+      res.status(401).json({ error: 'Not authenticated' });
       return;
     }
 
-    logger.info('Authentication logout completed', {
-      category: 'security',
-      event: 'auth_logout',
-      userId: previousUserId,
+    const rotated = await rotateRefreshToken(refreshToken, {
       ip: getClientIp(req),
       userAgent: req.get('user-agent') || 'unknown',
+      role: getAuthenticatedRole(req),
     });
 
-    res.status(204).send();
+    if (!rotated) {
+      clearRefreshCookie(req, res);
+      res.status(401).json({ error: 'Not authenticated' });
+      return;
+    }
+
+    const sessionUser = serializeUser(rotated.user, rotated.role);
+
+    setRefreshCookie(req, res, rotated.refreshToken, rotated.refreshTokenExpiresAt);
+
+    res.json({
+      user: sessionUser,
+      role: rotated.role,
+      accessToken: rotated.accessToken,
+      tokenType: 'Bearer',
+      expiresIn: getAccessTokenTtlMs(),
+    });
+  } catch (error) {
+    clearRefreshCookie(req, res);
+    res.status(401).json({ error: 'Not authenticated' });
+  }
+}
+
+function logout(req, res, next) {
+  const refreshToken = getRefreshTokenFromRequest(req);
+  const accessToken = extractBearerToken(req);
+
+  let previousUserId = getRequestUserId(req) || null;
+
+  if (!previousUserId && accessToken) {
+    try {
+      const payload = verifyAccessToken(accessToken);
+      const parsedUserId = Number(payload?.userId || payload?.sub);
+      if (Number.isInteger(parsedUserId) && parsedUserId > 0) {
+        previousUserId = parsedUserId;
+      }
+    } catch {
+      // Ignore invalid/expired access token for logout idempotency.
+    }
+  }
+
+  if (refreshToken) {
+    revokeRefreshToken(refreshToken).catch(() => {});
+  }
+
+  clearRefreshCookie(req, res);
+
+  logger.info('Authentication logout completed', {
+    category: 'security',
+    event: 'auth_logout',
+    userId: previousUserId,
+    ip: getClientIp(req),
+    userAgent: req.get?.('user-agent') || 'unknown',
   });
+
+  res.status(204).send();
+}
+
+async function logoutAll(req, res, next) {
+  try {
+    const userId = getRequestUserId(req);
+
+    if (!userId) {
+      res.status(401).json({ error: 'Not authenticated' });
+      return;
+    }
+
+    await revokeAllRefreshTokensForUser(userId);
+
+    clearRefreshCookie(req, res);
+
+    res.status(204).send();
+  } catch (error) {
+    next(error);
+  }
 }
 
 module.exports = {
   login,
+  refresh,
   logout,
+  logoutAll,
   me,
 };

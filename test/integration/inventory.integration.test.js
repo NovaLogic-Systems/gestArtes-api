@@ -1,3 +1,9 @@
+/**
+ * @author NovaLogic System
+ * @institution IPCA
+ * @project GestArtes - Projeto 50+10 para Entartes
+ */
+
 const test = require('node:test');
 const assert = require('node:assert/strict');
 const http = require('node:http');

@@ -1,3 +1,10 @@
+/**
+ * @file src/application/use-cases/coaching/create-booking-request.usecase.js
+ * @author NovaLogic System
+ * @institution IPCA
+ * @project GestArtes - Projeto 50+10 para Entartes
+ */
+
 function toPositiveInt(value) {
   const parsed = Number.parseInt(value, 10);
   return Number.isInteger(parsed) && parsed > 0 ? parsed : null;
@@ -46,3 +53,4 @@ function createCreateBookingRequestUseCase({ coachingService, sendNotification, 
 }
 
 module.exports = { createCreateBookingRequestUseCase };
+

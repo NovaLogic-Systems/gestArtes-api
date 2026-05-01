@@ -1,3 +1,10 @@
+/**
+ * @file src/application/use-cases/admin-marketplace/resolve-status-id.js
+ * @author NovaLogic System
+ * @institution IPCA
+ * @project GestArtes - Projeto 50+10 para Entartes
+ */
+
 const PENDING_STATUS_NAMES = ['pending', 'pendente', 'pending_review', 'pending approval'];
 const APPROVED_STATUS_NAMES = ['approved', 'aprovado', 'published', 'publicado', 'active', 'ativo'];
 const REJECTED_STATUS_NAMES = ['rejected', 'rejeitado', 'declined', 'recusado'];

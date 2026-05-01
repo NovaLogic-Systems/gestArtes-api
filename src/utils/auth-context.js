@@ -1,3 +1,10 @@
+/**
+ * @file src/utils/auth-context.js
+ * @author NovaLogic System
+ * @institution IPCA
+ * @project GestArtes - Projeto 50+10 para Entartes
+ */
+
 const { toAppRole } = require('./roles');
 
 function normalizeRoles(value) {
@@ -54,3 +61,4 @@ module.exports = {
   getAuthenticatedRoles,
   getAuthenticatedUser,
 };
+

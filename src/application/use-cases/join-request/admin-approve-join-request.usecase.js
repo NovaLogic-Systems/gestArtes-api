@@ -1,3 +1,10 @@
+/**
+ * @file src/application/use-cases/join-request/admin-approve-join-request.usecase.js
+ * @author NovaLogic System
+ * @institution IPCA
+ * @project GestArtes - Projeto 50+10 para Entartes
+ */
+
 const logger = require('../../../utils/logger');
 
 /**
@@ -41,3 +48,4 @@ function createAdminApproveJoinRequestUseCase({ joinRequestService }) {
 }
 
 module.exports = { createAdminApproveJoinRequestUseCase };
+

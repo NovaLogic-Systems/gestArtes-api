@@ -1,3 +1,10 @@
+/**
+ * @file src/middlewares/schemas/studioOccupancy.schema.js
+ * @author NovaLogic System
+ * @institution IPCA
+ * @project GestArtes - Projeto 50+10 para Entartes
+ */
+
 const { body, param, query } = require('express-validator');
 
 const MANUAL_STATUSES = ['available', 'occupied', 'blocked', 'maintenance', 'unavailable'];
@@ -94,3 +101,4 @@ module.exports = {
   blockStudioSchema,
   updateStudioStatusSchema,
 };
+

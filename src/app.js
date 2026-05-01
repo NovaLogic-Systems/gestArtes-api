@@ -1,3 +1,10 @@
+/**
+ * @file src/app.js
+ * @author NovaLogic System
+ * @institution IPCA
+ * @project GestArtes - Projeto 50+10 para Entartes
+ */
+
 require('dotenv').config();
 
 const crypto = require('node:crypto');
@@ -42,6 +49,7 @@ const SSL_KEY_PATH = process.env.SSL_KEY_PATH || '';
 const SSL_CERT_PATH = process.env.SSL_CERT_PATH || '';
 const HSTS_MAX_AGE = Number(process.env.HSTS_MAX_AGE) || 31536000;
 const HAS_SSL = Boolean(SSL_KEY_PATH && SSL_CERT_PATH);
+const ENABLE_HTTPS = parseBoolean(process.env.ENABLE_HTTPS, HAS_SSL);
 const CORS_ALLOW_NO_ORIGIN = parseBoolean(
   process.env.CORS_ALLOW_NO_ORIGIN,
   true
@@ -56,7 +64,7 @@ const REFRESH_COOKIE_CROSS_SITE = parseBoolean(
   false
 );
 const REFRESH_COOKIE_SAMESITE = REFRESH_COOKIE_CROSS_SITE ? 'none' : 'lax';
-const REFRESH_COOKIE_SECURE = REFRESH_COOKIE_CROSS_SITE ? true : (IS_PRODUCTION || HAS_SSL);
+const REFRESH_COOKIE_SECURE = REFRESH_COOKIE_CROSS_SITE ? true : (IS_PRODUCTION || ENABLE_HTTPS);
 
 if (CORS_ORIGINS.length === 0) {
   throw new Error(
@@ -157,7 +165,7 @@ const apiCspMiddleware = helmet.contentSecurityPolicy({
     connectSrc: ["'self'"],
     fontSrc: ["'self'", 'data:'],
     formAction: ["'self'"],
-    upgradeInsecureRequests: IS_PRODUCTION ? [] : null,
+    upgradeInsecureRequests: IS_PRODUCTION && ENABLE_HTTPS ? [] : null,
   },
 });
 
@@ -175,7 +183,7 @@ const docsCspMiddleware = helmet.contentSecurityPolicy({
     connectSrc: ["'self'"],
     fontSrc: ["'self'", 'data:'],
     formAction: ["'self'"],
-    upgradeInsecureRequests: IS_PRODUCTION ? [] : null,
+    upgradeInsecureRequests: IS_PRODUCTION && ENABLE_HTTPS ? [] : null,
   },
 });
 
@@ -305,7 +313,7 @@ if (parseBoolean(process.env.ENABLE_JOBS, false)) {
 }
 
 if (require.main === module) {
-  if (HAS_SSL) {
+  if (ENABLE_HTTPS) {
     let credentials;
     try {
       credentials = loadSslCredentials();
@@ -335,7 +343,9 @@ if (require.main === module) {
       });
     }
   } else {
-    if (IS_PRODUCTION) {
+    if (IS_PRODUCTION && HAS_SSL) {
+      logger.warn('HTTPS disabled via ENABLE_HTTPS=false; running on HTTP');
+    } else if (IS_PRODUCTION) {
       logger.warn('SSL not configured; running without HTTPS in production');
     }
     const port = Number(process.env.PORT) || DEFAULT_API_PORT;

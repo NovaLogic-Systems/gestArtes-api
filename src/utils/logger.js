@@ -1,3 +1,10 @@
+/**
+ * @file src/utils/logger.js
+ * @author NovaLogic System
+ * @institution IPCA
+ * @project GestArtes - Projeto 50+10 para Entartes
+ */
+
 const fs = require('node:fs');
 const path = require('node:path');
 const { createLogger, format, transports } = require('winston');
@@ -27,3 +34,4 @@ if (process.env.NODE_ENV !== 'production') {
 }
 
 module.exports = logger;
+

@@ -1,3 +1,10 @@
+/**
+ * @file src/services/lostFound.service.js
+ * @author NovaLogic System
+ * @institution IPCA
+ * @project GestArtes - Projeto 50+10 para Entartes
+ */
+
 const prisma = require('../config/prisma');
 
 function isAdminRole(role) {
@@ -192,3 +199,4 @@ module.exports = {
   markClaimed,
   archiveItem,
 };
+

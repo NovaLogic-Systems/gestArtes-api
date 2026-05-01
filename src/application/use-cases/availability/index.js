@@ -1,3 +1,10 @@
+/**
+ * @file src/application/use-cases/availability/index.js
+ * @author NovaLogic System
+ * @institution IPCA
+ * @project GestArtes - Projeto 50+10 para Entartes
+ */
+
 const { createSubmitTeacherAvailabilityUseCase } = require('./submit-teacher-availability.usecase');
 const { createAdminReviewAvailabilityUseCase } = require('./admin-review-availability.usecase');
 
@@ -21,3 +28,4 @@ function createAvailabilityUseCases(dependencies) {
 }
 
 module.exports = { createAvailabilityUseCases };
+

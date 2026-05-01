@@ -1,3 +1,10 @@
+/**
+ * @file src/application/use-cases/availability/submit-teacher-availability.usecase.js
+ * @author NovaLogic System
+ * @institution IPCA
+ * @project GestArtes - Projeto 50+10 para Entartes
+ */
+
 const logger = require('../../../utils/logger');
 
 /**
@@ -36,3 +43,4 @@ function createSubmitTeacherAvailabilityUseCase({ availabilityService }) {
 }
 
 module.exports = { createSubmitTeacherAvailabilityUseCase };
+

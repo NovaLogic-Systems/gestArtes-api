@@ -1,3 +1,10 @@
+/**
+ * @file src/controllers/lostFound.controller.js
+ * @author NovaLogic System
+ * @institution IPCA
+ * @project GestArtes - Projeto 50+10 para Entartes
+ */
+
 const lostFoundService = require('../services/lostFound.service');
 const { getAuthenticatedRole, getAuthenticatedUserId } = require('../utils/auth-context');
 
@@ -139,3 +146,4 @@ module.exports = {
   claim,
   archive,
 };
+

@@ -1,3 +1,10 @@
+/**
+ * @file src/controllers/notification.controller.js
+ * @author NovaLogic System
+ * @institution IPCA
+ * @project GestArtes - Projeto 50+10 para Entartes
+ */
+
 // notification.controller.js
 const notificationService = require('../services/notification.service');
 const prisma = require('../config/prisma');
@@ -189,3 +196,4 @@ const create = async (req, res) => {
 };
 
 module.exports = { getAll, getById, markAsRead, remove, create, sendNotification, broadcastNotification };
+

@@ -1,3 +1,10 @@
+/**
+ * @file src/controllers/marketplace.controller.js
+ * @author NovaLogic System
+ * @institution IPCA
+ * @project GestArtes - Projeto 50+10 para Entartes
+ */
+
 const prisma = require('../config/prisma');
 const { createHttpError } = require('../utils/http-error');
 const { getAuthenticatedUserId } = require('../utils/auth-context');
@@ -567,3 +574,4 @@ module.exports = {
   deleteListing,
   getMyListings,
 };
+

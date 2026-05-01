@@ -1,3 +1,10 @@
+/**
+ * @file src/application/use-cases/student/index.js
+ * @author NovaLogic System
+ * @institution IPCA
+ * @project GestArtes - Projeto 50+10 para Entartes
+ */
+
 const { createGetUpcomingScheduleUseCase } = require('./get-upcoming-schedule.usecase');
 
 /**
@@ -16,3 +23,4 @@ function createStudentUseCases(deps) {
 }
 
 module.exports = { createStudentUseCases };
+

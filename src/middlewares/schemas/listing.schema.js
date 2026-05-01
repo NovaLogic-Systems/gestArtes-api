@@ -1,3 +1,10 @@
+/**
+ * @file src/middlewares/schemas/listing.schema.js
+ * @author NovaLogic System
+ * @institution IPCA
+ * @project GestArtes - Projeto 50+10 para Entartes
+ */
+
 const { z } = require('zod');
 
 const listingSchema = z.object({
@@ -13,4 +20,5 @@ const updateListingSchema = z.object({
 });
 
 module.exports = { listingSchema, updateListingSchema };
+
 

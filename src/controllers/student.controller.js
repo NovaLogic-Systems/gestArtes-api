@@ -1,3 +1,10 @@
+/**
+ * @file src/controllers/student.controller.js
+ * @author NovaLogic System
+ * @institution IPCA
+ * @project GestArtes - Projeto 50+10 para Entartes
+ */
+
 const prisma = require('../config/prisma');
 const { getAuthenticatedRole } = require('../utils/auth-context');
 
@@ -484,3 +491,4 @@ module.exports = {
   getDashboard,
   getUpcomingSchedule,
 };
+

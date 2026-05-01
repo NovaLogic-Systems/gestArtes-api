@@ -1,3 +1,10 @@
+/**
+ * @file src/middlewares/schemas/audit.schema.js
+ * @author NovaLogic System
+ * @institution IPCA
+ * @project GestArtes - Projeto 50+10 para Entartes
+ */
+
 const { query } = require('express-validator');
 
 const auditQuerySchema = [
@@ -46,3 +53,4 @@ const auditSummaryQuerySchema = [
 ];
 
 module.exports = { auditQuerySchema, auditSummaryQuerySchema };
+

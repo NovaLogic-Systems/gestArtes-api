@@ -1,3 +1,10 @@
+/**
+ * @file src/controllers/teacher.controller.js
+ * @author NovaLogic System
+ * @institution IPCA
+ * @project GestArtes - Projeto 50+10 para Entartes
+ */
+
 const prisma = require('../config/prisma');
 const {
   submitAvailability,
@@ -1061,3 +1068,4 @@ module.exports = {
   rejectJoinRequest,
   reviewAdmissionRequest,
 };
+

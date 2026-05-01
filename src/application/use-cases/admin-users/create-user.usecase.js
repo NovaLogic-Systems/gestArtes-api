@@ -1,3 +1,10 @@
+/**
+ * @file src/application/use-cases/admin-users/create-user.usecase.js
+ * @author NovaLogic System
+ * @institution IPCA
+ * @project GestArtes - Projeto 50+10 para Entartes
+ */
+
 const crypto = require('node:crypto');
 const bcrypt = require('bcrypt');
 const { toAppRole } = require('../../../utils/roles');

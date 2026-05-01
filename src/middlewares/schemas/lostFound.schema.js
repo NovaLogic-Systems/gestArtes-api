@@ -1,3 +1,10 @@
+/**
+ * @file src/middlewares/schemas/lostFound.schema.js
+ * @author NovaLogic System
+ * @institution IPCA
+ * @project GestArtes - Projeto 50+10 para Entartes
+ */
+
 const { body, param } = require('express-validator');
 
 const createLostAndFoundItemSchema = [

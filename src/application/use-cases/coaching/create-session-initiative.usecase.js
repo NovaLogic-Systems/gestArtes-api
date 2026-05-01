@@ -1,3 +1,10 @@
+/**
+ * @file src/application/use-cases/coaching/create-session-initiative.usecase.js
+ * @author NovaLogic System
+ * @institution IPCA
+ * @project GestArtes - Projeto 50+10 para Entartes
+ */
+
 function createCreateSessionInitiativeUseCase({ coachingService, sendNotification, logger }) {
   async function notifyAdminsOfPendingSession(req, session, adminUserIds) {
     const startLabel = new Date(session.StartTime).toLocaleString('pt-PT', {
@@ -40,3 +47,4 @@ function createCreateSessionInitiativeUseCase({ coachingService, sendNotificatio
 }
 
 module.exports = { createCreateSessionInitiativeUseCase };
+

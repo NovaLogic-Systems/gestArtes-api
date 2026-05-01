@@ -1,3 +1,10 @@
+/**
+ * @file src/routes/admin.inventory.routes.js
+ * @author NovaLogic System
+ * @institution IPCA
+ * @project GestArtes - Projeto 50+10 para Entartes
+ */
+
 const express = require('express');
 
 const adminInventoryController = require('../controllers/admin_inventory.controller');
@@ -71,3 +78,4 @@ router.patch(
 );
 
 module.exports = router;
+

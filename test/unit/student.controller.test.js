@@ -1,3 +1,9 @@
+/**
+ * @author NovaLogic System
+ * @institution IPCA
+ * @project GestArtes - Projeto 50+10 para Entartes
+ */
+
 const test = require('node:test');
 const assert = require('node:assert/strict');
 const Module = require('node:module');
@@ -115,11 +121,9 @@ test('student dashboard rejects sessions without a student role', async () => {
   resetMockState();
 
   const req = {
-    session: {
+    auth: {
       userId: 123,
-      user: {
-        role: 'teacher',
-      },
+      role: 'teacher',
     },
   };
   const res = createResponse();
@@ -138,8 +142,9 @@ test('student profile rejects sessions without a student role', async () => {
   resetMockState();
 
   const req = {
-    session: {
+    auth: {
       userId: 123,
+      role: 'teacher',
     },
   };
   const res = createResponse();
@@ -193,11 +198,9 @@ test('student profile returns profile and statistics payloads', async () => {
   mockState.counts.marketplaceTransaction = 3;
 
   const req = {
-    session: {
+    auth: {
       userId: 12,
-      user: {
-        role: 'student',
-      },
+      role: 'student',
     },
   };
   const res = createResponse();
@@ -254,11 +257,9 @@ test('student dashboard returns summary, notifications and schedule', async () =
   ];
 
   const req = {
-    session: {
+    auth: {
       userId: 12,
-      user: {
-        role: 'student',
-      },
+      role: 'student',
     },
   };
   const res = createResponse();
@@ -299,11 +300,9 @@ test('getUpcomingSchedule rejects non-student roles', async () => {
   resetMockState();
 
   const req = {
-    session: {
+    auth: {
       userId: 123,
-      user: {
-        role: 'teacher',
-      },
+      role: 'teacher',
     },
   };
   const res = createResponse();
@@ -325,11 +324,9 @@ test('getUpcomingSchedule returns 404 when student profile is missing', async ()
   mockState.user = null;
 
   const req = {
-    session: {
+    auth: {
       userId: 12,
-      user: {
-        role: 'student',
-      },
+      role: 'student',
     },
   };
   const res = createResponse();
@@ -373,11 +370,9 @@ test('getUpcomingSchedule returns schedule with expected payload shape', async (
   ];
 
   const req = {
-    session: {
+    auth: {
       userId: 12,
-      user: {
-        role: 'student',
-      },
+      role: 'student',
     },
   };
   const res = createResponse();

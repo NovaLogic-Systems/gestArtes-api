@@ -1,3 +1,10 @@
+/**
+ * @file src/services/coaching.service.js
+ * @author NovaLogic System
+ * @institution IPCA
+ * @project GestArtes - Projeto 50+10 para Entartes
+ */
+
 const prisma = require('../config/prisma');
 const { createSessionWithBusinessRules } = require('./session.service');
 const { createHttpError } = require('../utils/http-error');
@@ -1063,3 +1070,4 @@ module.exports = {
   listAdminUserIds,
   getWeeklyMap,
 };
+

@@ -1,3 +1,10 @@
+/**
+ * @file src/controllers/inventory.controller.js
+ * @author NovaLogic System
+ * @institution IPCA
+ * @project GestArtes - Projeto 50+10 para Entartes
+ */
+
 const inventoryService = require('../services/inventory.service');
 const { createHttpError } = require('../utils/http-error');
 const { createInventoryUseCases } = require('../application/use-cases/inventory');
@@ -82,3 +89,4 @@ module.exports = {
   createRental,
   getRentals,
 };
+

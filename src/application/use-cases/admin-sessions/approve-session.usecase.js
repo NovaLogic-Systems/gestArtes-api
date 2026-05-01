@@ -1,3 +1,10 @@
+/**
+ * @file src/application/use-cases/admin-sessions/approve-session.usecase.js
+ * @author NovaLogic System
+ * @institution IPCA
+ * @project GestArtes - Projeto 50+10 para Entartes
+ */
+
 const { createHttpError } = require('../../../utils/http-error');
 const { resolveOrCreateSessionStatus } = require('./resolve-or-create-session-status');
 

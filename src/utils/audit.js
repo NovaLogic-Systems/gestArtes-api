@@ -1,3 +1,10 @@
+/**
+ * @file src/utils/audit.js
+ * @author NovaLogic System
+ * @institution IPCA
+ * @project GestArtes - Projeto 50+10 para Entartes
+ */
+
 const prisma = require('../config/prisma');
 const logger = require('./logger');
 
@@ -90,3 +97,4 @@ module.exports = {
   AUDIT_MODULES,
   AUDIT_RESULTS,
 };
+

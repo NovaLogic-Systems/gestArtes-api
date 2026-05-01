@@ -1,3 +1,10 @@
+/**
+ * @file src/services/studioOccupancy.service.js
+ * @author NovaLogic System
+ * @institution IPCA
+ * @project GestArtes - Projeto 50+10 para Entartes
+ */
+
 const prisma = require('../config/prisma');
 const { createHttpError } = require('../utils/http-error');
 
@@ -772,3 +779,4 @@ module.exports = {
   blockStudio,
   updateStudioStatus,
 };
+

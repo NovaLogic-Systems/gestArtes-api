@@ -1,3 +1,10 @@
+/**
+ * @file src/services/availability.service.js
+ * @author NovaLogic System
+ * @institution IPCA
+ * @project GestArtes - Projeto 50+10 para Entartes
+ */
+
 const prisma = require('../config/prisma');
 const { cancelPendingBookingsForTeacherAbsence } = require('./session.service');
 const { createHttpError } = require('../utils/http-error');

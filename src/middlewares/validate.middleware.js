@@ -1,3 +1,10 @@
+/**
+ * @file src/middlewares/validate.middleware.js
+ * @author NovaLogic System
+ * @institution IPCA
+ * @project GestArtes - Projeto 50+10 para Entartes
+ */
+
 const { validationResult } = require('express-validator');
 
 function validateRequest(req, res, next) {
@@ -18,3 +25,4 @@ function validateRequest(req, res, next) {
 }
 
 module.exports = validateRequest;
+

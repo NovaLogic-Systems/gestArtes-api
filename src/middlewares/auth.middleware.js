@@ -1,3 +1,10 @@
+/**
+ * @file src/middlewares/auth.middleware.js
+ * @author NovaLogic System
+ * @institution IPCA
+ * @project GestArtes - Projeto 50+10 para Entartes
+ */
+
 const crypto = require('crypto');
 const { verifyAccessToken } = require('../services/jwt.service');
 const {
@@ -137,3 +144,4 @@ module.exports = {
   requireAdminRole,
   requireInternalToken,
 };
+

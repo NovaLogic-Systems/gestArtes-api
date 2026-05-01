@@ -1,3 +1,10 @@
+/**
+ * @file src/routes/auth.routes.js
+ * @author NovaLogic System
+ * @institution IPCA
+ * @project GestArtes - Projeto 50+10 para Entartes
+ */
+
 const express = require('express');
 const router = express.Router();
 const { loginSchema } = require('../middlewares/schemas/auth.schema');
@@ -15,3 +22,4 @@ router.post('/logout-all', requireAuth, authController.logoutAll);
 router.get('/me', requireAuth, authController.me);
 
 module.exports = router;
+

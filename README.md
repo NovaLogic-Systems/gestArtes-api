@@ -39,6 +39,7 @@ Variáveis de segurança relevantes:
 - `CORS_ALLOW_NO_ORIGIN`: permite requests sem Origin (ex.: curl/Postman).
 - `JWT_ACCESS_SECRET` e `JWT_REFRESH_SECRET`: segredos distintos para access token e refresh token.
 - `REFRESH_TOKEN_COOKIE_NAME`: nome do cookie `httpOnly` usado para o refresh token.
+- `ENABLE_HTTPS`: define `false` para forçar HTTP mesmo quando `SSL_KEY_PATH` e `SSL_CERT_PATH` estiverem configurados.
 - Em produção, é obrigatório configurar pelo menos uma origin em `CORS_ORIGINS` ou `CLIENT_URL`.
 
 3. Executar em desenvolvimento:
@@ -53,6 +54,8 @@ npm run dev
 npm start
 ```
 API disponível em `http://localhost:3001`
+
+Se precisares de simplificar o uso no Postman ou em máquinas sem certificados locais, define `ENABLE_HTTPS=false` e a API arranca só em HTTP.
 
 ## Notas
 

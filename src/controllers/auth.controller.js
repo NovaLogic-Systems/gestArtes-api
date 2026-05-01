@@ -1,3 +1,10 @@
+/**
+ * @file src/controllers/auth.controller.js
+ * @author NovaLogic System
+ * @institution IPCA
+ * @project GestArtes - Projeto 50+10 para Entartes
+ */
+
 const bcrypt = require('bcrypt');
 const prisma = require('../config/prisma');
 const { getPrimaryRoleFromUser } = require('../utils/roles');
@@ -365,3 +372,4 @@ module.exports = {
   logoutAll,
   me,
 };
+

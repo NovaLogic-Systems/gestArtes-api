@@ -1,3 +1,10 @@
+/**
+ * @file src/middlewares/schemas/teacherAbsence.schema.js
+ * @author NovaLogic System
+ * @institution IPCA
+ * @project GestArtes - Projeto 50+10 para Entartes
+ */
+
 const { body } = require('express-validator');
 
 const createTeacherAbsenceSchema = [

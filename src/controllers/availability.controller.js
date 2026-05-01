@@ -1,3 +1,10 @@
+/**
+ * @file src/controllers/availability.controller.js
+ * @author NovaLogic System
+ * @institution IPCA
+ * @project GestArtes - Projeto 50+10 para Entartes
+ */
+
 const {
   createException,
   getAvailability,

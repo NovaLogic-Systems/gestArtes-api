@@ -1,3 +1,10 @@
+/**
+ * @file src/middlewares/rateLimit.middleware.js
+ * @author NovaLogic System
+ * @institution IPCA
+ * @project GestArtes - Projeto 50+10 para Entartes
+ */
+
 const rateLimit = require('express-rate-limit');
 const logger = require('../utils/logger');
 
@@ -78,3 +85,4 @@ const loginLimiter = rateLimit({
 module.exports = apiRateLimiter;
 module.exports.apiRateLimiter = apiRateLimiter;
 module.exports.loginLimiter = loginLimiter;
+

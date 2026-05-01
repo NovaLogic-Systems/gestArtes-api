@@ -1,3 +1,10 @@
+/**
+ * @file src/routes/notification.routes.js
+ * @author NovaLogic System
+ * @institution IPCA
+ * @project GestArtes - Projeto 50+10 para Entartes
+ */
+
 // notification.routes.js
 const express = require('express');
 const router = express.Router();
@@ -18,3 +25,4 @@ router.patch('/:id/read', ...notificationAccess, notificationController.markAsRe
 router.delete('/:id', ...notificationAccess, notificationController.remove);
 
 module.exports = router;
+

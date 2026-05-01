@@ -1,3 +1,10 @@
+/**
+ * @file src/jobs/autoCancel.js
+ * @author NovaLogic System
+ * @institution IPCA
+ * @project GestArtes - Projeto 50+10 para Entartes
+ */
+
 const cron = require('node-cron');
 const prisma = require('../config/prisma');
 

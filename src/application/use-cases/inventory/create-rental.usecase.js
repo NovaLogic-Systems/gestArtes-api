@@ -1,3 +1,10 @@
+/**
+ * @file src/application/use-cases/inventory/create-rental.usecase.js
+ * @author NovaLogic System
+ * @institution IPCA
+ * @project GestArtes - Projeto 50+10 para Entartes
+ */
+
 const logger = require('../../../utils/logger');
 
 /**
@@ -38,3 +45,4 @@ function createCreateRentalUseCase({ inventoryService }) {
 }
 
 module.exports = { createCreateRentalUseCase };
+

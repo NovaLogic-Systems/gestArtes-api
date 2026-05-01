@@ -1,3 +1,10 @@
+/**
+ * @file src/services/adminValidation.service.js
+ * @author NovaLogic System
+ * @institution IPCA
+ * @project GestArtes - Projeto 50+10 para Entartes
+ */
+
 const { Prisma } = require('@prisma/client');
 const prisma = require('../config/prisma');
 const { createPricingService } = require('./pricing.service');

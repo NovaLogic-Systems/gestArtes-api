@@ -1,3 +1,10 @@
+/**
+ * @file src/config/swagger.js
+ * @author NovaLogic System
+ * @institution IPCA
+ * @project GestArtes - Projeto 50+10 para Entartes
+ */
+
 const swaggerJsdoc = require('swagger-jsdoc');
 const swaggerUi = require('swagger-ui-express');
 
@@ -712,3 +719,4 @@ module.exports = {
   setupSwagger,
   swaggerSpec,
 };
+

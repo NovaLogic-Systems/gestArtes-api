@@ -1,3 +1,10 @@
+/**
+ * @file src/routes/finance.routes.js
+ * @author NovaLogic System
+ * @institution IPCA
+ * @project GestArtes - Projeto 50+10 para Entartes
+ */
+
 const express = require('express');
 const { requireAuth, requireAdminRole } = require('../middlewares/auth.middleware');
 const validateRequest = require('../middlewares/validate.middleware');
@@ -48,3 +55,4 @@ router.post(
 );
 
 module.exports = router;
+

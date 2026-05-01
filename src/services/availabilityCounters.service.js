@@ -1,3 +1,10 @@
+/**
+ * @file src/services/availabilityCounters.service.js
+ * @author NovaLogic System
+ * @institution IPCA
+ * @project GestArtes - Projeto 50+10 para Entartes
+ */
+
 const {
     getAvailability,
     getPendingExceptions,
@@ -20,3 +27,4 @@ async function getTeacherAvailabilityCounters(teacherId) {
 module.exports = {
     getTeacherAvailabilityCounters,
 };
+

@@ -1,3 +1,10 @@
+/**
+ * @file src/routes/marketplace.routes.js
+ * @author NovaLogic System
+ * @institution IPCA
+ * @project GestArtes - Projeto 50+10 para Entartes
+ */
+
 const express = require('express');
 const router = express.Router();
 
@@ -66,3 +73,4 @@ router.delete(
 );
 
 module.exports = router;
+

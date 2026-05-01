@@ -1,3 +1,10 @@
+/**
+ * @file src/services/jwt.service.js
+ * @author NovaLogic System
+ * @institution IPCA
+ * @project GestArtes - Projeto 50+10 para Entartes
+ */
+
 const crypto = require('crypto');
 const jwt = require('jsonwebtoken');
 const prisma = require('../config/prisma');
@@ -342,3 +349,4 @@ module.exports = {
   getRefreshTokenTtlMs,
   getAuthCookieDefaults,
 };
+

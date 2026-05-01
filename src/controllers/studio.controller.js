@@ -1,3 +1,10 @@
+/**
+ * @file src/controllers/studio.controller.js
+ * @author NovaLogic System
+ * @institution IPCA
+ * @project GestArtes - Projeto 50+10 para Entartes
+ */
+
 const prisma = require('../config/prisma');
 const {
   getStudioOccupancyRealTime,
@@ -459,3 +466,4 @@ module.exports = {
   blockStudio,
   updateStudioOccupancyStatus,
 };
+

@@ -1,3 +1,10 @@
+/**
+ * @file src/routes/lostFound.routes.js
+ * @author NovaLogic System
+ * @institution IPCA
+ * @project GestArtes - Projeto 50+10 para Entartes
+ */
+
 const express = require('express');
 const lostFoundController = require('../controllers/lostFound.controller');
 const validateRequest = require('../middlewares/validate.middleware');
@@ -77,3 +84,4 @@ router.patch(
 );
 
 module.exports = router;
+

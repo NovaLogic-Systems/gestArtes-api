@@ -1,3 +1,9 @@
+/**
+ * @author NovaLogic System
+ * @institution IPCA
+ * @project GestArtes - Projeto 50+10 para Entartes
+ */
+
 const test = require('node:test');
 const assert = require('node:assert/strict');
 const Module = require('node:module');
@@ -169,10 +175,10 @@ test('createStudio returns 401 when not authenticated', async () => {
 test('createStudio returns 400 when required fields are missing', async () => {
   resetMockState();
 
-  const req = {
-    session: { userId: 1, role: 'admin' },
-    body: { studioName: 'Sala A' },
-  };
+    const req = {
+      auth: { userId: 1, role: 'admin' },
+      body: { studioName: 'Sala A' },
+    };
   const res = createResponse();
 
   await studioController.createStudio(req, res, (error) => {
@@ -186,9 +192,9 @@ test('createStudio returns 400 when required fields are missing', async () => {
 test('createStudio creates studio with provided modality IDs', async () => {
   resetMockState();
 
-  const req = {
-    session: { userId: 1, role: 'admin' },
-    body: {
+    const req = {
+      auth: { userId: 1, role: 'admin' },
+      body: {
       studioName: 'Sala B',
       capacity: 12,
       modalities: [{ modalityId: 3 }, { modalityId: 4 }],
@@ -212,11 +218,11 @@ test('createStudio creates studio with provided modality IDs', async () => {
 test('updateStudio returns 404 when studio does not exist', async () => {
   resetMockState();
 
-  const req = {
-    session: { userId: 1, role: 'admin' },
-    params: { id: '999' },
-    body: { studioName: 'Updated Name' },
-  };
+    const req = {
+      auth: { userId: 1, role: 'admin' },
+      params: { id: '999' },
+      body: { studioName: 'Updated Name' },
+    };
   const res = createResponse();
 
   await studioController.updateStudio(req, res, (error) => {
@@ -230,10 +236,10 @@ test('updateStudio returns 404 when studio does not exist', async () => {
 test('deleteStudio returns 404 when studio does not exist', async () => {
   resetMockState();
 
-  const req = {
-    session: { userId: 1, role: 'admin' },
-    params: { id: '999' },
-  };
+    const req = {
+      auth: { userId: 1, role: 'admin' },
+      params: { id: '999' },
+    };
   const res = createResponse();
 
   await studioController.deleteStudio(req, res, (error) => {

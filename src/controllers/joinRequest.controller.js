@@ -1,3 +1,10 @@
+/**
+ * @file src/controllers/joinRequest.controller.js
+ * @author NovaLogic System
+ * @institution IPCA
+ * @project GestArtes - Projeto 50+10 para Entartes
+ */
+
 const joinRequestService = require('../services/joinRequest.service');
 const { sendNotification } = require('./notification.controller');
 const logger = require('../utils/logger');
@@ -270,4 +277,5 @@ module.exports = {
   adminReject,
   getStudentRequests,
 };
+
 

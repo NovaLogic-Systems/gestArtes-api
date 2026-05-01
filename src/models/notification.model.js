@@ -1,3 +1,10 @@
+/**
+ * @file src/models/notification.model.js
+ * @author NovaLogic System
+ * @institution IPCA
+ * @project GestArtes - Projeto 50+10 para Entartes
+ */
+
 const prisma = require('../config/prisma');
 
 const DEFAULT_NOTIFICATION_TYPE_ID = 1;

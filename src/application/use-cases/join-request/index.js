@@ -1,3 +1,10 @@
+/**
+ * @file src/application/use-cases/join-request/index.js
+ * @author NovaLogic System
+ * @institution IPCA
+ * @project GestArtes - Projeto 50+10 para Entartes
+ */
+
 const { createCreateJoinRequestUseCase } = require('./create-join-request.usecase');
 const { createTeacherApproveJoinRequestUseCase } = require('./teacher-approve-join-request.usecase');
 const { createAdminApproveJoinRequestUseCase } = require('./admin-approve-join-request.usecase');
@@ -23,3 +30,4 @@ function createJoinRequestUseCases(dependencies) {
 }
 
 module.exports = { createJoinRequestUseCases };
+

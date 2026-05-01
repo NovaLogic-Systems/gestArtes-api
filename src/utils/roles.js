@@ -1,3 +1,10 @@
+/**
+ * @file src/utils/roles.js
+ * @author NovaLogic System
+ * @institution IPCA
+ * @project GestArtes - Projeto 50+10 para Entartes
+ */
+
 const APP_ROLES = Object.freeze(['student', 'teacher', 'admin']);
 const ROLE_PRIORITY = Object.freeze(['admin', 'teacher', 'student']);
 const ROLE_HIERARCHY = Object.freeze({
@@ -92,3 +99,4 @@ module.exports = {
   normalizeRole,
   toAppRole,
 };
+

@@ -1,3 +1,10 @@
+/**
+ * @file src/socket.js
+ * @author NovaLogic System
+ * @institution IPCA
+ * @project GestArtes - Projeto 50+10 para Entartes
+ */
+
 // server/socket.js
 const { Server } = require('socket.io');
 const { verifyAccessToken } = require('./services/jwt.service');
@@ -164,3 +171,4 @@ function initSocket(httpServer) {
   return io;
 }
 module.exports = { initSocket };
+

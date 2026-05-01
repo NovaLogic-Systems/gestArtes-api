@@ -1,3 +1,10 @@
+/**
+ * @file src/controllers/coaching.controller.js
+ * @author NovaLogic System
+ * @institution IPCA
+ * @project GestArtes - Projeto 50+10 para Entartes
+ */
+
 const coachingService = require('../services/coaching.service');
 const { sendNotification } = require('./notification.controller');
 const logger = require('../utils/logger');
@@ -145,3 +152,4 @@ module.exports = {
   getSessionHistory,
   getWeeklyMap,
 };
+

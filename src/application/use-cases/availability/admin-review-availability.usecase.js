@@ -1,3 +1,10 @@
+/**
+ * @file src/application/use-cases/availability/admin-review-availability.usecase.js
+ * @author NovaLogic System
+ * @institution IPCA
+ * @project GestArtes - Projeto 50+10 para Entartes
+ */
+
 const logger = require('../../../utils/logger');
 
 /**
@@ -43,3 +50,4 @@ function createAdminReviewAvailabilityUseCase({ availabilityService }) {
 }
 
 module.exports = { createAdminReviewAvailabilityUseCase };
+

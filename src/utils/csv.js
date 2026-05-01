@@ -1,3 +1,10 @@
+/**
+ * @file src/utils/csv.js
+ * @author NovaLogic System
+ * @institution IPCA
+ * @project GestArtes - Projeto 50+10 para Entartes
+ */
+
 const UTF8_BOM = '﻿';
 
 function escapeCell(value) {
@@ -34,3 +41,4 @@ function toCsv(rows, columns) {
 }
 
 module.exports = { toCsv, UTF8_BOM };
+

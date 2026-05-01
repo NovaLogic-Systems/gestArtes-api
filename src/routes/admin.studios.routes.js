@@ -1,3 +1,10 @@
+/**
+ * @file src/routes/admin.studios.routes.js
+ * @author NovaLogic System
+ * @institution IPCA
+ * @project GestArtes - Projeto 50+10 para Entartes
+ */
+
 const express = require('express');
 const { requireAuth, requireAdminRole } = require('../middlewares/auth.middleware');
 const studioController = require('../controllers/studio.controller');
@@ -91,3 +98,4 @@ router.patch('/:id', ...adminAccess, studioController.updateStudio);
 router.delete('/:id', ...adminAccess, studioController.deleteStudio);
 
 module.exports = router;
+

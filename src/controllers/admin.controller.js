@@ -1,3 +1,10 @@
+/**
+ * @file src/controllers/admin.controller.js
+ * @author NovaLogic System
+ * @institution IPCA
+ * @project GestArtes - Projeto 50+10 para Entartes
+ */
+
 const crypto = require('node:crypto');
 const bcrypt = require('bcrypt');
 const prisma = require('../config/prisma');
@@ -811,3 +818,4 @@ module.exports = {
     createSession,
     getDashboard,
 };
+

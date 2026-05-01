@@ -1,3 +1,10 @@
+/**
+ * @file src/controllers/finance.controller.js
+ * @author NovaLogic System
+ * @institution IPCA
+ * @project GestArtes - Projeto 50+10 para Entartes
+ */
+
 const prisma = require('../config/prisma');
 const { createFinanceService } = require('../services/finance.service');
 
@@ -67,3 +74,4 @@ async function exportTransactions(req, res, next) {
 }
 
 module.exports = { listTransactions, getSummary, getRevenue, exportTransactions };
+

@@ -1,3 +1,10 @@
+/**
+ * @file src/routes/admin.studio-occupancy.routes.js
+ * @author NovaLogic System
+ * @institution IPCA
+ * @project GestArtes - Projeto 50+10 para Entartes
+ */
+
 const express = require('express');
 const validateRequest = require('../middlewares/validate.middleware');
 const { requireAuth, requireAdminRole } = require('../middlewares/auth.middleware');
@@ -45,3 +52,4 @@ router.patch(
 );
 
 module.exports = router;
+

@@ -1,9 +1,15 @@
+/**
+ * @author NovaLogic System
+ * @institution IPCA
+ * @project GestArtes - Projeto 50+10 para Entartes
+ */
+
 const test = require('node:test');
 const assert = require('node:assert/strict');
 
 const {
   APP_PERMISSIONS,
-  getSessionPermissions,
+  getPermissionsForActor,
   requireAdminRole,
   requireAllPermissions,
   requirePermission,
@@ -27,9 +33,7 @@ function createResponse() {
 
 test('requireRole returns 401 when the request is not authenticated', () => {
   const middleware = requireRole(['STUDENT']);
-  const req = {
-    session: null,
-  };
+  const req = {};
   const res = createResponse();
   let nextCalled = false;
 
@@ -42,12 +46,12 @@ test('requireRole returns 401 when the request is not authenticated', () => {
   assert.equal(nextCalled, false);
 });
 
-test('requireRole returns 403 when session user role is missing', () => {
+test('requireRole returns 403 when authenticated role is missing', () => {
   const middleware = requireRole(['STUDENT']);
   const req = {
-    session: {
+    auth: {
       userId: 44,
-      user: {},
+      role: null,
     },
   };
   const res = createResponse();
@@ -62,14 +66,12 @@ test('requireRole returns 403 when session user role is missing', () => {
   assert.equal(nextCalled, false);
 });
 
-test('requireRole allows requests whose session user role is explicitly permitted', () => {
+test('requireRole allows requests whose authenticated role is explicitly permitted', () => {
   const middleware = requireRole(['TEACHER', 'ADMIN']);
   const req = {
-    session: {
+    auth: {
       userId: 55,
-      user: {
-        role: 'teacher',
-      },
+      role: 'teacher',
     },
   };
   const res = createResponse();
@@ -84,8 +86,8 @@ test('requireRole allows requests whose session user role is explicitly permitte
   assert.equal(nextCalled, true);
 });
 
-test('getSessionPermissions maps functional management role names to admin permissions', () => {
-  const permissions = getSessionPermissions({
+test('getPermissionsForActor maps functional management role names to admin permissions', () => {
+  const permissions = getPermissionsForActor({
     userId: 123,
     role: 'Direction / Management',
   });
@@ -96,9 +98,7 @@ test('getSessionPermissions maps functional management role names to admin permi
 
 test('requirePermission returns 401 when the request is not authenticated', () => {
   const middleware = requirePermission(APP_PERMISSIONS.MARKETPLACE_ACCESS);
-  const req = {
-    session: null,
-  };
+  const req = {};
   const res = createResponse();
   let nextCalled = false;
 
@@ -114,7 +114,7 @@ test('requirePermission returns 401 when the request is not authenticated', () =
 test('requirePermission returns 403 when role permissions do not include the required permission', () => {
   const middleware = requirePermission(APP_PERMISSIONS.ADMIN_PORTAL_ACCESS);
   const req = {
-    session: {
+    auth: {
       userId: 77,
       role: 'student',
     },
@@ -134,7 +134,7 @@ test('requirePermission returns 403 when role permissions do not include the req
 test('requirePermission allows requests when role has the expected permission', () => {
   const middleware = requirePermission(APP_PERMISSIONS.ADMIN_PORTAL_ACCESS);
   const req = {
-    session: {
+    auth: {
       userId: 78,
       role: 'Direção',
     },
@@ -153,11 +153,11 @@ test('requirePermission allows requests when role has the expected permission', 
 
 test('requireAllPermissions returns 403 when at least one permission is missing', () => {
   const middleware = requireAllPermissions(
-    APP_PERMISSIONS.SESSION_ACCESS,
+    APP_PERMISSIONS.AUTHENTICATED_ACCESS,
     APP_PERMISSIONS.ADMIN_PORTAL_ACCESS
   );
   const req = {
-    session: {
+    auth: {
       userId: 79,
       role: 'teacher',
     },
@@ -176,12 +176,12 @@ test('requireAllPermissions returns 403 when at least one permission is missing'
 
 test('requireAllPermissions allows requests only when all permissions are present', () => {
   const middleware = requireAllPermissions(
-    APP_PERMISSIONS.SESSION_ACCESS,
+    APP_PERMISSIONS.AUTHENTICATED_ACCESS,
     APP_PERMISSIONS.STUDENT_PORTAL_ACCESS,
     APP_PERMISSIONS.INVENTORY_ACCESS
   );
   const req = {
-    session: {
+    auth: {
       userId: 80,
       role: 'student',
     },
@@ -200,7 +200,7 @@ test('requireAllPermissions allows requests only when all permissions are presen
 
 test('requireAdminRole accepts functional management labels mapped to admin', () => {
   const req = {
-    session: {
+    auth: {
       userId: 81,
       role: 'Direction',
     },
@@ -219,7 +219,7 @@ test('requireAdminRole accepts functional management labels mapped to admin', ()
 
 test('requireAdminRole rejects non-admin roles', () => {
   const req = {
-    session: {
+    auth: {
       userId: 82,
       role: 'teacher',
     },

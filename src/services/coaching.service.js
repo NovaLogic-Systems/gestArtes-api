@@ -1,17 +1,19 @@
+/**
+ * @file src/services/coaching.service.js
+ * @author NovaLogic System
+ * @institution IPCA
+ * @project GestArtes - Projeto 50+10 para Entartes
+ */
+
 const prisma = require('../config/prisma');
 const { createSessionWithBusinessRules } = require('./session.service');
+const { createHttpError } = require('../utils/http-error');
 
 // BR-11/BR-12: teacher initiatives are created pending management approval.
 // BR-19: initiative duration is one hour by default.
 const DEFAULT_TEACHER_INITIATIVE_DURATION_MS = 60 * 60 * 1000;
 const PENDING_APPROVAL_STATUS_NAME = 'PendingApproval';
 
-function createHttpError(status, message, details) {
-  const error = new Error(message);
-  error.status = status;
-  if (details) error.details = details;
-  return error;
-}
 
 function toPositiveInt(value) {
   const parsed = Number(value);
@@ -610,6 +612,10 @@ async function cancelBooking(sessionId, studentUserId, justification) {
   };
 }
 
+async function cancelWithReason(sessionId, studentUserId, justification) {
+  return cancelBooking(sessionId, studentUserId, justification);
+}
+
 async function confirmCompletion(sessionId, studentUserId) {
   const studentAccount = await prisma.studentAccount.findUnique({
     where: { UserID: studentUserId },
@@ -1055,6 +1061,7 @@ async function getWeeklyMap({ weekStart: weekStartStr, teacherId, studioId }) {
 module.exports = {
   createSessionInitiative,
   cancelBooking,
+  cancelWithReason,
   confirmCompletion,
   createBooking,
   getAvailableSlots,
@@ -1063,3 +1070,4 @@ module.exports = {
   listAdminUserIds,
   getWeeklyMap,
 };
+

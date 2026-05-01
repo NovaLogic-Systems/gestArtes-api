@@ -1,8 +1,15 @@
+/**
+ * @file src/routes/admin.inventory.routes.js
+ * @author NovaLogic System
+ * @institution IPCA
+ * @project GestArtes - Projeto 50+10 para Entartes
+ */
+
 const express = require('express');
 
 const adminInventoryController = require('../controllers/admin_inventory.controller');
 const validateRequest = require('../middlewares/validate.middleware');
-const { requireSessionAuth, requireRole } = require('../middlewares/auth.middleware');
+const { requireAuth, requireAdminRole } = require('../middlewares/auth.middleware');
 const { attachInventoryPhoto } = require('../middlewares/inventoryUpload.middleware');
 const {
   createInventoryItemSchema,
@@ -15,7 +22,7 @@ const {
 } = require('../middlewares/schemas/inventory.schema');
 
 const router = express.Router();
-const adminAccess = [requireSessionAuth, requireRole(['ADMIN'])];
+const adminAccess = [requireAuth, requireAdminRole];
 
 router.get(
   '/',
@@ -71,3 +78,4 @@ router.patch(
 );
 
 module.exports = router;
+

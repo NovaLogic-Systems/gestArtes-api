@@ -1,3 +1,9 @@
+/**
+ * @author NovaLogic System
+ * @institution IPCA
+ * @project GestArtes - Projeto 50+10 para Entartes
+ */
+
 const test = require('node:test');
 const assert = require('node:assert/strict');
 const Module = require('node:module');
@@ -72,8 +78,8 @@ function toPositiveInt(value) {
 
 test('Authorization: Role-Based Access Control', async (t) => {
   await t.test('rejects unauthenticated requests', () => {
-    const req = { session: { userId: null } };
-    const userId = toPositiveInt(req.session?.userId);
+    const req = { auth: { userId: null } };
+    const userId = toPositiveInt(req.auth?.userId);
 
     assert.equal(userId, null);
   });

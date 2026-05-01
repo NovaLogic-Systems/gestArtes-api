@@ -1,8 +1,15 @@
+/**
+ * @file src/routes/lostFound.routes.js
+ * @author NovaLogic System
+ * @institution IPCA
+ * @project GestArtes - Projeto 50+10 para Entartes
+ */
+
 const express = require('express');
 const lostFoundController = require('../controllers/lostFound.controller');
 const validateRequest = require('../middlewares/validate.middleware');
 const {
-  requireSessionAuth,
+  requireAuth,
   requireAdminRole,
 } = require('../middlewares/auth.middleware');
 const {
@@ -14,7 +21,7 @@ const {
 } = require('../middlewares/schemas/lostFound.schema');
 
 const router = express.Router();
-const adminLostFoundAccess = [requireSessionAuth, requireAdminRole];
+const adminLostFoundAccess = [requireAuth, requireAdminRole];
 
 router.get('/lostfound', lostFoundController.listPublic);
 router.get('/lostfound/:id', ...itemIdParamSchema, validateRequest, lostFoundController.getPublicById);
@@ -77,3 +84,4 @@ router.patch(
 );
 
 module.exports = router;
+

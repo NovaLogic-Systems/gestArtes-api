@@ -1,3 +1,10 @@
+/**
+ * @file src/jobs/autoCancel.js
+ * @author NovaLogic System
+ * @institution IPCA
+ * @project GestArtes - Projeto 50+10 para Entartes
+ */
+
 const cron = require('node-cron');
 const prisma = require('../config/prisma');
 
@@ -5,7 +12,7 @@ const STATUS_AWAITING_APPROVAL = 1;
 const STATUS_CANCELLED = 5;
 const EXPIRATION_HOURS = 48;
 
-// Schedule the job to run every hour
+// Agenda a execução da tarefa para correr de hora a hora
 cron.schedule('0 * * * *', async () => {
     console.log('Sistema de cancelamento automático em execução...');
 

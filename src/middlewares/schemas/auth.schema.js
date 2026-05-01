@@ -1,3 +1,10 @@
+/**
+ * @file src/middlewares/schemas/auth.schema.js
+ * @author NovaLogic System
+ * @institution IPCA
+ * @project GestArtes - Projeto 50+10 para Entartes
+ */
+
 const { body } = require('express-validator');
 
 const loginSchema = [
@@ -10,3 +17,4 @@ const loginSchema = [
 ];
 
 module.exports = { loginSchema };
+

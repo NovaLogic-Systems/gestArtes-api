@@ -1,3 +1,10 @@
+/**
+ * @file src/middlewares/csrf.middleware.js
+ * @author NovaLogic System
+ * @institution IPCA
+ * @project GestArtes - Projeto 50+10 para Entartes
+ */
+
 const logger = require('../utils/logger');
 
 const SAFE_METHODS = new Set(['GET', 'HEAD', 'OPTIONS']);

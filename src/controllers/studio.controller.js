@@ -1,3 +1,10 @@
+/**
+ * @file src/controllers/studio.controller.js
+ * @author NovaLogic System
+ * @institution IPCA
+ * @project GestArtes - Projeto 50+10 para Entartes
+ */
+
 const prisma = require('../config/prisma');
 const {
   getStudioOccupancyRealTime,
@@ -15,8 +22,8 @@ function toInteger(value) {
 }
 
 function getAuthenticatedAdminUserId(req, res) {
-  const userId = Number(req.session?.userId);
-  const role = String(req.session?.role || '').trim().toLowerCase();
+  const userId = Number(req.auth?.userId);
+  const role = String(req.auth?.role || '').trim().toLowerCase();
   
   if (!Number.isInteger(userId) || userId <= 0) {
     res.status(401).json({ error: 'Not authenticated' });
@@ -459,3 +466,4 @@ module.exports = {
   blockStudio,
   updateStudioOccupancyStatus,
 };
+

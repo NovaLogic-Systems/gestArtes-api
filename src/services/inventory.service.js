@@ -1,12 +1,14 @@
+/**
+ * @file src/services/inventory.service.js
+ * @author NovaLogic System
+ * @institution IPCA
+ * @project GestArtes - Projeto 50+10 para Entartes
+ */
+
 const { Prisma } = require('@prisma/client');
 
 const prisma = require('../config/prisma');
-
-function createHttpError(status, message) {
-  const error = new Error(message);
-  error.status = status;
-  return error;
-}
+const { createHttpError } = require('../utils/http-error');
 
 function toMoney(value) {
   if (value === null || value === undefined) {
@@ -530,6 +532,10 @@ async function createRental(data, renterId) {
   });
 }
 
+async function startRental(data, renterId) {
+  return createRental(data, renterId);
+}
+
 async function listRentalsByRenterId(renterId) {
   const rentals = await prisma.inventoryTransaction.findMany({
     where: {
@@ -814,10 +820,15 @@ async function verifyRentalReturn(rentalId, data) {
   return serializeRental(updated);
 }
 
+async function completeRental(rentalId, data) {
+  return verifyRentalReturn(rentalId, data);
+}
+
 module.exports = {
   listItems,
   getItemById,
   createRental,
+  startRental,
   listRentalsByRenterId,
   getAdminInventoryItems,
   createSchoolInventoryItem,
@@ -825,4 +836,6 @@ module.exports = {
   deleteSchoolInventoryItem,
   updateSchoolInventoryAvailability,
   verifyRentalReturn,
+  completeRental,
 };
+

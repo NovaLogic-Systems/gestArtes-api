@@ -1,10 +1,16 @@
-const inventoryService = require('../services/inventory.service');
+/**
+ * @file src/controllers/admin_inventory.controller.js
+ * @author NovaLogic System
+ * @institution IPCA
+ * @project GestArtes - Projeto 50+10 para Entartes
+ */
 
-function createHttpError(status, message) {
-  const error = new Error(message);
-  error.status = status;
-  return error;
-}
+const inventoryService = require('../services/inventory.service');
+const { createInventoryUseCases } = require('../application/use-cases/inventory');
+
+// Factory de use-cases: injeção de dependências de serviço ao arranque
+const inventoryUseCases = createInventoryUseCases({ inventoryService });
+const { createHttpError } = require('../utils/http-error');
 
 async function getItems(req, res, next) {
   try {
@@ -66,19 +72,24 @@ async function updateAvailability(req, res, next) {
   }
 }
 
-async function verifyReturn(req, res, next) {
+async function completeRental(req, res, next) {
   try {
-    const rental = await inventoryService.verifyRentalReturn(req.params.rentalId, req.body);
+    const result = await inventoryUseCases.verifyReturn.execute({
+      rentalId: Number(req.params.rentalId),
+      payload: req.body,
+    });
 
-    if (!rental) {
+    if (!result || !result.rental) {
       throw createHttpError(404, 'Aluguer não encontrado');
     }
 
-    res.json({ rental });
+    res.json({ rental: result.rental });
   } catch (error) {
     next(error);
   }
 }
+
+const verifyReturn = completeRental;
 
 module.exports = {
   getItems,
@@ -86,5 +97,7 @@ module.exports = {
   updateItem,
   removeItem,
   updateAvailability,
+  completeRental,
   verifyReturn,
 };
+

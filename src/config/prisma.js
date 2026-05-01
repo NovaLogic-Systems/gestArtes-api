@@ -1,3 +1,10 @@
+/**
+ * @file src/config/prisma.js
+ * @author NovaLogic System
+ * @institution IPCA
+ * @project GestArtes - Projeto 50+10 para Entartes
+ */
+
 require('dotenv').config();
 
 const { PrismaClient } = require('@prisma/client');

@@ -1,5 +1,12 @@
+/**
+ * @file src/controllers/student.controller.js
+ * @author NovaLogic System
+ * @institution IPCA
+ * @project GestArtes - Projeto 50+10 para Entartes
+ */
+
 const prisma = require('../config/prisma');
-const { getSessionRole } = require('../middlewares/auth.middleware');
+const { getAuthenticatedRole } = require('../utils/auth-context');
 
 const ATTENDED_STATUS_KEYWORDS = [
   'attended',
@@ -53,8 +60,8 @@ function toStudentCode(studentAccountId) {
 }
 
 function getAuthenticatedStudentUserId(req, res) {
-  const userId = Number(req.session?.userId);
-  const role = getSessionRole(req.session);
+  const userId = Number(req.auth?.userId);
+  const role = getAuthenticatedRole(req);
 
   if (!Number.isInteger(userId) || userId <= 0) {
     res.status(401).json({ error: 'Not authenticated' });
@@ -453,13 +460,17 @@ async function getDashboard(req, res, next) {
   }
 }
 
+const { createStudentUseCases } = require('../application/use-cases/student');
+
+// Factory de use-cases: injeção de Prisma ao arranque
+// Controller delega orquestração ao use-case e mantém responsabilidade de IO/HTTP
+const studentUseCases = createStudentUseCases({ prisma });
+
 async function getUpcomingSchedule(req, res, next) {
   try {
     const userId = getAuthenticatedStudentUserId(req, res);
 
-    if (!userId) {
-      return;
-    }
+    if (!userId) return;
 
     const student = await loadStudentProfile(userId);
 
@@ -468,7 +479,7 @@ async function getUpcomingSchedule(req, res, next) {
       return;
     }
 
-    const schedule = await listUpcomingSchedule(student.studentAccountId, 5);
+    const schedule = await studentUseCases.getUpcomingSchedule.execute({ studentAccountId: student.studentAccountId, limit: 5 });
     res.json({ schedule });
   } catch (error) {
     next(error);
@@ -480,3 +491,4 @@ module.exports = {
   getDashboard,
   getUpcomingSchedule,
 };
+

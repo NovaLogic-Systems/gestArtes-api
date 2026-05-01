@@ -1,9 +1,19 @@
+/**
+ * @file src/controllers/admin.controller.js
+ * @author NovaLogic System
+ * @institution IPCA
+ * @project GestArtes - Projeto 50+10 para Entartes
+ */
+
 const crypto = require('node:crypto');
 const bcrypt = require('bcrypt');
 const prisma = require('../config/prisma');
 const adminService = require('../services/admin.service');
 const { createSessionWithBusinessRules } = require('../services/session.service');
 const { getAdminDashboardSnapshot } = require('../services/adminDashboard.service');
+const { sendNotification } = require('./notification.controller');
+const { createAdminSessionUseCases } = require('../application/use-cases/admin-sessions');
+const { createAdminUserUseCases } = require('../application/use-cases/admin-users');
 const { logAudit, AUDIT_ACTIONS, AUDIT_MODULES } = require('../utils/audit');
 const {
     ROLE_HIERARCHY,
@@ -13,6 +23,10 @@ const {
 } = require('../utils/roles');
 
 const PASSWORD_HASH_ROUNDS = 12;
+const SESSION_APPROVAL_NOTIFICATION_TYPE = 'schedule';
+
+const adminSessionUseCases = createAdminSessionUseCases({ prisma });
+const adminUserUseCases = createAdminUserUseCases({ prisma, passwordHashRounds: PASSWORD_HASH_ROUNDS });
 
 function serializeAdminUser(user) {
     const role = getPrimaryRoleFromUser(user);
@@ -140,117 +154,18 @@ async function listUsers(req, res, next) {
 
 async function createUser(req, res, next) {
     try {
-        const firstName = String(req.body?.firstName || '').trim();
-        const lastName = String(req.body?.lastName || '').trim() || null;
-        const email = String(req.body?.email || '').trim().toLowerCase();
-        const phoneNumber = String(req.body?.phoneNumber || '').trim() || null;
-        const password = String(req.body?.password || '');
-        const requestedRole = String(req.body?.role || '').trim();
-        const appRole = toAppRole(requestedRole);
-        const studentNumber = String(req.body?.studentNumber || '').trim();
-        const birthDate = req.body?.birthDate ? new Date(req.body.birthDate) : null;
-        const guardianName = String(req.body?.guardianName || '').trim() || null;
-        const guardianPhone = String(req.body?.guardianPhone || '').trim() || null;
-
-        if (!appRole) {
-            return res.status(400).json({ error: 'Invalid role' });
-        }
-
-        if (appRole === 'student' && !(birthDate instanceof Date && !Number.isNaN(birthDate.getTime()))) {
-            return res.status(400).json({ error: 'Birth date is required for student users' });
-        }
-
-        if (appRole === 'student' && !studentNumber) {
-            return res.status(400).json({ error: 'Student number is required for student users' });
-        }
-
-        if (appRole !== 'student' && studentNumber) {
-            return res.status(400).json({ error: 'Student number is only applicable for student users' });
-        }
-
-        const existingUser = await prisma.user.findUnique({
-            where: { Email: email },
-            select: { UserID: true },
-        });
-
-        if (existingUser) {
-            return res.status(409).json({ error: 'Email already in use' });
-        }
-
-        if (studentNumber) {
-            const existingStudentNumber = await prisma.user.findUnique({
-                where: { AuthUID: studentNumber },
-                select: { UserID: true },
-            });
-
-            if (existingStudentNumber) {
-                return res.status(409).json({ error: 'Student number already in use' });
-            }
-        }
-
-        const passwordHash = await bcrypt.hash(password, PASSWORD_HASH_ROUNDS);
-        const now = new Date();
-
-        const createdUser = await prisma.$transaction(async (tx) => {
-            const roleRecord = await resolveRoleRecord(tx, appRole);
-
-            if (!roleRecord) {
-                const error = new Error('Role not configured');
-                error.status = 500;
-                throw error;
-            }
-
-            const user = await tx.user.create({
-                data: {
-                    FirstName: firstName,
-                    LastName: lastName,
-                    Email: email,
-                    PhoneNumber: phoneNumber,
-                    PasswordHash: passwordHash,
-                    AuthUID: appRole === 'student' ? studentNumber : `local-${crypto.randomUUID()}`,
-                    CreatedAt: now,
-                    UpdatedAt: now,
-                    IsActive: true,
-                },
-            });
-
-            await tx.userRole.create({
-                data: {
-                    UserID: user.UserID,
-                    RoleID: roleRecord.RoleID,
-                },
-            });
-
-            if (appRole === 'student') {
-                await tx.studentAccount.create({
-                    data: {
-                        UserID: user.UserID,
-                        BirthDate: birthDate,
-                        GuardianName: guardianName,
-                        GuardianPhone: guardianPhone,
-                    },
-                });
-            }
-
-            return tx.user.findUnique({
-                where: {
-                    UserID: user.UserID,
-                },
-                include: {
-                    UserRole: {
-                        include: {
-                            Role: true,
-                        },
-                    },
-                    StudentAccount: true,
-                },
-            });
+        const createdUser = await adminUserUseCases.createUser.execute({
+            payload: req.body,
         });
 
         return res.status(201).json({
             user: serializeAdminUser(createdUser),
         });
     } catch (error) {
+        if (error && Number.isInteger(error.status)) {
+            return res.status(error.status).json({ error: error.message });
+        }
+
         return next(error);
     }
 }
@@ -613,7 +528,7 @@ async function updateUserRoles(req, res, next) {
 async function resetUserPassword(req, res, next) {
     try {
         const targetUserId = Number(req.params.id);
-        const adminUserId = Number(req.session?.userId);
+        const adminUserId = Number(req.auth?.userId);
         const newPassword = String(req.body?.newPassword || '');
 
         if (!Number.isInteger(targetUserId) || targetUserId <= 0) {
@@ -679,7 +594,7 @@ async function getPostSessionValidations(req, res, next) {
 async function finalizeSessionValidation(req, res, next) {
     try {
         const sessionId = toPositiveInteger(req.params.id);
-        const adminUserId = toPositiveInteger(req.session?.userId);
+        const adminUserId = toPositiveInteger(req.auth?.userId);
 
         if (!sessionId) {
             return res.status(400).json({ error: 'Invalid session id' });
@@ -715,7 +630,7 @@ async function getStudioOccupancy(req, res, next) {
 
 async function createSession(req, res, next) {
     try {
-        const requestedByUserId = Number(req.session?.userId);
+        const requestedByUserId = Number(req.auth?.userId);
         if (!Number.isInteger(requestedByUserId) || requestedByUserId <= 0) {
             return res.status(401).json({ error: 'Not authenticated' });
         }
@@ -830,67 +745,27 @@ async function listPendingApproval(req, res, next) {
 async function approveSession(req, res, next) {
     try {
         const sessionId = toPositiveInteger(req.params.id);
-        const adminUserId = toPositiveInteger(req.session?.userId);
+        const adminUserId = toPositiveInteger(req.auth?.userId);
 
         if (!sessionId) return res.status(400).json({ error: 'Invalid session id' });
         if (!adminUserId) return res.status(401).json({ error: 'Not authenticated' });
 
-        const session = await prisma.coachingSession.findUnique({
-            where: { SessionID: sessionId },
-            include: {
-                SessionStatus: { select: { StatusName: true } },
-                SessionTeacher: { include: { User: { select: { UserID: true } } } },
-                SessionStudent: {
-                    include: {
-                        StudentAccount: { include: { User: { select: { UserID: true } } } },
-                    },
-                },
-            },
+        const { statusId, userIdsToNotify } = await adminSessionUseCases.approveSession.execute({
+            adminUserId,
+            payload: { sessionId },
         });
 
-        if (!session) return res.status(404).json({ error: 'Session not found' });
+        await Promise.allSettled(
+            userIdsToNotify.map((userId) =>
+                sendNotification(req, {
+                    userId,
+                    type: SESSION_APPROVAL_NOTIFICATION_TYPE,
+                    message: `A sessão #${sessionId} foi aprovada pela gestão.`,
+                }),
+            ),
+        );
 
-        if (!session.SessionStatus.StatusName.toLowerCase().includes('pending')) {
-            return res.status(409).json({ error: 'Session is not in a pending state' });
-        }
-
-        const approvedStatusId = await prisma.$transaction(async (tx) => {
-            const statusId = await resolveOrCreateSessionStatus(tx, 'Approved');
-
-            await tx.coachingSession.update({
-                where: { SessionID: sessionId },
-                data: {
-                    StatusID: statusId,
-                    ReviewedByUserID: adminUserId,
-                    ReviewedAt: new Date(),
-                },
-            });
-
-            const userIdsToNotify = [
-                ...session.SessionTeacher.map((st) => st.User.UserID),
-                ...session.SessionStudent.map((ss) => ss.StudentAccount.User.UserID),
-            ];
-
-            await Promise.all(
-                userIdsToNotify.map((uid) =>
-                    tx.notification.create({
-                        data: {
-                            UserID: uid,
-                            Message: `A sessão #${sessionId} foi aprovada pela gestão.`,
-                            TypeID: 1,
-                            IsRead: false,
-                            CreatedAt: new Date(),
-                            Title: 'Sessão aprovada',
-                            SessionID: sessionId,
-                        },
-                    }),
-                ),
-            );
-
-            return statusId;
-        });
-
-        return res.json({ sessionId, statusId: approvedStatusId });
+        return res.json({ sessionId, statusId });
     } catch (error) {
         return next(error);
     }
@@ -899,66 +774,27 @@ async function approveSession(req, res, next) {
 async function rejectSession(req, res, next) {
     try {
         const sessionId = toPositiveInteger(req.params.id);
-        const adminUserId = toPositiveInteger(req.session?.userId);
+        const adminUserId = toPositiveInteger(req.auth?.userId);
         const reviewNotes = String(req.body?.reason || req.body?.reviewNotes || '').trim();
 
         if (!sessionId) return res.status(400).json({ error: 'Invalid session id' });
         if (!adminUserId) return res.status(401).json({ error: 'Not authenticated' });
         if (!reviewNotes) return res.status(400).json({ error: 'Reason is required when rejecting a session' });
 
-        const session = await prisma.coachingSession.findUnique({
-            where: { SessionID: sessionId },
-            include: {
-                SessionStatus: { select: { StatusName: true } },
-                SessionTeacher: { include: { User: { select: { UserID: true } } } },
-                SessionStudent: {
-                    include: {
-                        StudentAccount: { include: { User: { select: { UserID: true } } } },
-                    },
-                },
-            },
+        const { userIdsToNotify } = await adminSessionUseCases.rejectSession.execute({
+            adminUserId,
+            payload: { sessionId, reviewNotes },
         });
 
-        if (!session) return res.status(404).json({ error: 'Session not found' });
-
-        if (!session.SessionStatus.StatusName.toLowerCase().includes('pending')) {
-            return res.status(409).json({ error: 'Session is not in a pending state' });
-        }
-
-        await prisma.$transaction(async (tx) => {
-            const statusId = await resolveOrCreateSessionStatus(tx, 'Rejected');
-
-            await tx.coachingSession.update({
-                where: { SessionID: sessionId },
-                data: {
-                    StatusID: statusId,
-                    ReviewedByUserID: adminUserId,
-                    ReviewedAt: new Date(),
-                    ReviewNotes: reviewNotes.slice(0, 255),
-                },
-            });
-
-            const userIdsToNotify = [
-                ...session.SessionTeacher.map((st) => st.User.UserID),
-                ...session.SessionStudent.map((ss) => ss.StudentAccount.User.UserID),
-            ];
-
-            await Promise.all(
-                userIdsToNotify.map((uid) =>
-                    tx.notification.create({
-                        data: {
-                            UserID: uid,
-                            Message: `A sessão #${sessionId} foi rejeitada pela gestão. Motivo: ${reviewNotes.slice(0, 100)}`.slice(0, 255),
-                            TypeID: 1,
-                            IsRead: false,
-                            CreatedAt: new Date(),
-                            Title: 'Sessão rejeitada',
-                            SessionID: sessionId,
-                        },
-                    }),
-                ),
-            );
-        });
+        await Promise.allSettled(
+            userIdsToNotify.map((userId) =>
+                sendNotification(req, {
+                    userId,
+                    type: SESSION_APPROVAL_NOTIFICATION_TYPE,
+                    message: `A sessão #${sessionId} foi rejeitada pela gestão. Motivo: ${reviewNotes.slice(0, 100)}`.slice(0, 255),
+                }),
+            ),
+        );
 
         return res.json({ sessionId });
     } catch (error) {
@@ -982,3 +818,4 @@ module.exports = {
     createSession,
     getDashboard,
 };
+

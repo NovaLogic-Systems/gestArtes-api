@@ -1,5 +1,12 @@
+/**
+ * @file src/routes/audit.routes.js
+ * @author NovaLogic System
+ * @institution IPCA
+ * @project GestArtes - Projeto 50+10 para Entartes
+ */
+
 const express = require('express');
-const { requireSessionAuth, requireAdminRole } = require('../middlewares/auth.middleware');
+const { requireAuth, requireAdminRole } = require('../middlewares/auth.middleware');
 const validateRequest = require('../middlewares/validate.middleware');
 const { auditQuerySchema, auditSummaryQuerySchema } = require('../middlewares/schemas/audit.schema');
 const auditController = require('../controllers/audit.controller');
@@ -8,7 +15,7 @@ const router = express.Router();
 
 router.get(
   '/admin/audit',
-  requireSessionAuth,
+  requireAuth,
   requireAdminRole,
   ...auditQuerySchema,
   validateRequest,
@@ -17,7 +24,7 @@ router.get(
 
 router.get(
   '/admin/audit/summary',
-  requireSessionAuth,
+  requireAuth,
   requireAdminRole,
   ...auditSummaryQuerySchema,
   validateRequest,
@@ -25,3 +32,4 @@ router.get(
 );
 
 module.exports = router;
+

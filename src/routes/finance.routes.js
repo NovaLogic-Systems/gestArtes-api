@@ -1,5 +1,12 @@
+/**
+ * @file src/routes/finance.routes.js
+ * @author NovaLogic System
+ * @institution IPCA
+ * @project GestArtes - Projeto 50+10 para Entartes
+ */
+
 const express = require('express');
-const { requireSessionAuth, requireAdminRole } = require('../middlewares/auth.middleware');
+const { requireAuth, requireAdminRole } = require('../middlewares/auth.middleware');
 const validateRequest = require('../middlewares/validate.middleware');
 const {
   transactionsQuerySchema,
@@ -13,7 +20,7 @@ const router = express.Router();
 
 router.get(
   '/admin/finance/transactions',
-  requireSessionAuth,
+  requireAuth,
   requireAdminRole,
   ...transactionsQuerySchema,
   validateRequest,
@@ -22,7 +29,7 @@ router.get(
 
 router.get(
   '/admin/finance/summary',
-  requireSessionAuth,
+  requireAuth,
   requireAdminRole,
   ...summaryQuerySchema,
   validateRequest,
@@ -31,7 +38,7 @@ router.get(
 
 router.get(
   '/admin/finance/revenue',
-  requireSessionAuth,
+  requireAuth,
   requireAdminRole,
   ...revenueQuerySchema,
   validateRequest,
@@ -40,7 +47,7 @@ router.get(
 
 router.post(
   '/admin/finance/export',
-  requireSessionAuth,
+  requireAuth,
   requireAdminRole,
   ...exportBodySchema,
   validateRequest,
@@ -48,3 +55,4 @@ router.post(
 );
 
 module.exports = router;
+

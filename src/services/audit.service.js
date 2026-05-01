@@ -1,35 +1,19 @@
-const fs = require('node:fs');
-const readline = require('node:readline');
-const path = require('node:path');
+/**
+ * @file src/services/audit.service.js
+ * @author NovaLogic System
+ * @institution IPCA
+ * @project GestArtes - Projeto 50+10 para Entartes
+ */
 
-const LOG_FILE_PATH = path.join(process.cwd(), 'logs', 'audit.log');
+const prisma = require('../config/prisma');
 
 function createAuditService() {
-  async function _readAllEvents(predicate = null) {
-    return new Promise((resolve, reject) => {
-      if (!fs.existsSync(LOG_FILE_PATH)) {
-        return resolve([]);
-      }
-
-      const events = [];
-      const fileStream = fs.createReadStream(LOG_FILE_PATH, { encoding: 'utf8' });
-      const rl = readline.createInterface({ input: fileStream, crlfDelay: Infinity });
-
-      rl.on('line', (line) => {
-        const trimmed = line.trim();
-        if (!trimmed) return;
-        try {
-          const parsed = JSON.parse(trimmed);
-          if (parsed.category === 'audit' && (!predicate || predicate(parsed))) {
-            events.push(parsed);
-          }
-        } catch {
-          // skip malformed lines
-        }
-      });
-
-      rl.on('close', () => resolve(events));
-      fileStream.on('error', reject);
+  async function _readAllEvents(where = {}) {
+    return prisma.auditLog.findMany({
+      where,
+      orderBy: {
+        AuditTimestamp: 'desc',
+      },
     });
   }
 
@@ -43,65 +27,75 @@ function createAuditService() {
     limit = 100,
     offset = 0,
   } = {}) {
+    const parsedUserId = userId === undefined || userId === null || userId === '' ? null : Number(userId);
+    const parsedLimit = Number(limit);
+    const parsedOffset = Number(offset);
     const start = periodStart ? new Date(periodStart) : null;
     const end = periodEnd ? new Date(periodEnd) : null;
 
-    const predicate = (e) => {
-      const ts = new Date(e.auditTimestamp);
-      if (start && ts < start) return false;
-      if (end && ts > end) return false;
-      if (module && e.module !== module) return false;
-      if (action && e.action !== action) return false;
-      if (userId !== undefined && e.userId !== userId) return false;
-      if (result && e.result !== result) return false;
-      return true;
+    const where = {
+      ...(start || end
+        ? {
+            AuditTimestamp: {
+              ...(start ? { gte: start } : {}),
+              ...(end ? { lte: end } : {}),
+            },
+          }
+        : {}),
+      ...(module ? { Module: module } : {}),
+      ...(action ? { Action: action } : {}),
+      ...(Number.isFinite(parsedUserId) ? { UserID: parsedUserId } : {}),
+      ...(result ? { Result: result } : {}),
     };
 
-    const filtered = await _readAllEvents(predicate);
-    filtered.sort((a, b) => new Date(b.auditTimestamp) - new Date(a.auditTimestamp));
+    const filtered = await _readAllEvents(where);
 
     const total = filtered.length;
-    const items = filtered.slice(offset, offset + limit).map((e) => ({
-      timestamp: e.auditTimestamp,
-      userId: e.userId,
-      userName: e.userName,
-      userRole: e.userRole,
-      action: e.action,
-      module: e.module,
-      targetType: e.targetType,
-      targetId: e.targetId,
-      result: e.result,
-      detail: e.detail,
+    const startIndex = Number.isFinite(parsedOffset) ? Math.max(0, parsedOffset) : 0;
+    const pageSize = Number.isFinite(parsedLimit) ? Math.max(0, parsedLimit) : 100;
+    const items = filtered.slice(startIndex, startIndex + pageSize).map((e) => ({
+      timestamp: e.AuditTimestamp,
+      userId: e.UserID,
+      userName: e.UserName,
+      userRole: e.UserRole,
+      action: e.Action,
+      module: e.Module,
+      targetType: e.TargetType,
+      targetId: e.TargetID,
+      result: e.Result,
+      detail: e.Detail,
     }));
 
-    return { items, total, limit, offset };
+    return { items, total, limit: pageSize, offset: startIndex };
   }
 
   async function getSummary({ periodStart, periodEnd } = {}) {
     const start = periodStart ? new Date(periodStart) : null;
     const end = periodEnd ? new Date(periodEnd) : null;
 
-    const periodPredicate = start || end
-      ? (e) => {
-          const ts = new Date(e.auditTimestamp);
-          if (start && ts < start) return false;
-          if (end && ts > end) return false;
-          return true;
-        }
-      : null;
+    const where = {
+      ...(start || end
+        ? {
+            AuditTimestamp: {
+              ...(start ? { gte: start } : {}),
+              ...(end ? { lte: end } : {}),
+            },
+          }
+        : {}),
+    };
 
-    const filtered = await _readAllEvents(periodPredicate);
+    const filtered = await _readAllEvents(where);
 
     const yesterday = new Date(Date.now() - 24 * 60 * 60 * 1000);
-    const last24h = filtered.filter((e) => new Date(e.auditTimestamp) >= yesterday).length;
+    const last24h = filtered.filter((e) => new Date(e.AuditTimestamp) >= yesterday).length;
 
     const byModule = {};
     const byResult = { success: 0, failure: 0 };
 
     for (const e of filtered) {
-      byModule[e.module] = (byModule[e.module] ?? 0) + 1;
-      if (e.result === 'success') byResult.success += 1;
-      else if (e.result === 'failure') byResult.failure += 1;
+      byModule[e.Module] = (byModule[e.Module] ?? 0) + 1;
+      if (e.Result === 'success') byResult.success += 1;
+      else if (e.Result === 'failure') byResult.failure += 1;
     }
 
     return {
@@ -116,3 +110,4 @@ function createAuditService() {
 }
 
 module.exports = { createAuditService };
+

@@ -1,32 +1,38 @@
+/**
+ * @author NovaLogic System
+ * @institution IPCA
+ * @project GestArtes - Projeto 50+10 para Entartes
+ */
+
 const test = require('node:test');
 const assert = require('node:assert/strict');
 const Module = require('node:module');
 
 // ---------------------------------------------------------------------------
-// State factory
+// Fábrica de estado
 // ---------------------------------------------------------------------------
 
 function buildState() {
   return {
-    // coachingJoinRequest.findMany / findFirst results
+    // resultados de coachingJoinRequest.findMany / findFirst
     joinRequests: [],
-    // coachingJoinRequest.findUnique (for getAdmissionRequestForTeacher)
+    // coachingJoinRequest.findUnique (para getAdmissionRequestForTeacher)
     joinRequestById: null,
     // coachingJoinRequestStatus.findFirst
     statusRows: [
       { StatusID: 10, StatusName: 'TEACHER_APPROVED' },
       { StatusID: 11, StatusName: 'TEACHER_REJECTED' },
     ],
-    // counters returned by prisma.sessionTeacher.count etc.
+    // contadores devolvidos por prisma.sessionTeacher.count, etc.
     classesToday: 3,
     pendingConfirmations: 1,
     admissionRequests: 2,
     noShows: 0,
-    // sessionTeacher.findMany for today's schedule
+    // sessionTeacher.findMany para o horário de hoje
     sessionTeacherRows: [],
-    // captured values from coachingJoinRequest.update
+    // valores capturados de coachingJoinRequest.update
     updatedJoinRequestData: null,
-    // notification.create captured
+    // captura de notification.create
     createdNotification: null,
   };
 }
@@ -34,7 +40,7 @@ function buildState() {
 let state = buildState();
 
 // ---------------------------------------------------------------------------
-// Fake prisma
+// Prisma falso
 // ---------------------------------------------------------------------------
 
 const fakePrisma = {
@@ -99,7 +105,7 @@ const fakePrisma = {
 };
 
 // ---------------------------------------------------------------------------
-// Module patching
+// Substituição de módulos
 // ---------------------------------------------------------------------------
 
 const originalLoad = Module._load;
@@ -116,7 +122,7 @@ try {
 }
 
 // ---------------------------------------------------------------------------
-// Helpers
+// Funções auxiliares
 // ---------------------------------------------------------------------------
 
 function createResponse() {
@@ -128,7 +134,7 @@ function createResponse() {
   };
 }
 
-function buildSession({ userId = 1, role = 'teacher' } = {}) {
+function buildAuth({ userId = 1, role = 'teacher' } = {}) {
   return { userId, role };
 }
 
@@ -167,12 +173,12 @@ function buildJoinRequest(overrides = {}) {
 }
 
 // ---------------------------------------------------------------------------
-// getAuthenticatedTeacherUserId (tested indirectly through getDashboard)
+// getAuthenticatedTeacherUserId (testado indiretamente através de getDashboard)
 // ---------------------------------------------------------------------------
 
 test('getDashboard: returns 401 when session has no userId', async () => {
   resetState();
-  const req = { session: { userId: null, role: 'teacher' } };
+  const req = { auth: { userId: null, role: 'teacher' } };
   const res = createResponse();
   await teacherController.getDashboard(req, res, (err) => { assert.fail(`unexpected next: ${err}`); });
 
@@ -182,7 +188,7 @@ test('getDashboard: returns 401 when session has no userId', async () => {
 
 test('getDashboard: returns 403 when role is not teacher', async () => {
   resetState();
-  const req = { session: { userId: 1, role: 'student' } };
+  const req = { auth: { userId: 1, role: 'student' } };
   const res = createResponse();
   await teacherController.getDashboard(req, res, (err) => { assert.fail(`unexpected next: ${err}`); });
 
@@ -193,7 +199,7 @@ test('getDashboard: returns 403 when role is not teacher', async () => {
 test('getDashboard: returns KPI counts for authenticated teacher', async () => {
   resetState({ classesToday: 2, pendingConfirmations: 1, admissionRequests: 3, noShows: 0 });
 
-  const req = { session: buildSession() };
+  const req = { auth: buildAuth() };
   const res = createResponse();
   await teacherController.getDashboard(req, res, (err) => { assert.fail(`unexpected next: ${err}`); });
 
@@ -209,7 +215,7 @@ test('getDashboard: returns KPI counts for authenticated teacher', async () => {
 
 test('getPendingAdmissions: returns 401 when not authenticated', async () => {
   resetState();
-  const req = { session: { userId: null, role: 'teacher' } };
+  const req = { auth: { userId: null, role: 'teacher' } };
   const res = createResponse();
   await teacherController.getPendingAdmissions(req, res, () => {});
 
@@ -219,7 +225,7 @@ test('getPendingAdmissions: returns 401 when not authenticated', async () => {
 test('getPendingAdmissions: returns empty requests array when no pending admissions', async () => {
   resetState({ joinRequests: [] });
 
-  const req = { session: buildSession() };
+  const req = { auth: buildAuth() };
   const res = createResponse();
   await teacherController.getPendingAdmissions(req, res, (err) => { assert.fail(`unexpected next: ${err}`); });
 
@@ -231,7 +237,7 @@ test('getPendingAdmissions: returns empty requests array when no pending admissi
 
 test('getPendingAdmissions: returns mapped admission requests', async () => {
   resetState();
-  // The prisma.coachingJoinRequest.findMany returns an array that the controller maps
+  // prisma.coachingJoinRequest.findMany devolve um array que o controlador mapeia
   state.joinRequests = [
     {
       JoinRequestID: 1,
@@ -256,7 +262,7 @@ test('getPendingAdmissions: returns mapped admission requests', async () => {
     },
   ];
 
-  const req = { session: buildSession() };
+  const req = { auth: buildAuth() };
   const res = createResponse();
   await teacherController.getPendingAdmissions(req, res, (err) => { assert.fail(`unexpected next: ${err}`); });
 
@@ -276,7 +282,7 @@ test('getPendingAdmissions: returns mapped admission requests', async () => {
 test('reviewAdmissionRequest: returns 401 when not authenticated', async () => {
   resetState();
   const req = {
-    session: { userId: null, role: 'teacher' },
+    auth: { userId: null, role: 'teacher' },
     params: { joinRequestId: '1' },
     body: { decision: 'approve' },
   };
@@ -289,7 +295,7 @@ test('reviewAdmissionRequest: returns 401 when not authenticated', async () => {
 test('reviewAdmissionRequest: returns 400 for invalid joinRequestId', async () => {
   resetState();
   const req = {
-    session: buildSession(),
+    auth: buildAuth(),
     params: { joinRequestId: 'abc' },
     body: { decision: 'approve' },
   };
@@ -303,7 +309,7 @@ test('reviewAdmissionRequest: returns 400 for invalid joinRequestId', async () =
 test('reviewAdmissionRequest: returns 400 for invalid decision', async () => {
   resetState();
   const req = {
-    session: buildSession(),
+    auth: buildAuth(),
     params: { joinRequestId: '1' },
     body: { decision: 'maybe' },
   };
@@ -318,7 +324,7 @@ test('reviewAdmissionRequest: returns 400 when rejecting without observations', 
   resetState({ joinRequestById: buildJoinRequest() });
 
   const req = {
-    session: buildSession(),
+    auth: buildAuth(),
     params: { joinRequestId: '1' },
     body: { decision: 'reject', observations: '' },
   };
@@ -333,7 +339,7 @@ test('reviewAdmissionRequest: returns 404 when join request not found for this t
   resetState({ joinRequestById: null });
 
   const req = {
-    session: buildSession(),
+    auth: buildAuth(),
     params: { joinRequestId: '1' },
     body: { decision: 'approve' },
   };
@@ -352,7 +358,7 @@ test('reviewAdmissionRequest: returns 409 when request was already reviewed', as
   });
 
   const req = {
-    session: buildSession(),
+    auth: buildAuth(),
     params: { joinRequestId: '1' },
     body: { decision: 'approve' },
   };
@@ -366,7 +372,7 @@ test('reviewAdmissionRequest: approve succeeds and returns updated request', asy
   resetState({ joinRequestById: buildJoinRequest() });
 
   const req = {
-    session: buildSession(),
+    auth: buildAuth(),
     params: { joinRequestId: '1' },
     body: { decision: 'approve', observations: '' },
   };
@@ -382,7 +388,7 @@ test('reviewAdmissionRequest: reject succeeds with observations', async () => {
   resetState({ joinRequestById: buildJoinRequest() });
 
   const req = {
-    session: buildSession(),
+    auth: buildAuth(),
     params: { joinRequestId: '1' },
     body: { decision: 'reject', observations: 'Capacidade esgotada.' },
   };
@@ -395,16 +401,16 @@ test('reviewAdmissionRequest: reject succeeds with observations', async () => {
 });
 
 // ---------------------------------------------------------------------------
-// approveJoinRequest / rejectJoinRequest (shortcut handlers)
+// approveJoinRequest / rejectJoinRequest (handlers de atalho)
 // ---------------------------------------------------------------------------
 
 test('approveJoinRequest: forces decision=approve regardless of body', async () => {
   resetState({ joinRequestById: buildJoinRequest() });
 
   const req = {
-    session: buildSession(),
+    auth: buildAuth(),
     params: { joinRequestId: '1' },
-    body: {}, // no decision in body — forced by the handler
+    body: {}, // sem decisão no corpo — imposta pelo handler
   };
   const res = createResponse();
   await teacherController.approveJoinRequest(req, res, (err) => { assert.fail(`unexpected next: ${err}`); });
@@ -417,7 +423,7 @@ test('rejectJoinRequest: forces decision=reject, returns 400 without observation
   resetState({ joinRequestById: buildJoinRequest() });
 
   const req = {
-    session: buildSession(),
+    auth: buildAuth(),
     params: { joinRequestId: '1' },
     body: { observations: '' },
   };
@@ -433,7 +439,7 @@ test('rejectJoinRequest: forces decision=reject, returns 400 without observation
 
 test('getTodaySchedule: returns 401 when not authenticated', async () => {
   resetState();
-  const req = { session: { userId: null, role: 'teacher' } };
+  const req = { auth: { userId: null, role: 'teacher' } };
   const res = createResponse();
   await teacherController.getTodaySchedule(req, res, () => {});
 
@@ -443,7 +449,7 @@ test('getTodaySchedule: returns 401 when not authenticated', async () => {
 test('getTodaySchedule: returns empty schedule array when no sessions today', async () => {
   resetState({ sessionTeacherRows: [] });
 
-  const req = { session: buildSession() };
+  const req = { auth: buildAuth() };
   const res = createResponse();
   await teacherController.getTodaySchedule(req, res, (err) => { assert.fail(`unexpected next: ${err}`); });
 
@@ -469,7 +475,7 @@ test('getTodaySchedule: maps session rows to expected shape', async () => {
     ],
   });
 
-  const req = { session: buildSession() };
+  const req = { auth: buildAuth() };
   const res = createResponse();
   await teacherController.getTodaySchedule(req, res, (err) => { assert.fail(`unexpected next: ${err}`); });
 

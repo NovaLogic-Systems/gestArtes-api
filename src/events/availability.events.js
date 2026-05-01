@@ -1,3 +1,10 @@
+/**
+ * @file src/events/availability.events.js
+ * @author NovaLogic System
+ * @institution IPCA
+ * @project GestArtes - Projeto 50+10 para Entartes
+ */
+
 function emitAvailabilityCounter(io, teacherId, counters) {
 	if (!io || !teacherId || !counters) {
 		return;

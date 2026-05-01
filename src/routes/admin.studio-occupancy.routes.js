@@ -1,6 +1,13 @@
+/**
+ * @file src/routes/admin.studio-occupancy.routes.js
+ * @author NovaLogic System
+ * @institution IPCA
+ * @project GestArtes - Projeto 50+10 para Entartes
+ */
+
 const express = require('express');
 const validateRequest = require('../middlewares/validate.middleware');
-const { requireSessionAuth, requireAdminRole } = require('../middlewares/auth.middleware');
+const { requireAuth, requireAdminRole } = require('../middlewares/auth.middleware');
 const studioController = require('../controllers/studio.controller');
 const {
   getStudioOccupancySchema,
@@ -10,7 +17,7 @@ const {
 } = require('../middlewares/schemas/studioOccupancy.schema');
 
 const router = express.Router();
-const adminAccess = [requireSessionAuth, requireAdminRole];
+const adminAccess = [requireAuth, requireAdminRole];
 
 router.get(
   '/real-time',
@@ -45,3 +52,4 @@ router.patch(
 );
 
 module.exports = router;
+

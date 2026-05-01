@@ -1,22 +1,27 @@
+/**
+ * @author NovaLogic System
+ * @institution IPCA
+ * @project GestArtes - Projeto 50+10 para Entartes
+ */
+
 const test = require('node:test');
 const assert = require('node:assert/strict');
 const crypto = require('node:crypto');
+const jwt = require('jsonwebtoken');
 require('dotenv').config();
 
 const missingEnv = ['DATABASE_URL'].filter((key) => !process.env[key]);
 const shouldRun = process.env.RUN_DB_INTEGRATION_TESTS === 'true';
 
 if (!shouldRun) {
-  test('Lost & Found integration tests are skipped unless RUN_DB_INTEGRATION_TESTS=true', { skip: true }, () => {});
+  test('Testes de integração de Perdidos e Achados ignorados salvo RUN_DB_INTEGRATION_TESTS=true', { skip: true }, () => {});
 } else if (missingEnv.length > 0) {
-  test(`Lost & Found integration tests are skipped due to missing env vars: ${missingEnv.join(', ')}`, { skip: true }, () => {});
+  test(`Testes de integração de Perdidos e Achados ignorados por falta de variáveis de ambiente: ${missingEnv.join(', ')}`, { skip: true }, () => {});
 } else {
-  const signature = require('cookie-signature');
   const app = require('../../src/app');
   const prisma = require('../../src/config/prisma');
 
   const createdItemIds = [];
-  const createdSessionIds = [];
 
   let server;
   let baseUrl;
@@ -43,43 +48,25 @@ if (!shouldRun) {
     };
   }
 
-  function hasSessionSecret() {
-    return Boolean(process.env.SESSION_SECRET);
-  }
+  function createAccessToken(userId, role) {
+    const normalizedRole = String(role || '').trim().toLowerCase();
 
-  async function createSessionCookie(userId, role) {
-    if (!hasSessionSecret()) {
-      return null;
-    }
-
-    const sid = crypto.randomUUID();
-    const expires = new Date(Date.now() + 60 * 60 * 1000);
-    const session = {
-      cookie: {
-        originalMaxAge: 60 * 60 * 1000,
-        expires: expires.toISOString(),
-        httpOnly: true,
-        path: '/',
-        secure: false,
-        sameSite: 'lax',
-      },
-      userId,
-      role,
-      user: {
+    return jwt.sign(
+      {
+        sub: String(userId),
         userId,
-        role,
+        role: normalizedRole,
+        roles: normalizedRole ? [normalizedRole] : [],
+        tokenType: 'access',
       },
-    };
-
-    await prisma.$executeRaw`
-      INSERT INTO [dbo].[Sessions] ([sid], [session], [expires])
-      VALUES (${sid}, ${JSON.stringify(session)}, ${expires})
-    `;
-
-    createdSessionIds.push(sid);
-
-    const signedSid = `s:${signature.sign(sid, process.env.SESSION_SECRET)}`;
-    return `connect.sid=${encodeURIComponent(signedSid)}`;
+      process.env.JWT_ACCESS_SECRET || 'gestartes-dev-access-secret',
+      {
+        expiresIn: process.env.JWT_ACCESS_EXPIRY || process.env.JWT_ACCESS_TTL || '15m',
+        issuer: process.env.JWT_ISSUER || 'gestArtes-api',
+        audience: process.env.JWT_AUDIENCE || 'gestArtes-web',
+        jwtid: crypto.randomUUID(),
+      }
+    );
   }
 
   async function createLostFoundItem(overrides = {}) {
@@ -140,21 +127,13 @@ if (!shouldRun) {
       });
     }
 
-    if (createdSessionIds.length > 0) {
-      for (const sid of createdSessionIds) {
-        await prisma.$executeRaw`
-          DELETE FROM [dbo].[Sessions]
-          WHERE [sid] = ${sid}
-        `;
-      }
-    }
-
     await prisma.$disconnect();
   });
 
-  test('public listing excludes archived items', async (t) => {
+  // Lista pública e detalhe público
+  test('lista pública não mostra itens arquivados', async (t) => {
     if (!registeredByUserId) {
-      t.skip('No active user available to register lost and found item');
+      t.skip('Não existe utilizador ativo para registar item de perdidos e achados');
       return;
     }
 
@@ -174,9 +153,9 @@ if (!shouldRun) {
     assert.equal(ids.includes(archived.LostItemID), false);
   });
 
-  test('public get by id returns 404 for archived item', async (t) => {
+  test('pedido público por id devolve 404 para item arquivado', async (t) => {
     if (!registeredByUserId) {
-      t.skip('No active user available to register lost and found item');
+      t.skip('Não existe utilizador ativo para registar item de perdidos e achados');
       return;
     }
 
@@ -190,25 +169,22 @@ if (!shouldRun) {
     assert.equal(response.status, 404);
   });
 
-  test('admin claim endpoint is idempotent', async (t) => {
+  // Endpoints de administração: claim e archive
+  test('endpoint de claim do admin é idempotente', async (t) => {
     if (!registeredByUserId) {
-      t.skip('No active user available to register lost and found item');
+      t.skip('Não existe utilizador ativo para registar item de perdidos e achados');
       return;
     }
 
-    const cookie = await createSessionCookie(registeredByUserId, 'admin');
-    if (!cookie) {
-      t.skip('SESSION_SECRET is required to create signed test session cookies');
-      return;
-    }
+    const accessToken = createAccessToken(registeredByUserId, 'admin');
 
     const item = await createLostFoundItem({ ClaimedStatus: false });
 
     const first = await request(`/admin/lostfound/${item.LostItemID}/claim`, {
       method: 'PATCH',
       headers: {
+        Authorization: `Bearer ${accessToken}`,
         'Content-Type': 'application/json',
-        Cookie: cookie,
       },
       body: JSON.stringify({ adminNotes: 'Claimed once' }),
     });
@@ -216,8 +192,8 @@ if (!shouldRun) {
     const second = await request(`/admin/lostfound/${item.LostItemID}/claim`, {
       method: 'PATCH',
       headers: {
+        Authorization: `Bearer ${accessToken}`,
         'Content-Type': 'application/json',
-        Cookie: cookie,
       },
       body: JSON.stringify({ adminNotes: 'Claimed twice' }),
     });
@@ -230,25 +206,21 @@ if (!shouldRun) {
     assert.equal(second.body.adminNotes, 'Claimed twice');
   });
 
-  test('admin archive endpoint stores admin notes', async (t) => {
+  test('endpoint de archive do admin guarda notas de administração', async (t) => {
     if (!registeredByUserId) {
-      t.skip('No active user available to register lost and found item');
+      t.skip('Não existe utilizador ativo para registar item de perdidos e achados');
       return;
     }
 
-    const cookie = await createSessionCookie(registeredByUserId, 'admin');
-    if (!cookie) {
-      t.skip('SESSION_SECRET is required to create signed test session cookies');
-      return;
-    }
+    const accessToken = createAccessToken(registeredByUserId, 'admin');
 
     const item = await createLostFoundItem();
 
     const response = await request(`/admin/lostfound/${item.LostItemID}/archive`, {
       method: 'PATCH',
       headers: {
+        Authorization: `Bearer ${accessToken}`,
         'Content-Type': 'application/json',
-        Cookie: cookie,
       },
       body: JSON.stringify({ adminNotes: 'Archived by integration test' }),
     });
@@ -264,17 +236,13 @@ if (!shouldRun) {
     assert.ok(updated.ArchivedAt instanceof Date);
   });
 
-  test('admin listing returns archived items and admin notes', async (t) => {
+  test('listagem de admin devolve itens arquivados e notas de admin', async (t) => {
     if (!registeredByUserId) {
-      t.skip('No active user available to register lost and found item');
+      t.skip('Não existe utilizador ativo para registar item de perdidos e achados');
       return;
     }
 
-    const cookie = await createSessionCookie(registeredByUserId, 'admin');
-    if (!cookie) {
-      t.skip('SESSION_SECRET is required to create signed test session cookies');
-      return;
-    }
+    const accessToken = createAccessToken(registeredByUserId, 'admin');
 
     const active = await createLostFoundItem({
       AdminNotes: 'Visible only to admin',
@@ -288,7 +256,7 @@ if (!shouldRun) {
 
     const response = await request('/admin/lostfound', {
       headers: {
-        Cookie: cookie,
+        Authorization: `Bearer ${accessToken}`,
       },
     });
 
@@ -305,9 +273,10 @@ if (!shouldRun) {
     assert.equal(archivedItem.isArchived, true);
   });
 
-  test('public lost and found responses never expose admin notes', async (t) => {
+  // Segurança de resposta pública
+  test('respostas públicas nunca expõem notas de administração', async (t) => {
     if (!registeredByUserId) {
-      t.skip('No active user available to register lost and found item');
+      t.skip('Não existe utilizador ativo para registar item de perdidos e achados');
       return;
     }
 
@@ -329,30 +298,26 @@ if (!shouldRun) {
     assert.equal(Object.hasOwn(detailResponse.body, 'adminNotes'), false);
   });
 
-  test('admin get by id returns 404 for missing item', async (t) => {
+  test('pedido de admin por id devolve 404 para item inexistente', async (t) => {
     if (!registeredByUserId) {
-      t.skip('No active user available to register lost and found item');
+      t.skip('Não existe utilizador ativo para registar item de perdidos e achados');
       return;
     }
 
-    const cookie = await createSessionCookie(registeredByUserId, 'admin');
-    if (!cookie) {
-      t.skip('SESSION_SECRET is required to create signed test session cookies');
-      return;
-    }
+    const accessToken = createAccessToken(registeredByUserId, 'admin');
 
     const response = await request('/admin/lostfound/999999999', {
       headers: {
-        Cookie: cookie,
+        Authorization: `Bearer ${accessToken}`,
       },
     });
 
     assert.equal(response.status, 404);
   });
 
-  test('admin endpoints reject missing and non-admin sessions', async (t) => {
+  test('endpoints de admin rejeitam autenticação em falta e não admin', async (t) => {
     if (!registeredByUserId) {
-      t.skip('No active user available to register lost and found item');
+      t.skip('Não existe utilizador ativo para registar item de perdidos e achados');
       return;
     }
 
@@ -362,27 +327,23 @@ if (!shouldRun) {
         'Content-Type': 'application/json',
       },
       body: JSON.stringify({
-        title: 'No Session Item',
+        title: 'No Auth Item',
         foundDate: new Date().toISOString(),
       }),
     });
 
     assert.equal(noSessionResponse.status, 401);
 
-    const studentCookie = await createSessionCookie(registeredByUserId, 'student');
-    if (!studentCookie) {
-      t.skip('SESSION_SECRET is required to create signed test session cookies');
-      return;
-    }
+    const studentAccessToken = createAccessToken(registeredByUserId, 'student');
 
     const nonAdminResponse = await request('/admin/lostfound', {
       method: 'POST',
       headers: {
+        Authorization: `Bearer ${studentAccessToken}`,
         'Content-Type': 'application/json',
-        Cookie: studentCookie,
       },
       body: JSON.stringify({
-        title: 'Student Session Item',
+        title: 'Student Auth Item',
         foundDate: new Date().toISOString(),
       }),
     });

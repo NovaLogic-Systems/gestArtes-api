@@ -1,10 +1,12 @@
-const prisma = require('../config/prisma');
+/**
+ * @file src/services/joinRequest.service.js
+ * @author NovaLogic System
+ * @institution IPCA
+ * @project GestArtes - Projeto 50+10 para Entartes
+ */
 
-function createHttpError(status, message) {
-  const error = new Error(message);
-  error.status = status;
-  return error;
-}
+const prisma = require('../config/prisma');
+const { createHttpError } = require('../utils/http-error');
 
 function normalizeStatusName(statusName) {
   return String(statusName || '')
@@ -381,6 +383,10 @@ async function teacherApprove({ joinRequestId, teacherUserId }) {
   });
 }
 
+async function approveByTeacher({ joinRequestId, teacherUserId }) {
+  return teacherApprove({ joinRequestId, teacherUserId });
+}
+
 async function teacherReject({ joinRequestId, teacherUserId }) {
   return prisma.$transaction(async (db) => {
     const pendingTeacherStatusId = await getStatusIdByKey(db, 'PendingTeacher');
@@ -445,6 +451,10 @@ async function teacherReject({ joinRequestId, teacherUserId }) {
       studentUserId: updated.StudentAccount?.UserID || null,
     };
   });
+}
+
+async function rejectByTeacher({ joinRequestId, teacherUserId }) {
+  return teacherReject({ joinRequestId, teacherUserId });
 }
 
 async function listAdminPendingRequests() {
@@ -557,6 +567,10 @@ async function adminApprove({ joinRequestId, adminUserId }) {
   });
 }
 
+async function approveByManagement({ joinRequestId, adminUserId }) {
+  return adminApprove({ joinRequestId, adminUserId });
+}
+
 async function adminReject({ joinRequestId, adminUserId }) {
   return prisma.$transaction(async (db) => {
     const pendingAdminStatusId = await getStatusIdByKey(db, 'PendingAdmin');
@@ -609,6 +623,10 @@ async function adminReject({ joinRequestId, adminUserId }) {
   });
 }
 
+async function rejectByManagement({ joinRequestId, adminUserId }) {
+  return adminReject({ joinRequestId, adminUserId });
+}
+
 async function listStudentRequests({ studentUserId }) {
   const studentAccountId = await getStudentAccountIdByUserId(prisma, studentUserId);
 
@@ -645,9 +663,14 @@ module.exports = {
   listJoinRequestsBySession,
   listTeacherPendingRequests,
   teacherApprove,
+  approveByTeacher,
   teacherReject,
+  rejectByTeacher,
   listAdminPendingRequests,
   adminApprove,
+  approveByManagement,
   adminReject,
+  rejectByManagement,
   listStudentRequests,
 };
+

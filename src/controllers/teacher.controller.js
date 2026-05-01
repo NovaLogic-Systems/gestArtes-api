@@ -1,9 +1,21 @@
+/**
+ * @file src/controllers/teacher.controller.js
+ * @author NovaLogic System
+ * @institution IPCA
+ * @project GestArtes - Projeto 50+10 para Entartes
+ */
+
 const prisma = require('../config/prisma');
 const {
   submitAvailability,
   getAvailability,
   updateAvailability,
 } = require('../services/availability.service');
+const { createTeacherUseCases } = require('../application/use-cases/teacher');
+
+// Factory de use-cases: injeção de serviço de disponibilidade ao arranque
+// Controllers mantêm responsabilidade de IO/notificações (sockets, responses)
+const teacherUseCases = createTeacherUseCases({ availabilityService: { submitAvailability } });
 const { getTeacherAvailabilityCounters } = require('../services/availabilityCounters.service');
 const { emitAvailabilityCounter } = require('../events/availability.events');
 
@@ -53,8 +65,8 @@ function isPendingAvailabilityStatus(statusName) {
 }
 
 function getAuthenticatedTeacherUserId(req, res) {
-  const userId = Number(req.session?.userId);
-  const role = normalizeString(req.session?.role);
+  const userId = Number(req.auth?.userId);
+  const role = normalizeString(req.auth?.role);
 
   if (!Number.isInteger(userId) || userId <= 0) {
     res.status(401).json({ error: 'Not authenticated' });
@@ -193,7 +205,7 @@ async function submitSchedule(req, res, next) {
       return;
     }
 
-    const result = await submitAvailability(teacherUserId, req.body);
+    const result = await teacherUseCases.submitSchedule.execute({ teacherUserId, payload: req.body });
     await emitAvailabilitySummary(req, teacherUserId);
 
     res.status(201).json({
@@ -1039,6 +1051,10 @@ async function registerNoShow(req, res, next) {
   }
 }
 
+async function recordNoShow(req, res, next) {
+  return registerNoShow(req, res, next);
+}
+
 module.exports = {
   approveJoinRequest,
   confirmCompletion,
@@ -1047,7 +1063,9 @@ module.exports = {
   getPendingAdmissions,
   getPendingSessions,
   getTodaySchedule,
+  recordNoShow,
   registerNoShow,
   rejectJoinRequest,
   reviewAdmissionRequest,
 };
+

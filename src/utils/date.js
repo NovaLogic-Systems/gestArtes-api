@@ -1,3 +1,10 @@
+/**
+ * @file src/utils/date.js
+ * @author NovaLogic System
+ * @institution IPCA
+ * @project GestArtes - Projeto 50+10 para Entartes
+ */
+
 const { createHttpError } = require('./http-error');
 
 function toTimeOnlyDate(value, message) {
@@ -55,3 +62,4 @@ function formatDateLabel(date) {
 }
 
 module.exports = { toTimeOnlyDate, formatTimeOnly, formatDateLabel };
+

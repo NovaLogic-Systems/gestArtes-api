@@ -4,6 +4,16 @@
  * @project GestArtes - Projeto 50+10 para Entartes
  */
 
+/**
+ * Integração do fluxo de Perdidos e Achados.
+ *
+ * O que valida:
+ * - listagem pública e detalhe público sem expor itens arquivados
+ * - claim e archive do lado de administração
+ * - notas administrativas apenas nas respostas internas
+ * - bloqueio de itens inexistentes e controlo de autenticação/autorização
+ */
+
 const test = require('node:test');
 const assert = require('node:assert/strict');
 const crypto = require('node:crypto');

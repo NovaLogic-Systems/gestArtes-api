@@ -4,6 +4,17 @@
  * @project GestArtes - Projeto 50+10 para Entartes
  */
 
+/**
+ * Integração dos limites de segurança da API.
+ *
+ * O que valida:
+ * - headers de segurança no health check
+ * - CSP e HTML hardened na documentação
+ * - proteção CSRF em pedidos com estado
+ * - CORS no handshake do Socket.IO
+ * - autenticação obrigatória nos endpoints sensíveis
+ */
+
 const test = require('node:test');
 const assert = require('node:assert/strict');
 const http = require('node:http');

@@ -1,3 +1,10 @@
+/**
+ * @file src/services/lostFound.service.js
+ * @author NovaLogic System
+ * @institution IPCA
+ * @project GestArtes - Projeto 50+10 para Entartes
+ */
+
 const prisma = require('../config/prisma');
 
 function isAdminRole(role) {
@@ -147,6 +154,10 @@ async function claimItem(id, adminNotes, role) {
   return toAdminDto(updated, role);
 }
 
+async function markClaimed(id, adminNotes, role) {
+  return claimItem(id, adminNotes, role);
+}
+
 async function archiveItem(id, adminNotes, role) {
   const existing = await findItemById(id);
 
@@ -166,14 +177,26 @@ async function archiveItem(id, adminNotes, role) {
   return toAdminDto(updated, role);
 }
 
+async function publishItem(data, role) {
+  return createItem(data, role);
+}
+
+async function publish(data, role) {
+  return createItem(data, role);
+}
+
 module.exports = {
   listPublicItems,
   getPublicItemById,
   listAdminItems,
   getAdminItemById,
   createItem,
+  publishItem,
+  publish,
   updateItem,
   deleteItem,
   claimItem,
+  markClaimed,
   archiveItem,
 };
+

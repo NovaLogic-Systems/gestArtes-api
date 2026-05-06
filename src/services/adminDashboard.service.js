@@ -1,3 +1,10 @@
+/**
+ * @file src/services/adminDashboard.service.js
+ * @author NovaLogic System
+ * @institution IPCA
+ * @project GestArtes - Projeto 50+10 para Entartes
+ */
+
 const prisma = require('../config/prisma');
 
 const ADMIN_DASHBOARD_SOCKET_EVENT = 'admin:dashboard:update';
@@ -274,3 +281,4 @@ module.exports = {
   emitAdminDashboardUpdate,
   getStudioOccupancyHeatmap,
 };
+

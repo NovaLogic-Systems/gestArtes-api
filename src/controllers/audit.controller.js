@@ -1,3 +1,10 @@
+/**
+ * @file src/controllers/audit.controller.js
+ * @author NovaLogic System
+ * @institution IPCA
+ * @project GestArtes - Projeto 50+10 para Entartes
+ */
+
 const { createAuditService } = require('../services/audit.service');
 
 const auditService = createAuditService();
@@ -32,3 +39,4 @@ async function getSummary(req, res, next) {
 }
 
 module.exports = { listEvents, getSummary };
+

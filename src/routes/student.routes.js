@@ -1,3 +1,10 @@
+/**
+ * @file src/routes/student.routes.js
+ * @author NovaLogic System
+ * @institution IPCA
+ * @project GestArtes - Projeto 50+10 para Entartes
+ */
+
 const express = require('express');
 const {
   APP_PERMISSIONS,
@@ -14,3 +21,4 @@ router.get('/dashboard', ...studentAccess, studentController.getDashboard);
 router.get('/schedule/upcoming', ...studentAccess, studentController.getUpcomingSchedule);
 
 module.exports = router;
+

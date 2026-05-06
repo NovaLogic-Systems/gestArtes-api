@@ -1,3 +1,10 @@
+/**
+ * @file src/middlewares/zodValidation.middleware.js
+ * @author NovaLogic System
+ * @institution IPCA
+ * @project GestArtes - Projeto 50+10 para Entartes
+ */
+
 function formatZodIssue(issue) {
   const path = issue.path.length > 0 ? issue.path : ['body'];
 
@@ -24,3 +31,4 @@ function validateZod(schema, source = 'body') {
 }
 
 module.exports = { validateZod };
+

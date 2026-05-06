@@ -1,3 +1,10 @@
+/**
+ * @file src/middlewares/schemas/session.schema.js
+ * @author NovaLogic System
+ * @institution IPCA
+ * @project GestArtes - Projeto 50+10 para Entartes
+ */
+
 const { body } = require('express-validator');
 
 function validateEndAfterStart(startField, message) {

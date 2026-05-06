@@ -1,3 +1,10 @@
+/**
+ * @file src/middlewares/marketplaceUpload.middleware.js
+ * @author NovaLogic System
+ * @institution IPCA
+ * @project GestArtes - Projeto 50+10 para Entartes
+ */
+
 const path = require('node:path');
 const fs = require('node:fs');
 const multer = require('multer');
@@ -60,3 +67,4 @@ function attachMarketplacePhoto(req, res, next) {
 module.exports = {
   attachMarketplacePhoto,
 };
+

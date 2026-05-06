@@ -1,8 +1,15 @@
+/**
+ * @file src/controllers/lostFound.controller.js
+ * @author NovaLogic System
+ * @institution IPCA
+ * @project GestArtes - Projeto 50+10 para Entartes
+ */
+
 const lostFoundService = require('../services/lostFound.service');
-const { getSessionRole } = require('../middlewares/rbac.middleware');
+const { getAuthenticatedRole, getAuthenticatedUserId } = require('../utils/auth-context');
 
 function getRequestRole(req) {
-  return getSessionRole(req.session);
+  return getAuthenticatedRole(req);
 }
 
 async function listPublic(req, res, next) {
@@ -57,7 +64,7 @@ async function getAdminById(req, res, next) {
 
 async function create(req, res, next) {
   try {
-    const item = await lostFoundService.createItem(req.body, req.session.userId, getRequestRole(req));
+    const item = await lostFoundService.createItem(req.body, getAuthenticatedUserId(req), getRequestRole(req));
     res.status(201).json(item);
   } catch (error) {
     next(error);
@@ -139,3 +146,4 @@ module.exports = {
   claim,
   archive,
 };
+

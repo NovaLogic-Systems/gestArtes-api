@@ -1,3 +1,9 @@
+/**
+ * @author NovaLogic System
+ * @institution IPCA
+ * @project GestArtes - Projeto 50+10 para Entartes
+ */
+
 const test = require('node:test');
 const assert = require('node:assert/strict');
 const Module = require('node:module');
@@ -489,7 +495,7 @@ test('finalizeValidation validates the session id and forwards the admin user id
 
   const req = {
     params: { id: '321' },
-    session: { userId: 44 },
+    auth: { userId: 44, role: 'admin' },
   };
   const res = createResponse();
 

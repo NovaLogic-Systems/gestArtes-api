@@ -1,3 +1,10 @@
+/**
+ * @file src/routes/teacher.routes.js
+ * @author NovaLogic System
+ * @institution IPCA
+ * @project GestArtes - Projeto 50+10 para Entartes
+ */
+
 const express = require('express');
 const {
   APP_PERMISSIONS,
@@ -34,3 +41,4 @@ router.post('/availability/exceptions', ...teacherAccess, availabilityController
 router.get('/availability/exceptions/pending', ...teacherAccess, availabilityController.listPendingTeacherExceptions);
 
 module.exports = router;
+

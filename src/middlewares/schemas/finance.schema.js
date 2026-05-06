@@ -1,3 +1,10 @@
+/**
+ * @file src/middlewares/schemas/finance.schema.js
+ * @author NovaLogic System
+ * @institution IPCA
+ * @project GestArtes - Projeto 50+10 para Entartes
+ */
+
 const { body, query } = require('express-validator');
 
 const KNOWN_ENTRY_TYPES = [
@@ -94,3 +101,4 @@ module.exports = {
   exportBodySchema,
   KNOWN_ENTRY_TYPES,
 };
+

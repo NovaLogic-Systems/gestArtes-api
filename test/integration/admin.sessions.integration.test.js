@@ -1,3 +1,9 @@
+/**
+ * @author NovaLogic System
+ * @institution IPCA
+ * @project GestArtes - Projeto 50+10 para Entartes
+ */
+
 const test = require('node:test');
 const assert = require('node:assert/strict');
 const express = require('express');
@@ -131,7 +137,11 @@ function createApp() {
   const app = express();
   app.use(express.json());
   app.use((req, res, next) => {
-    req.session = {
+    req.auth = {
+      userId: 900,
+      role: 'admin',
+    };
+    req.user = {
       userId: 900,
       role: 'admin',
     };

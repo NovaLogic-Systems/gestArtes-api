@@ -1,3 +1,10 @@
+/**
+ * @file src/routes/coaching.routes.js
+ * @author NovaLogic System
+ * @institution IPCA
+ * @project GestArtes - Projeto 50+10 para Entartes
+ */
+
 const express = require('express');
 const { requireAuth, requireRole } = require('../middlewares/auth.middleware');
 const validateRequest = require('../middlewares/validate.middleware');
@@ -68,3 +75,4 @@ router.patch(
 );
 
 module.exports = router;
+

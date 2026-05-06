@@ -1,3 +1,10 @@
+/**
+ * @file src/controllers/availability.controller.js
+ * @author NovaLogic System
+ * @institution IPCA
+ * @project GestArtes - Projeto 50+10 para Entartes
+ */
+
 const {
   createException,
   getAvailability,
@@ -9,10 +16,15 @@ const {
 } = require('../services/availability.service');
 const { getTeacherAvailabilityCounters } = require('../services/availabilityCounters.service');
 const { emitAvailabilityCounter } = require('../events/availability.events');
+const { createAvailabilityUseCases } = require('../application/use-cases/availability');
+const logger = require('../utils/logger');
+
+const availabilityService = require('../services/availability.service');
+const availabilityUseCases = createAvailabilityUseCases({ availabilityService });
 
 function getAuthenticatedTeacherUserId(req, res) {
-  const userId = Number(req.session?.userId);
-  const role = String(req.session?.role || '').trim().toLowerCase();
+  const userId = Number(req.auth?.userId);
+  const role = String(req.auth?.role || '').trim().toLowerCase();
 
   if (!Number.isInteger(userId) || userId <= 0) {
     res.status(401).json({ error: 'Not authenticated' });
@@ -40,9 +52,13 @@ async function submitTeacherAvailability(req, res, next) {
       return;
     }
 
-    const result = await submitAvailability(teacherUserId, req.body);
+    const { summary, availability } = await availabilityUseCases.submitAvailability.execute({
+      req,
+      teacherUserId,
+      payload: req.body,
+    });
     await emitAvailabilitySummary(req, teacherUserId);
-    res.status(201).json(result);
+    res.status(201).json({ summary, availability });
   } catch (error) {
     next(error);
   }
@@ -129,8 +145,8 @@ async function listPendingTeacherExceptions(req, res, next) {
 }
 
 function getAuthenticatedAdminUserId(req, res) {
-  const userId = Number(req.session?.userId);
-  const role = String(req.session?.role || '').trim().toLowerCase();
+  const userId = Number(req.auth?.userId);
+  const role = String(req.auth?.role || '').trim().toLowerCase();
 
   if (!Number.isInteger(userId) || userId <= 0) {
     res.status(401).json({ error: 'Not authenticated' });
@@ -175,8 +191,17 @@ async function approveAvailability(req, res, next) {
       return;
     }
 
-    const result = await reviewAvailability(availabilityId, adminUserId, 'approve', req.body?.reviewNotes ?? null);
-    res.json({ availability: result });
+    const { availability } = await availabilityUseCases.reviewAvailability.execute({
+      req,
+      adminUserId,
+      payload: {
+        availabilityId,
+        decision: 'approve',
+        reviewNotes: req.body?.reviewNotes ?? null,
+      },
+    });
+
+    res.json({ availability });
   } catch (error) {
     next(error);
   }
@@ -197,8 +222,16 @@ async function rejectAvailability(req, res, next) {
       return;
     }
 
-    const result = await reviewAvailability(availabilityId, adminUserId, 'reject', req.body?.reviewNotes ?? null);
-    res.json({ availability: result });
+    const { availability } = await availabilityUseCases.reviewAvailability.execute({
+      req,
+      adminUserId,
+      payload: {
+        availabilityId,
+        decision: 'reject',
+        reviewNotes: req.body?.reviewNotes ?? null,
+      },
+    });
+    res.json({ availability });
   } catch (error) {
     next(error);
   }

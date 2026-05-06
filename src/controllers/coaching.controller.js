@@ -1,7 +1,20 @@
+/**
+ * @file src/controllers/coaching.controller.js
+ * @author NovaLogic System
+ * @institution IPCA
+ * @project GestArtes - Projeto 50+10 para Entartes
+ */
+
 const coachingService = require('../services/coaching.service');
 const { sendNotification } = require('./notification.controller');
 const logger = require('../utils/logger');
+const { createCoachingUseCases } = require('../application/use-cases/coaching');
 
+const coachingUseCases = createCoachingUseCases({
+  coachingService,
+  sendNotification,
+  logger,
+});
 function toPositiveInt(value) {
   const parsed = Number.parseInt(value, 10);
   return Number.isInteger(parsed) && parsed > 0 ? parsed : null;
@@ -35,36 +48,16 @@ async function getCompatibleStudios(req, res, next) {
 
 async function createSession(req, res, next) {
   try {
-    const teacherUserId = toPositiveInt(req.session?.userId);
+    const teacherUserId = toPositiveInt(req.auth?.userId);
     if (!teacherUserId) {
       return res.status(500).json({ error: 'Sessão autenticada inválida' });
     }
 
-    const session = await coachingService.createSessionInitiative(req.body, teacherUserId);
-    const adminUserIds = await coachingService.listAdminUserIds();
-    const startLabel = new Date(session.StartTime).toLocaleString('pt-PT', {
-      timeZone: 'UTC',
-      dateStyle: 'short',
-      timeStyle: 'short',
+    const { session } = await coachingUseCases.createSessionInitiative.execute({
+      req,
+      teacherUserId,
+      payload: req.body,
     });
-
-    const notificationResults = await Promise.allSettled(
-      adminUserIds.map((userId) => sendNotification(req, {
-        userId,
-        type: 'coaching',
-        message: `Nova iniciativa de coaching pendente de aprovação para ${startLabel}. Sessão #${session.SessionID}.`,
-      }))
-    );
-
-    const failedNotifications = notificationResults.filter((result) => result.status === 'rejected');
-    if (failedNotifications.length > 0) {
-      logger.warn('Failed to notify one or more admins about a teacher coaching initiative', {
-        sessionId: session.SessionID,
-        attemptedRecipients: adminUserIds.length,
-        failedRecipients: failedNotifications.length,
-        reasons: failedNotifications.map((result) => String(result.reason?.message || result.reason || 'Unknown')),
-      });
-    }
 
     return res.status(201).json({ session });
   } catch (error) {
@@ -81,35 +74,14 @@ async function createSession(req, res, next) {
 
 async function createBooking(req, res, next) {
   try {
-    const studentUserId = toPositiveInt(req.session?.userId);
+    const studentUserId = toPositiveInt(req.auth?.userId);
     if (!studentUserId) return res.status(401).json({ error: 'Não autenticado' });
 
-    const { teacherId, studioId, modalityId, startTime, endTime, maxParticipants, notes } = req.body;
-
-    const session = await coachingService.createBooking(
-      { teacherId, studioId, modalityId, startTime, endTime, maxParticipants, notes },
-      studentUserId
-    );
-
-    const parsedTeacherId = toPositiveInt(teacherId);
-    if (parsedTeacherId) {
-      try {
-        const startLabel = startTime
-          ? new Date(startTime).toLocaleString('pt-PT', { timeZone: 'UTC', dateStyle: 'short', timeStyle: 'short' })
-          : '';
-        await sendNotification(req, {
-          userId: parsedTeacherId,
-          type: 'coaching',
-          message: `Nova solicitação de sessão de coaching para ${startLabel}. Sessão #${session.SessionID}.`,
-        });
-      } catch (notificationError) {
-        logger.warn('Failed to notify teacher about new coaching booking request', {
-          sessionId: session.SessionID,
-          teacherUserId: parsedTeacherId,
-          error: notificationError?.message,
-        });
-      }
-    }
+    const { session } = await coachingUseCases.createBookingRequest.execute({
+      req,
+      studentUserId,
+      payload: req.body,
+    });
 
     return res.status(201).json({ session });
   } catch (error) {
@@ -119,7 +91,7 @@ async function createBooking(req, res, next) {
 
 async function cancelBooking(req, res, next) {
   try {
-    const studentUserId = toPositiveInt(req.session?.userId);
+    const studentUserId = toPositiveInt(req.auth?.userId);
     if (!studentUserId) return res.status(401).json({ error: 'Não autenticado' });
 
     const sessionId = toPositiveInt(req.params.id);
@@ -135,7 +107,7 @@ async function cancelBooking(req, res, next) {
 
 async function confirmCompletion(req, res, next) {
   try {
-    const studentUserId = toPositiveInt(req.session?.userId);
+    const studentUserId = toPositiveInt(req.auth?.userId);
     if (!studentUserId) return res.status(401).json({ error: 'Não autenticado' });
 
     const sessionId = toPositiveInt(req.params.id);
@@ -150,7 +122,7 @@ async function confirmCompletion(req, res, next) {
 
 async function getSessionHistory(req, res, next) {
   try {
-    const studentUserId = toPositiveInt(req.session?.userId);
+    const studentUserId = toPositiveInt(req.auth?.userId);
     if (!studentUserId) return res.status(401).json({ error: 'Não autenticado' });
 
     const sessions = await coachingService.getSessionHistory(studentUserId);
@@ -180,3 +152,4 @@ module.exports = {
   getSessionHistory,
   getWeeklyMap,
 };
+

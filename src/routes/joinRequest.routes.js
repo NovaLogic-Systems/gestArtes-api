@@ -1,3 +1,10 @@
+/**
+ * @file src/routes/joinRequest.routes.js
+ * @author NovaLogic System
+ * @institution IPCA
+ * @project GestArtes - Projeto 50+10 para Entartes
+ */
+
 const express = require('express');
 
 const joinRequestController = require('../controllers/joinRequest.controller');
@@ -69,3 +76,4 @@ router.get(
 );
 
 module.exports = router;
+

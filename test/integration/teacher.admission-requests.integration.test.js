@@ -1,3 +1,9 @@
+/**
+ * @author NovaLogic System
+ * @institution IPCA
+ * @project GestArtes - Projeto 50+10 para Entartes
+ */
+
 const test = require('node:test');
 const assert = require('node:assert/strict');
 const crypto = require('node:crypto');
@@ -26,7 +32,7 @@ if (!shouldRun) {
 
   let server;
   let baseUrl = '';
-  let sessionCookie = '';
+  let accessToken = '';
   let teacherUserId = null;
   let teacherFlowReady = false;
 
@@ -37,23 +43,14 @@ if (!shouldRun) {
   async function request(path, options = {}) {
     const headers = { ...(options.headers || {}) };
 
-    if (sessionCookie) {
-      headers.Cookie = sessionCookie;
+    if (accessToken && !headers.Authorization) {
+      headers.Authorization = `Bearer ${accessToken}`;
     }
 
     const response = await fetch(`${baseUrl}${path}`, {
       ...options,
       headers,
     });
-
-    const setCookieHeader =
-      (typeof response.headers.getSetCookie === 'function'
-        ? response.headers.getSetCookie()[0]
-        : null) || response.headers.get('set-cookie');
-
-    if (setCookieHeader) {
-      sessionCookie = setCookieHeader.split(';')[0];
-    }
 
     return response;
   }
@@ -191,9 +188,12 @@ if (!shouldRun) {
     });
 
     assert.equal(loginResponse.status, 200, 'Falha no login de teste para admissions');
+    const loginBody = await loginResponse.json();
+    accessToken = loginBody?.accessToken || '';
+    assert.ok(accessToken, 'Falha ao obter access token para admissions');
 
     const meResponse = await request('/auth/me');
-    assert.equal(meResponse.status, 200, 'Falha ao obter sessao autenticada para admissions');
+    assert.equal(meResponse.status, 200, 'Falha ao obter contexto autenticado para admissions');
 
     const meBody = await meResponse.json();
     teacherUserId = meBody?.user?.userId ?? null;

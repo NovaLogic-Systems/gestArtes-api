@@ -1,3 +1,10 @@
+/**
+ * @file src/services/pricing.service.js
+ * @author NovaLogic System
+ * @institution IPCA
+ * @project GestArtes - Projeto 50+10 para Entartes
+ */
+
 const { logAudit, AUDIT_ACTIONS, AUDIT_MODULES, AUDIT_RESULTS } = require('../utils/audit');
 
 const OUTSIDE_HOURS_MULTIPLIER = 1.5; // BR-18
@@ -150,3 +157,4 @@ function createPricingService(prismaClient) {
 }
 
 module.exports = { createPricingService };
+

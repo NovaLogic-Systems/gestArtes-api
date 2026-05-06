@@ -1,18 +1,24 @@
-const inventoryService = require('../services/inventory.service');
+/**
+ * @file src/controllers/inventory.controller.js
+ * @author NovaLogic System
+ * @institution IPCA
+ * @project GestArtes - Projeto 50+10 para Entartes
+ */
 
-function createHttpError(status, message) {
-  const error = new Error(message);
-  error.status = status;
-  return error;
-}
+const inventoryService = require('../services/inventory.service');
+const { createHttpError } = require('../utils/http-error');
+const { createInventoryUseCases } = require('../application/use-cases/inventory');
+const logger = require('../utils/logger');
+
+const inventoryUseCases = createInventoryUseCases({ inventoryService });
 
 function normalizeString(value) {
   return String(value || '').trim().toLowerCase();
 }
 
 function getAuthenticatedInventoryUserId(req) {
-  const userId = Number(req.session?.userId);
-  const role = normalizeString(req.session?.role);
+  const userId = Number(req.auth?.userId);
+  const role = normalizeString(req.auth?.role);
 
   if (!Number.isInteger(userId) || userId <= 0) {
     throw createHttpError(401, 'Unauthorized');
@@ -54,8 +60,13 @@ async function getItemById(req, res, next) {
 async function createRental(req, res, next) {
   try {
     const renterId = getAuthenticatedInventoryUserId(req);
-    const rental = await inventoryService.createRental(req.body, renterId);
-    res.status(201).json(rental);
+    const { rental, checkoutSummary } = await inventoryUseCases.createRental.execute({
+      req,
+      renterId,
+      payload: req.body,
+    });
+
+    res.status(201).json({ rental, checkoutSummary });
   } catch (error) {
     next(error);
   }
@@ -78,3 +89,4 @@ module.exports = {
   createRental,
   getRentals,
 };
+

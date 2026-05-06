@@ -1,3 +1,10 @@
+/**
+ * @file src/routes/inventory.routes.js
+ * @author NovaLogic System
+ * @institution IPCA
+ * @project GestArtes - Projeto 50+10 para Entartes
+ */
+
 const express = require('express');
 
 const inventoryController = require('../controllers/inventory.controller');
@@ -43,3 +50,4 @@ router.post(
 router.get('/rentals', ...inventoryAccess, inventoryController.getRentals);
 
 module.exports = router;
+

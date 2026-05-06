@@ -1,3 +1,10 @@
+/**
+ * @file src/middlewares/schemas/admin.schema.js
+ * @author NovaLogic System
+ * @institution IPCA
+ * @project GestArtes - Projeto 50+10 para Entartes
+ */
+
 const { body, param } = require('express-validator');
 const { toAppRole } = require('../../utils/roles');
 
@@ -203,3 +210,4 @@ module.exports = {
     updateUserRolesSchema,
     updateUserSchema,
 };
+

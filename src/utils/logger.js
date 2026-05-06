@@ -1,3 +1,10 @@
+/**
+ * @file src/utils/logger.js
+ * @author NovaLogic System
+ * @institution IPCA
+ * @project GestArtes - Projeto 50+10 para Entartes
+ */
+
 const fs = require('node:fs');
 const path = require('node:path');
 const { createLogger, format, transports } = require('winston');
@@ -8,8 +15,6 @@ if (!fs.existsSync(logsDir)) {
   fs.mkdirSync(logsDir, { recursive: true });
 }
 
-const auditOnly = format((info) => (info.category === 'audit' ? info : false))();
-
 const logger = createLogger({
   level: process.env.LOG_LEVEL || 'info',
   format: format.combine(format.timestamp(), format.errors({ stack: true }), format.json()),
@@ -17,11 +22,6 @@ const logger = createLogger({
   transports: [
     new transports.File({ filename: path.join(logsDir, 'error.log'), level: 'error' }),
     new transports.File({ filename: path.join(logsDir, 'combined.log') }),
-    new transports.File({
-      filename: path.join(logsDir, 'audit.log'),
-      level: 'info',
-      format: format.combine(auditOnly, format.timestamp(), format.json()),
-    }),
   ],
 });
 
@@ -34,3 +34,4 @@ if (process.env.NODE_ENV !== 'production') {
 }
 
 module.exports = logger;
+

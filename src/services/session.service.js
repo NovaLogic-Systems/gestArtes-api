@@ -1,3 +1,10 @@
+/**
+ * @file src/services/session.service.js
+ * @author NovaLogic System
+ * @institution IPCA
+ * @project GestArtes - Projeto 50+10 para Entartes
+ */
+
 const { Prisma } = require('@prisma/client');
 const prisma = require('../config/prisma');
 const { createHttpError } = require('../utils/http-error');

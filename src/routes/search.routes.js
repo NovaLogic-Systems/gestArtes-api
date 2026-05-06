@@ -1,3 +1,10 @@
+/**
+ * @file src/routes/search.routes.js
+ * @author NovaLogic System
+ * @institution IPCA
+ * @project GestArtes - Projeto 50+10 para Entartes
+ */
+
 const express = require('express');
 
 const marketplaceController = require('../controllers/marketplace.controller');
@@ -23,3 +30,4 @@ router.get(
 );
 
 module.exports = router;
+

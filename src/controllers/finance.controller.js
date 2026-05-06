@@ -1,3 +1,10 @@
+/**
+ * @file src/controllers/finance.controller.js
+ * @author NovaLogic System
+ * @institution IPCA
+ * @project GestArtes - Projeto 50+10 para Entartes
+ */
+
 const prisma = require('../config/prisma');
 const { createFinanceService } = require('../services/finance.service');
 
@@ -45,7 +52,7 @@ async function getRevenue(req, res, next) {
 async function exportTransactions(req, res, next) {
   try {
     const { periodStart, periodEnd, studentAccountId, studentNumber, includeExported } = req.body;
-    const userId = req.session?.userId ?? null;
+    const userId = req.auth?.userId ?? null;
 
     const { csv, count } = await financeService.exportTransactions({
       periodStart,
@@ -67,3 +74,4 @@ async function exportTransactions(req, res, next) {
 }
 
 module.exports = { listTransactions, getSummary, getRevenue, exportTransactions };
+

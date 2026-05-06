@@ -1,3 +1,10 @@
+/**
+ * @file src/middlewares/error.middleware.js
+ * @author NovaLogic System
+ * @institution IPCA
+ * @project GestArtes - Projeto 50+10 para Entartes
+ */
+
 const logger = require('../utils/logger');
 
 function errorHandler(err, req, res, next) {
@@ -19,3 +26,4 @@ function errorHandler(err, req, res, next) {
 }
 
 module.exports = errorHandler;
+

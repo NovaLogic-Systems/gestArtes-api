@@ -1,15 +1,21 @@
+/**
+ * @author NovaLogic System
+ * @institution IPCA
+ * @project GestArtes - Projeto 50+10 para Entartes
+ */
+
 const test = require('node:test');
 const assert = require('node:assert/strict');
 const Module = require('node:module');
 
 // ---------------------------------------------------------------------------
-// mapQueueRow is tested indirectly via listPostSessionValidations by controlling
-// the $queryRaw response. finalizeSessionValidation is tested via the exported
-// function with a fully mocked prisma + pricingService.
+// mapQueueRow é testado indiretamente através de listPostSessionValidations,
+// controlando a resposta de $queryRaw. finalizeSessionValidation é testado
+// através da função exportada com prisma + pricingService totalmente simulados.
 // ---------------------------------------------------------------------------
 
 // ---------------------------------------------------------------------------
-// Fake pricing service (injected via the module cache trick on pricing.service)
+// Serviço de preços simulado (injetado via o cache do módulo)
 // ---------------------------------------------------------------------------
 
 const fakePricingState = {
@@ -27,7 +33,7 @@ const fakePricingService = {
 };
 
 // ---------------------------------------------------------------------------
-// Fake prisma state
+// Estado simulado do prisma
 // ---------------------------------------------------------------------------
 
 function buildState() {
@@ -71,7 +77,7 @@ const fakePrisma = {
 };
 
 // ---------------------------------------------------------------------------
-// Module patching
+// Substituição de módulos
 // ---------------------------------------------------------------------------
 
 const originalLoad = Module._load;
@@ -183,7 +189,7 @@ test('finalizeSessionValidation: throws 404 when session does not exist', async 
 
 test('finalizeSessionValidation: throws 409 when session has no teacher confirmation', async () => {
   resetState();
-  // validations only from student — no teacher role
+  // validações apenas do aluno — sem função de professor
   state.validations = [
     {
       ValidatedByUserID: 20,
@@ -265,7 +271,7 @@ test('finalizeSessionValidation: throws 500 when finalization step is not config
       User: { UserRole: [{ Role: { RoleName: 'student' } }] },
     },
   ];
-  // Remove the finalization step so the lookup fails
+  // Remover o passo de finalização para que a pesquisa falhe
   state.validationSteps = [{ StepID: 2, StepName: 'Teacher Confirmation' }];
 
   await assert.rejects(
@@ -298,9 +304,9 @@ test('finalizeSessionValidation: succeeds and returns session + financialEntry',
   assert.equal(result.session.SessionID, 10);
   assert.ok(result.financialEntry);
   assert.equal(result.financialEntry.EntryID, 99);
-  // the finalization validation record should have been created
+  // o registo de validação de finalização deve ter sido criado
   assert.ok(state.createdValidation);
   assert.equal(state.createdValidation.SessionID, 10);
   assert.equal(state.createdValidation.ValidatedByUserID, 1);
-  assert.equal(state.createdValidation.ValidationStepID, 1); // Management Finalization StepID
+  assert.equal(state.createdValidation.ValidationStepID, 1); // ID do passo de finalização de gestão
 });

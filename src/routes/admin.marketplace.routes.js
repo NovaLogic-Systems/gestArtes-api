@@ -1,7 +1,14 @@
+/**
+ * @file src/routes/admin.marketplace.routes.js
+ * @author NovaLogic System
+ * @institution IPCA
+ * @project GestArtes - Projeto 50+10 para Entartes
+ */
+
 const express = require('express');
 
 const validateRequest = require('../middlewares/validate.middleware');
-const { requireSessionAuth, requireAdminRole } = require('../middlewares/auth.middleware');
+const { requireAuth, requireAdminRole } = require('../middlewares/auth.middleware');
 const {
   marketplaceListingIdParamSchema,
   listMarketplaceListingsQuerySchema,
@@ -10,7 +17,7 @@ const {
 const adminMarketplaceController = require('../controllers/admin_marketplace.controller');
 
 const router = express.Router();
-const adminAccess = [requireSessionAuth, requireAdminRole];
+const adminAccess = [requireAuth, requireAdminRole];
 
 router.get(
   '/listings',
@@ -46,3 +53,4 @@ router.delete(
 );
 
 module.exports = router;
+

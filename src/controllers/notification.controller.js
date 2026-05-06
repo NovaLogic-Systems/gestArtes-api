@@ -1,6 +1,14 @@
+/**
+ * @file src/controllers/notification.controller.js
+ * @author NovaLogic System
+ * @institution IPCA
+ * @project GestArtes - Projeto 50+10 para Entartes
+ */
+
 // notification.controller.js
 const notificationService = require('../services/notification.service');
 const prisma = require('../config/prisma');
+const { getAuthenticatedUserId } = require('../utils/auth-context');
 
 const ALLOWED_NOTIFICATION_TYPES = new Set([
     'coaching',
@@ -136,10 +144,11 @@ const broadcastNotification = async (req, res) => {
 
 const getAll = async (req, res) => {
     try {
+        const authenticatedUserId = getAuthenticatedUserId(req);
         const previewRequested = String(req.query?.preview || '').trim().toLowerCase() === 'true';
         const notifications = previewRequested
-            ? await notificationService.getPreviewByUser(req.session.userId, 5)
-            : await notificationService.getAllByUser(req.session.userId);
+            ? await notificationService.getPreviewByUser(authenticatedUserId, 5)
+            : await notificationService.getAllByUser(authenticatedUserId);
         res.json(notifications);
     } catch (err) {
         res.status(500).json({ error: err.message });
@@ -148,7 +157,7 @@ const getAll = async (req, res) => {
 
 const getById = async (req, res) => {
     try {
-        const notification = await notificationService.getById(req.params.id, req.session.userId);
+        const notification = await notificationService.getById(req.params.id, getAuthenticatedUserId(req));
         if (!notification) return res.status(404).json({ error: 'Not found' });
         res.json(notification);
     } catch (err) {
@@ -158,7 +167,7 @@ const getById = async (req, res) => {
 
 const markAsRead = async (req, res) => {
     try {
-        await notificationService.markAsRead(req.params.id, req.session.userId);
+        await notificationService.markAsRead(req.params.id, getAuthenticatedUserId(req));
         res.json({ success: true });
     } catch (err) {
         res.status(500).json({ error: err.message });
@@ -167,7 +176,7 @@ const markAsRead = async (req, res) => {
 
 const remove = async (req, res) => {
     try {
-        await notificationService.remove(req.params.id, req.session.userId);
+        await notificationService.remove(req.params.id, getAuthenticatedUserId(req));
         res.json({ success: true });
     } catch (err) {
         res.status(500).json({ error: err.message });
@@ -187,3 +196,4 @@ const create = async (req, res) => {
 };
 
 module.exports = { getAll, getById, markAsRead, remove, create, sendNotification, broadcastNotification };
+

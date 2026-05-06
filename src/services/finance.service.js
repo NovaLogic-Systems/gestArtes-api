@@ -1,3 +1,10 @@
+/**
+ * @file src/services/finance.service.js
+ * @author NovaLogic System
+ * @institution IPCA
+ * @project GestArtes - Projeto 50+10 para Entartes
+ */
+
 const { Prisma } = require('@prisma/client');
 const { toCsv } = require('../utils/csv');
 const { logAudit, AUDIT_ACTIONS, AUDIT_MODULES, AUDIT_RESULTS } = require('../utils/audit');
@@ -282,3 +289,4 @@ function createFinanceService(prismaClient) {
 }
 
 module.exports = { createFinanceService };
+

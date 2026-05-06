@@ -7,11 +7,21 @@
 const test = require('node:test');
 const assert = require('node:assert/strict');
 const Module = require('node:module');
+/**
+ * @author NovaLogic System
+ * @institution IPCA
+ * @project GestArtes - Projeto 50+10 para Entartes
+ */
 
-const mockState = {
-  listings: [],
-  lastFindManyArgs: null,
-};
+/**
+ * ═════════════════════════════════════════════════════════════════════════
+ * TESTES: marketplace.controller.js (Classificados Internos da Escola)
+ * ═════════════════════════════════════════════════════════════════════════
+ * 
+ * O QUE ESTÁ A SER TESTADO:\n * ─────────────────────────\n *   Endpoints para anúncios de compra/venda entre utilizadores:\n *   - listMarketplaceListings(): Lista anúncios com filtros\n *   - getMarketplaceListingById(): Detalhe do anúncio\n *   - createMarketplaceListing(): Criar anúncio\n *   - updateMarketplaceListing(): Editar anúncio (dono ou admin)\n *   - close/delete listing: Encerrar anúncio\n * 
+ * REGRAS DE NEGÓCIO:\n * ──────────────────\n *   - Apenas utilizadores autenticados podem criar anúncios\n *   - Só dono do anúncio (ou admin) pode editar/remover\n *   - Itens marcados como vendidos não aceitam novas transações\n *   - Filtros por categoria, preço, modalidade, estado\n * 
+ * OBJETIVO DOS TESTES:\n * ───────────────────\n *   Garantir que respostas estão corretamente serializadas para frontend\n *   e que queries de listagem aplicam filtros/paginação esperados.
+ */
 
 const fakePrisma = {
   marketplaceItem: {

@@ -7,12 +7,22 @@
 const test = require('node:test');
 const assert = require('node:assert/strict');
 const Module = require('node:module');
+/**
+ * @author NovaLogic System
+ * @institution IPCA
+ * @project GestArtes - Projeto 50+10 para Entartes
+ */
 
-// ---------------------------------------------------------------------------
-// Fábrica de estado
-// ---------------------------------------------------------------------------
+/**
+ * ═════════════════════════════════════════════════════════════════════════
+ * TESTES: teacher.controller.js (Endpoints do Painel do Professor)
+ * ═════════════════════════════════════════════════════════════════════════
+ * 
+ * O QUE ESTÁ A SER TESTADO:\n * ─────────────────────────\n *   Endpoints para gestão de coaching (aulas) pelo professor:\n *   - getTeacherDashboard(): KPIs (aulas, alunos, receita)\n *   - getTeacherCoachingSessions(): Lista aulas do professor\n *   - getCoachingSessionDetail(): Detalhes de uma aula\n *   - submitTeacherAvailability(): Registar horários disponíveis\n *   - getTeacherAdmissionRequests(): Pedidos de alunos para aderir\n *   - respondToAdmissionRequest(): Aprovar/rejeitar pedido\n * 
+ * LÓGICA CHAVE:\n * ─────────────\n *   Professores têm dois fluxos:\n *   1. COACHING: Aulas em estúdios (agendadas, com alunos, pagáveis)\n *   2. DISPONIBILIDADE: Calendário de quando está disponível para coaching\n * 
+ * VALIDAÇÕES CRÍTICAS:\n * ────────────────────\n *   - Apenas alunos autenticados podem ver disponibilidade/agendar\n *   - Apenas professores do coaching podem responder a pedidos\n *   - Pedidos em estados específicos (PendingTeacher, PendingAdmin, etc.)\n *   - Horários sobrepostos invalidam novos agendamentos\n * 
+ */
 
-function buildState() {
   return {
     // resultados de coachingJoinRequest.findMany / findFirst
     joinRequests: [],

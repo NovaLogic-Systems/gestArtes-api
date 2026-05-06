@@ -7,12 +7,22 @@
 const test = require('node:test');
 const assert = require('node:assert/strict');
 const Module = require('node:module');
+/**
+ * @author NovaLogic System
+ * @institution IPCA
+ * @project GestArtes - Projeto 50+10 para Entartes
+ */
 
-const mockState = {
-  user: null,
-  sessionStudentCounts: [],
-  sessionStudentFindMany: [],
-  validationSessions: [],
+/**
+ * ═════════════════════════════════════════════════════════════════════════
+ * TESTES: student.controller.js (Endpoints do Painel do Aluno)
+ * ═════════════════════════════════════════════════════════════════════════
+ * 
+ * O QUE ESTÁ A SER TESTADO:\n * ─────────────────────────\n *   Endpoints que servem o painel do aluno (dashboard):\n *   - getStudentDashboard(): Retorna KPIs (coaching, marketplace, inventário)\n *   - getDashboardNotifications(): Notificações pendentes\n *   - getStudentProfile(): Dados do aluno (nome, email, etc.)\n *   - updateStudentProfile(): Alterar dados de conta\n * 
+ * LÓGICA TESTADA:\n * ───────────────\n *   Cada endpoint precisa:\n *   1. Extrair userId do contexto autenticado (req.auth.userId)\n *   2. Buscar dados do aluno (user, perfil, notificações)\n *   3. Validar que aluno existe e está ativo\n *   4. Agregar dados (KPIs de múltiplas tabelas)\n *   5. Serializar resposta com campos corretos\n * 
+ * PADRÕES TESTADOS:\n * ────────────────\n *   - Aluno não existe → 404\n *   - Aluno existe → 200 com dados\n *   - Notificações agregadas de múltiplas tabelas\n *   - Campos corretos na resposta (userId, email, firstName, etc.)\n *   - Contagem de transações, pedidos, sessões\n * 
+ */
+
   notifications: [],
   counts: {
     coachingJoinRequest: 0,

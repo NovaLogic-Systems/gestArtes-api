@@ -32,6 +32,13 @@ router.get(
   adminInventoryController.getItems
 );
 
+router.get(
+  '/rentals',
+  ...adminAccess,
+  validateRequest,
+  adminInventoryController.getRentals
+);
+
 router.post(
   '/',
   ...adminAccess,

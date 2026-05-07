@@ -13,8 +13,7 @@ const getPreviewByUser = (userId, limit) => notificationModel.findPreviewByUser(
 const getById = (id, userId) => notificationModel.findByIdAndUser(id, userId);
 const markAsRead = (id, userId) => notificationModel.markRead(id, userId);
 const remove = (id, userId) => notificationModel.delete(id, userId);
-const create = (userId, message) => notificationModel.insert(userId, message);
+const create = (userId, message, title) => notificationModel.insert(userId, message, title);
 
 module.exports = { getAllByUser, getPreviewByUser, getById, markAsRead, remove, create };
-
 

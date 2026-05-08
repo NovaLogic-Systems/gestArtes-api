@@ -24,7 +24,7 @@ const BROADCAST_ROLE_TO_APP_ROLE = Object.freeze({
     admin: 'admin',
 });
 
-const sendNotification = async (req, { userId, type, message }) => {
+const sendNotification = async (req, { userId, type, message, title }) => {
     const parsedUserId = Number.parseInt(userId, 10);
 
     if (!Number.isInteger(parsedUserId) || parsedUserId <= 0) {
@@ -57,7 +57,8 @@ const sendNotification = async (req, { userId, type, message }) => {
         throw error;
     }
 
-    const notification = await notificationService.create(parsedUserId, message.trim());
+    const normalizedTitle = typeof title === 'string' ? title.trim() : undefined;
+    const notification = await notificationService.create(parsedUserId, message.trim(), normalizedTitle);
 
     const io = req.app.get('io');
     if (io) {
@@ -98,7 +99,7 @@ const getBroadcastRecipients = async (normalizedRole) => {
 
 const broadcastNotification = async (req, res) => {
     try {
-        const { message, targetRole } = req.body;
+        const { message, targetRole, title } = req.body;
 
         if (typeof message !== 'string' || !message.trim()) {
             return res.status(400).json({ error: 'Invalid message' });
@@ -112,6 +113,7 @@ const broadcastNotification = async (req, res) => {
         }
 
         const notification = {
+            title: typeof title === 'string' && title.trim() ? title.trim() : undefined,
             message: message.trim(),
             targetRole: normalizedRole,
             createdAt: new Date().toISOString(),
@@ -119,7 +121,7 @@ const broadcastNotification = async (req, res) => {
 
         const recipients = await getBroadcastRecipients(normalizedRole);
         const createdNotifications = await Promise.all(
-            recipients.map((recipient) => notificationService.create(recipient.UserID, message.trim()))
+            recipients.map((recipient) => notificationService.create(recipient.UserID, message.trim(), notification.title))
         );
 
         const io = req.app.get('io');
@@ -185,8 +187,8 @@ const remove = async (req, res) => {
 
 const create = async (req, res) => {
     try {
-        const { userId, type, message } = req.body;
-        const notification = await sendNotification(req, { userId, type, message });
+        const { userId, type, message, title } = req.body;
+        const notification = await sendNotification(req, { userId, type, message, title });
         res.status(201).json(notification);
         
     } catch (err) {
@@ -196,4 +198,3 @@ const create = async (req, res) => {
 };
 
 module.exports = { getAll, getById, markAsRead, remove, create, sendNotification, broadcastNotification };
-

@@ -86,7 +86,11 @@ const deleteNotif = async (id, userId) => {
     });
 };
 
-const insert = async (userId, message) => {
+const insert = async (userId, message, title) => {
+    const normalizedTitle = typeof title === 'string' && title.trim()
+        ? title.trim()
+        : buildDefaultTitle(message);
+
     const row = await prisma.notification.create({
         data: {
             UserID: toInt(userId, 'userId'),
@@ -94,7 +98,7 @@ const insert = async (userId, message) => {
             TypeID: DEFAULT_NOTIFICATION_TYPE_ID,
             IsRead: false,
             CreatedAt: new Date(),
-            Title: buildDefaultTitle(message),
+            Title: normalizedTitle.length > 255 ? normalizedTitle.slice(0, 255) : normalizedTitle,
         },
     });
 

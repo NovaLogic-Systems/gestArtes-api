@@ -250,6 +250,349 @@ const swaggerSpec = swaggerJsdoc({
       },
     },
     paths: {
+      '/auth/login': {
+        post: {
+          tags: ['Auth'],
+          summary: 'Login with email and password',
+          requestBody: {
+            required: true,
+            content: {
+              'application/json': {
+                schema: {
+                  type: 'object',
+                  required: ['email', 'password'],
+                  properties: {
+                    email: { type: 'string', format: 'email' },
+                    password: { type: 'string', minLength: 1 },
+                  },
+                },
+              },
+            },
+          },
+          responses: {
+            200: { description: 'Authenticated successfully' },
+            400: { description: 'Invalid credentials payload' },
+            401: { description: 'Invalid credentials' },
+          },
+        },
+      },
+      '/auth/refresh': {
+        post: {
+          tags: ['Auth'],
+          summary: 'Refresh access token',
+          responses: {
+            200: { description: 'Token refreshed' },
+            401: { description: 'Refresh token missing or invalid' },
+          },
+        },
+      },
+      '/auth/logout': {
+        post: {
+          tags: ['Auth'],
+          summary: 'Logout current session',
+          responses: {
+            200: { description: 'Logged out' },
+          },
+        },
+      },
+      '/auth/logout-all': {
+        post: {
+          tags: ['Auth'],
+          summary: 'Logout from all sessions',
+          security: [{ bearerAuth: [] }],
+          responses: {
+            200: { description: 'Logged out from all sessions' },
+            401: { description: 'Not authenticated' },
+          },
+        },
+      },
+      '/auth/me': {
+        get: {
+          tags: ['Auth'],
+          summary: 'Get current authenticated user',
+          security: [{ bearerAuth: [] }],
+          responses: {
+            200: { description: 'Current user' },
+            401: { description: 'Not authenticated' },
+          },
+        },
+      },
+      '/student/profile': {
+        get: {
+          tags: ['Student'],
+          summary: 'Get student profile',
+          security: [{ bearerAuth: [] }],
+          responses: {
+            200: { description: 'Student profile' },
+            401: { description: 'Not authenticated' },
+            403: { description: 'Forbidden' },
+          },
+        },
+      },
+      '/student/dashboard': {
+        get: {
+          tags: ['Student'],
+          summary: 'Get student dashboard',
+          security: [{ bearerAuth: [] }],
+          responses: {
+            200: { description: 'Student dashboard' },
+            401: { description: 'Not authenticated' },
+            403: { description: 'Forbidden' },
+          },
+        },
+      },
+      '/student/schedule/upcoming': {
+        get: {
+          tags: ['Student'],
+          summary: 'Get upcoming student schedule',
+          security: [{ bearerAuth: [] }],
+          responses: {
+            200: { description: 'Upcoming schedule' },
+            401: { description: 'Not authenticated' },
+            403: { description: 'Forbidden' },
+          },
+        },
+      },
+      '/teacher/admissions/pending': {
+        get: {
+          tags: ['Teacher'],
+          summary: 'List pending admissions for teacher',
+          security: [{ bearerAuth: [] }],
+          responses: {
+            200: { description: 'Pending admissions' },
+            401: { description: 'Not authenticated' },
+            403: { description: 'Forbidden' },
+          },
+        },
+      },
+      '/teacher/admissions/{joinRequestId}/approve': {
+        patch: {
+          tags: ['Teacher'],
+          summary: 'Approve a join request',
+          security: [{ bearerAuth: [] }],
+          parameters: [
+            {
+              in: 'path',
+              name: 'joinRequestId',
+              required: true,
+              schema: { type: 'integer' },
+            },
+          ],
+          responses: {
+            200: { description: 'Join request approved' },
+            400: { description: 'Invalid id' },
+            401: { description: 'Not authenticated' },
+            403: { description: 'Forbidden' },
+            404: { description: 'Not found' },
+          },
+        },
+      },
+      '/teacher/admissions/{joinRequestId}/reject': {
+        patch: {
+          tags: ['Teacher'],
+          summary: 'Reject a join request',
+          security: [{ bearerAuth: [] }],
+          parameters: [
+            {
+              in: 'path',
+              name: 'joinRequestId',
+              required: true,
+              schema: { type: 'integer' },
+            },
+          ],
+          responses: {
+            200: { description: 'Join request rejected' },
+            400: { description: 'Invalid id' },
+            401: { description: 'Not authenticated' },
+            403: { description: 'Forbidden' },
+            404: { description: 'Not found' },
+          },
+        },
+      },
+      '/teacher/sessions/pending': {
+        get: {
+          tags: ['Teacher'],
+          summary: 'List pending sessions for teacher',
+          security: [{ bearerAuth: [] }],
+          responses: {
+            200: { description: 'Pending sessions' },
+            401: { description: 'Not authenticated' },
+            403: { description: 'Forbidden' },
+          },
+        },
+      },
+      '/teacher/sessions/{id}/confirm-completion': {
+        patch: {
+          tags: ['Teacher'],
+          summary: 'Confirm session completion',
+          security: [{ bearerAuth: [] }],
+          parameters: [
+            {
+              in: 'path',
+              name: 'id',
+              required: true,
+              schema: { type: 'integer' },
+            },
+          ],
+          responses: {
+            200: { description: 'Completion confirmed' },
+            400: { description: 'Invalid id' },
+            401: { description: 'Not authenticated' },
+            403: { description: 'Forbidden' },
+            404: { description: 'Not found' },
+          },
+        },
+      },
+      '/teacher/sessions/{id}/no-show': {
+        post: {
+          tags: ['Teacher'],
+          summary: 'Register a no-show',
+          security: [{ bearerAuth: [] }],
+          parameters: [
+            {
+              in: 'path',
+              name: 'id',
+              required: true,
+              schema: { type: 'integer' },
+            },
+          ],
+          responses: {
+            200: { description: 'No-show registered' },
+            400: { description: 'Invalid id' },
+            401: { description: 'Not authenticated' },
+            403: { description: 'Forbidden' },
+            404: { description: 'Not found' },
+          },
+        },
+      },
+      '/teacher/admission-requests': {
+        get: {
+          tags: ['Teacher'],
+          summary: 'List admission requests visible to teacher',
+          security: [{ bearerAuth: [] }],
+          responses: {
+            200: { description: 'Admission requests' },
+            401: { description: 'Not authenticated' },
+            403: { description: 'Forbidden' },
+          },
+        },
+      },
+      '/teacher/dashboard': {
+        get: {
+          tags: ['Teacher'],
+          summary: 'Get teacher dashboard',
+          security: [{ bearerAuth: [] }],
+          responses: {
+            200: { description: 'Teacher dashboard' },
+            401: { description: 'Not authenticated' },
+            403: { description: 'Forbidden' },
+          },
+        },
+      },
+      '/teacher/schedule/today': {
+        get: {
+          tags: ['Teacher'],
+          summary: 'Get today schedule',
+          security: [{ bearerAuth: [] }],
+          responses: {
+            200: { description: 'Today schedule' },
+            401: { description: 'Not authenticated' },
+            403: { description: 'Forbidden' },
+          },
+        },
+      },
+      '/teacher/admission-requests/{joinRequestId}/review': {
+        patch: {
+          tags: ['Teacher'],
+          summary: 'Review an admission request',
+          security: [{ bearerAuth: [] }],
+          parameters: [
+            {
+              in: 'path',
+              name: 'joinRequestId',
+              required: true,
+              schema: { type: 'integer' },
+            },
+          ],
+          responses: {
+            200: { description: 'Admission request reviewed' },
+            400: { description: 'Invalid id' },
+            401: { description: 'Not authenticated' },
+            403: { description: 'Forbidden' },
+            404: { description: 'Not found' },
+          },
+        },
+      },
+      '/teacher/availability': {
+        get: {
+          tags: ['Teacher'],
+          summary: 'List teacher availability',
+          security: [{ bearerAuth: [] }],
+          responses: {
+            200: { description: 'Availability list' },
+            401: { description: 'Not authenticated' },
+            403: { description: 'Forbidden' },
+          },
+        },
+        post: {
+          tags: ['Teacher'],
+          summary: 'Submit teacher availability',
+          security: [{ bearerAuth: [] }],
+          responses: {
+            201: { description: 'Availability created' },
+            400: { description: 'Invalid payload' },
+            401: { description: 'Not authenticated' },
+            403: { description: 'Forbidden' },
+          },
+        },
+      },
+      '/teacher/availability/{availabilityId}': {
+        patch: {
+          tags: ['Teacher'],
+          summary: 'Update teacher availability',
+          security: [{ bearerAuth: [] }],
+          parameters: [
+            {
+              in: 'path',
+              name: 'availabilityId',
+              required: true,
+              schema: { type: 'integer' },
+            },
+          ],
+          responses: {
+            200: { description: 'Availability updated' },
+            400: { description: 'Invalid payload or id' },
+            401: { description: 'Not authenticated' },
+            403: { description: 'Forbidden' },
+            404: { description: 'Not found' },
+          },
+        },
+      },
+      '/teacher/availability/exceptions': {
+        post: {
+          tags: ['Teacher'],
+          summary: 'Create teacher availability exception',
+          security: [{ bearerAuth: [] }],
+          responses: {
+            201: { description: 'Exception created' },
+            400: { description: 'Invalid payload' },
+            401: { description: 'Not authenticated' },
+            403: { description: 'Forbidden' },
+          },
+        },
+      },
+      '/teacher/availability/exceptions/pending': {
+        get: {
+          tags: ['Teacher'],
+          summary: 'List pending teacher availability exceptions',
+          security: [{ bearerAuth: [] }],
+          responses: {
+            200: { description: 'Pending exceptions' },
+            401: { description: 'Not authenticated' },
+            403: { description: 'Forbidden' },
+          },
+        },
+      },
       '/lostfound': {
         get: {
           tags: ['LostFound'],

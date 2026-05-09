@@ -8,14 +8,14 @@ const test = require('node:test');
 const assert = require('node:assert/strict');
 
 /**
- * Testes de integração do endpoint de pesquisa de disponibilidade de coaching (Issue #50)
+ * Integração da pesquisa de disponibilidade de coaching.
  *
- * Valida o fluxo completo do endpoint HTTP:
- * - GET /coaching/slots com várias combinações de parâmetros
- * - filtragem por intervalo de datas com validação
- * - filtragem por professor e modalidade
- * - formato da resposta e correção dos dados
- * - tratamento de erros e códigos de estado
+ * O que valida:
+ * - GET /coaching/slots com intervalos de datas válidos
+ * - filtros por professor, modalidade e combinação dos dois
+ * - compatibilidade com o parâmetro legado weekStart
+ * - rejeição de pedidos com parâmetros inválidos
+ * - forma final da resposta retornada à UI
  *
  * Pré-requisitos:
  * - ano letivo ativo na base de dados
@@ -35,7 +35,7 @@ if (shouldRun) {
 const BASE_URL = process.env.TEST_API_URL || 'http://localhost:3001';
 const prisma = require('../../src/config/prisma');
 
-// Função auxiliar para fazer pedidos HTTP
+// Helper HTTP partilhado pelos cenários abaixo.
 async function makeRequest(method, path, body = null, headers = {}) {
   const options = {
     method,
@@ -61,9 +61,9 @@ async function makeRequest(method, path, body = null, headers = {}) {
   }
 }
 
-// Preparação dos dados de teste
+// Preparação dos dados de teste.
 async function setupTestData() {
-  // Create or get active academic year
+  // Create or get active academic year.
     let activeYear = await prisma.academicYear.findFirst({
     where: { IsActive: true },
   });
@@ -79,7 +79,7 @@ async function setupTestData() {
     });
   }
 
-  // Create test modalities if needed
+  // Create test modalities if needed.
   let modalities = await prisma.modality.findMany();
   if (modalities.length === 0) {
     modalities = await Promise.all([
@@ -89,7 +89,7 @@ async function setupTestData() {
     ]);
   }
 
-  // Create test studios if needed
+  // Create test studios if needed.
   let studios = await prisma.studio.findMany();
   if (studios.length === 0) {
     studios = await Promise.all([
@@ -108,7 +108,7 @@ async function setupTestData() {
     ]);
   }
 
-  // Create test teachers with availability
+  // Create test teachers with availability.
   let teachers = await prisma.user.findMany({
     where: { UserRole: { some: { Role: { RoleName: 'teacher' } } } },
     take: 2,

@@ -8,23 +8,12 @@ const test = require('node:test');
 const assert = require('node:assert/strict');
 const Module = require('node:module');
 
-// ---------------------------------------------------------------------------
-// Estado falso partilhado
-// ---------------------------------------------------------------------------
-
 const mockState = {
   userByEmail: null,
   userById: null,
   bcryptResult: true,
-  sessionSaveError: null,
-  sessionRegenerateError: null,
-  sessionDestroyError: null,
   loggedMessages: [],
 };
-
-// ---------------------------------------------------------------------------
-// Dependências falsas
-// ---------------------------------------------------------------------------
 
 const fakePrisma = {
   user: {
@@ -42,12 +31,8 @@ const fakeBcrypt = {
 
 const fakeLogger = {
   log: (entry) => mockState.loggedMessages.push(entry),
-  info: (msg, meta) => mockState.loggedMessages.push({ msg, ...meta }),
+  info: (message, meta) => mockState.loggedMessages.push({ message, ...meta }),
 };
-
-// ---------------------------------------------------------------------------
-// Substituição de módulos
-// ---------------------------------------------------------------------------
 
 const originalLoad = Module._load;
 Module._load = function patchedLoad(request, parent, isMain) {
@@ -64,23 +49,29 @@ try {
   Module._load = originalLoad;
 }
 
-// ---------------------------------------------------------------------------
-// Funções auxiliares
-// ---------------------------------------------------------------------------
-
 function createResponse() {
   return {
     statusCode: null,
     payload: null,
     cookies: [],
-    status(code) { this.statusCode = code; return this; },
-    json(body) { this.payload = body; return this; },
-    send() { return this; },
+    status(code) {
+      this.statusCode = code;
+      return this;
+    },
+    json(body) {
+      this.payload = body;
+      return this;
+    },
+    send() {
+      return this;
+    },
     cookie(name, value, options) {
       this.cookies.push({ name, value, options });
       return this;
     },
-    clearCookie() { return this; },
+    clearCookie() {
+      return this;
+    },
   };
 }
 
@@ -94,9 +85,7 @@ function buildUser(overrides = {}) {
     PasswordHash: 'hashed',
     IsActive: true,
     DeletedAt: null,
-    UserRole: [
-      { Role: { RoleName: 'student' } },
-    ],
+    UserRole: [{ Role: { RoleName: 'student' } }],
     ...overrides,
   };
 }
@@ -105,7 +94,7 @@ function buildApp(overrides = {}) {
   const store = new Map();
   store.set('refreshCookieName', 'gestartes.refresh_token');
   store.set('refreshCookieOptions', { httpOnly: true, sameSite: 'strict', path: '/' });
-  Object.entries(overrides).forEach(([k, v]) => store.set(k, v));
+  Object.entries(overrides).forEach(([key, value]) => store.set(key, value));
   return { get: (key) => store.get(key) };
 }
 
@@ -132,8 +121,11 @@ test('login: returns 401 when user does not exist', async () => {
     get: () => 'test-agent',
   };
   const res = createResponse();
+
   let nextError = null;
-  await authController.login(req, res, (err) => { nextError = err; });
+  await authController.login(req, res, (err) => {
+    nextError = err;
+  });
 
   assert.equal(nextError, null);
   assert.equal(res.statusCode, 401);
@@ -152,8 +144,11 @@ test('login: returns 401 when user is inactive', async () => {
     get: () => 'test-agent',
   };
   const res = createResponse();
+
   let nextError = null;
-  await authController.login(req, res, (err) => { nextError = err; });
+  await authController.login(req, res, (err) => {
+    nextError = err;
+  });
 
   assert.equal(nextError, null);
   assert.equal(res.statusCode, 401);
@@ -173,8 +168,11 @@ test('login: returns 401 when password is wrong', async () => {
     get: () => 'test-agent',
   };
   const res = createResponse();
+
   let nextError = null;
-  await authController.login(req, res, (err) => { nextError = err; });
+  await authController.login(req, res, (err) => {
+    nextError = err;
+  });
 
   assert.equal(nextError, null);
   assert.equal(res.statusCode, 401);
@@ -183,8 +181,7 @@ test('login: returns 401 when password is wrong', async () => {
 
 test('login: succeeds and returns user + role', async () => {
   resetState();
-  const user = buildUser();
-  mockState.userByEmail = user;
+  mockState.userByEmail = buildUser();
   mockState.bcryptResult = true;
 
   const req = {
@@ -195,12 +192,15 @@ test('login: succeeds and returns user + role', async () => {
     get: () => 'test-agent',
   };
   const res = createResponse();
+
   let nextError = null;
-  await authController.login(req, res, (err) => { nextError = err; });
+  await authController.login(req, res, (err) => {
+    nextError = err;
+  });
 
   assert.equal(nextError, null);
-  assert.equal(res.statusCode, null, 'should not call res.status()');
-  assert.ok(res.payload?.user, 'should return user object');
+  assert.equal(res.statusCode, null);
+  assert.ok(res.payload?.user);
   assert.equal(res.payload.user.userId, 1);
   assert.equal(res.payload.user.email, 'ana@test.com');
   assert.ok(['student', 'teacher', 'admin'].includes(res.payload.role));
@@ -222,10 +222,11 @@ test('login: logs a security success entry on success', async () => {
     headers: {},
     get: () => 'ua',
   };
+
   await authController.login(req, createResponse(), () => {});
 
-  const successLog = mockState.loggedMessages.find((m) => m.success === true);
-  assert.ok(successLog, 'expected a success audit log entry');
+  const successLog = mockState.loggedMessages.find((entry) => entry.success === true);
+  assert.ok(successLog);
 });
 
 test('login: logs a security failure entry on bad password', async () => {
@@ -240,10 +241,11 @@ test('login: logs a security failure entry on bad password', async () => {
     headers: {},
     get: () => 'ua',
   };
+
   await authController.login(req, createResponse(), () => {});
 
-  const failLog = mockState.loggedMessages.find((m) => m.success === false);
-  assert.ok(failLog, 'expected a failure audit log entry');
+  const failLog = mockState.loggedMessages.find((entry) => entry.success === false);
+  assert.ok(failLog);
 });
 
 // ---------------------------------------------------------------------------
@@ -295,8 +297,7 @@ test('me: returns 401 when authenticated user is inactive', async () => {
 
 test('me: returns serialized user when auth context is valid', async () => {
   resetState();
-  const user = buildUser();
-  mockState.userById = user;
+  mockState.userById = buildUser();
 
   const req = {
     auth: {

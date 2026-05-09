@@ -5,8 +5,10 @@
  * @project GestArtes - Projeto 50+10 para Entartes
  */
 
+const bcrypt = require('bcrypt');
 const prisma = require('../config/prisma');
 const { getAuthenticatedRole } = require('../utils/auth-context');
+const { revokeAllRefreshTokensForUser } = require('../services/jwt.service');
 
 const ATTENDED_STATUS_KEYWORDS = [
   'attended',
@@ -57,6 +59,25 @@ function isAttendedStatus(statusName) {
 
 function toStudentCode(studentAccountId) {
   return `ST-${String(studentAccountId).padStart(4, '0')}`;
+}
+
+function serializeStudentProfile(profileRow, studentAccountId) {
+  return {
+    userId: toInteger(profileRow.userId),
+    authUid: profileRow.authUid,
+    studentAccountId,
+    studentCode: toStudentCode(studentAccountId),
+    firstName: profileRow.firstName,
+    lastName: profileRow.lastName,
+    email: profileRow.email,
+    phoneNumber: profileRow.phoneNumber,
+    photoUrl: profileRow.photoUrl,
+    birthDate: profileRow.birthDate,
+    guardianName: profileRow.guardianName,
+    guardianPhone: profileRow.guardianPhone,
+    accountCreatedAt: profileRow.accountCreatedAt,
+    accountUpdatedAt: profileRow.accountUpdatedAt,
+  };
 }
 
 function getAuthenticatedStudentUserId(req, res) {
@@ -320,22 +341,7 @@ async function getProfile(req, res, next) {
     }));
 
     res.json({
-      profile: {
-        userId: toInteger(profileRow.userId),
-        authUid: profileRow.authUid,
-        studentAccountId,
-        studentCode: toStudentCode(studentAccountId),
-        firstName: profileRow.firstName,
-        lastName: profileRow.lastName,
-        email: profileRow.email,
-        phoneNumber: profileRow.phoneNumber,
-        photoUrl: profileRow.photoUrl,
-        birthDate: profileRow.birthDate,
-        guardianName: profileRow.guardianName,
-        guardianPhone: profileRow.guardianPhone,
-        accountCreatedAt: profileRow.accountCreatedAt,
-        accountUpdatedAt: profileRow.accountUpdatedAt,
-      },
+      profile: serializeStudentProfile(profileRow, studentAccountId),
       trainingPlan: {
         name: modalityDistribution[0]?.modalityName || null,
         modalityDistribution,
@@ -352,6 +358,117 @@ async function getProfile(req, res, next) {
         attendanceByStatus,
       },
     });
+  } catch (error) {
+    next(error);
+  }
+}
+
+async function updateProfile(req, res, next) {
+  try {
+    const userId = getAuthenticatedStudentUserId(req, res);
+
+    if (!userId) {
+      return;
+    }
+
+    const phoneNumber = typeof req.body?.phoneNumber === 'string'
+      ? String(req.body.phoneNumber).trim()
+      : undefined;
+
+    const existing = await loadStudentProfile(userId);
+
+    if (!existing) {
+      res.status(404).json({ error: 'Student account not found' });
+      return;
+    }
+
+    await prisma.user.update({
+      where: { UserID: userId },
+      data: {
+        PhoneNumber: typeof phoneNumber === 'string' ? (phoneNumber || null) : undefined,
+        UpdatedAt: new Date(),
+      },
+    });
+
+    const refreshed = await loadStudentProfile(userId);
+
+    if (!refreshed) {
+      res.status(404).json({ error: 'Student account not found' });
+      return;
+    }
+
+    res.json({
+      profile: serializeStudentProfile(refreshed.profileRow, refreshed.studentAccountId),
+      message: 'Phone number updated successfully.',
+    });
+  } catch (error) {
+    next(error);
+  }
+}
+
+async function changePassword(req, res, next) {
+  try {
+    const userId = getAuthenticatedStudentUserId(req, res);
+
+    if (!userId) {
+      return;
+    }
+
+    const currentPassword = String(req.body?.currentPassword || '');
+    const newPassword = String(req.body?.newPassword || '');
+
+    if (!currentPassword || !newPassword) {
+      res.status(400).json({ error: 'Current and new passwords are required' });
+      return;
+    }
+
+    if (newPassword.length < 8) {
+      res.status(400).json({ error: 'Password must have at least 8 characters' });
+      return;
+    }
+
+    const user = await prisma.user.findFirst({
+      where: {
+        UserID: userId,
+        IsActive: true,
+        DeletedAt: null,
+      },
+      select: {
+        UserID: true,
+        PasswordHash: true,
+        StudentAccount: {
+          select: {
+            StudentAccountID: true,
+          },
+        },
+      },
+    });
+
+    if (!user || !user.StudentAccount) {
+      res.status(404).json({ error: 'Student account not found' });
+      return;
+    }
+
+    const isValidPassword = await bcrypt.compare(currentPassword, user.PasswordHash);
+
+    if (!isValidPassword) {
+      res.status(400).json({ error: 'Current password is incorrect' });
+      return;
+    }
+
+    const passwordHash = await bcrypt.hash(newPassword, 12);
+
+    await prisma.user.update({
+      where: { UserID: userId },
+      data: {
+        PasswordHash: passwordHash,
+        UpdatedAt: new Date(),
+      },
+    });
+
+    await revokeAllRefreshTokensForUser(userId);
+
+    res.json({ message: 'Password updated successfully.' });
   } catch (error) {
     next(error);
   }
@@ -488,6 +605,8 @@ async function getUpcomingSchedule(req, res, next) {
 
 module.exports = {
   getProfile,
+  updateProfile,
+  changePassword,
   getDashboard,
   getUpcomingSchedule,
 };

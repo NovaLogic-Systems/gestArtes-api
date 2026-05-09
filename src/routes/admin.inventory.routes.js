@@ -35,6 +35,7 @@ router.get(
 router.get(
   '/rentals',
   ...adminAccess,
+  validateRequest,
   adminInventoryController.getRentals
 );
 

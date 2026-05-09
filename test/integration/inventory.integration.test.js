@@ -4,6 +4,15 @@
  * @project GestArtes - Projeto 50+10 para Entartes
  */
 
+/**
+ * ═════════════════════════════════════════════════════════════════════════
+ * TESTES INTEGRAÇÃO: inventory.routes.js (API de Inventário Escolar)
+ * ═════════════════════════════════════════════════════════════════════════
+ * 
+ * O QUE ESTÁ A SER TESTADO:\n * ─────────────────────────\n *   Fluxo completo de aluguel de artigos do inventário da escola:\n *   1. GET /inventory → Listar artigos disponíveis\n *   2. POST /inventory/:itemId/rentals → Criar pedido de aluguel\n *   3. GET /inventory/rentals → Ver meus pedidos de aluguel\n *   4. POST /inventory/rentals/:rentalId/return → Devolver artigo\n * 
+ * REGRAS DE NEGÓCIO TESTADAS:\n * ────────────────────────────\n *   - Apenas artigos oficiais da escola (IsSchoolOwned=true) aparecem\n *   - Aluguel valida:\n *     * Disponibilidade (quantidade em stock)\n *     * Tarifa correta (SymbolicFee ou método de pagamento)\n *     * Método de pagamento válido\n *   - Devolução valida:\n *     * Artigo foi alugado ao aluno\n *     * Artigo ainda não foi devolvido\n *   - Estados de transação: Pending → Approved/Rejected → Returned/Archived\n * \n * PADRÃO DE SETUP:\n * ───────────────\n *   - Cria app Express com middlewares (auth injetado)\n *   - Define mock Prisma com dados base (artigos, métodos de pagamento)\n *   - Monta rotas de inventário\n *   - Faz requests e valida resposta\n * 
+ * POR QUE INTEGRAÇÃO (não unitário):\n * ──────────────────────────────────\n *   - Testa múltiplos services em conjunto (inventory + pricing + transaction)\n *   - Valida fluxos de chamadas entre servicios (criar aluguel → atualizar stock)\n *   - Testa serialização de resposta HTTP (não apenas lógica)\n * \n */
+
 const test = require('node:test');
 const assert = require('node:assert/strict');
 const http = require('node:http');

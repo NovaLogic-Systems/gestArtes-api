@@ -60,10 +60,6 @@ const createUserSchema = [
             const role = toAppRole(value?.role);
             const studentNumber = String(value?.studentNumber || '').trim();
 
-            if (role === 'student' && !studentNumber) {
-                throw new Error('Número de aluno é obrigatório para alunos');
-            }
-
             if (role !== 'student' && studentNumber) {
                 throw new Error('Número de aluno só é aplicável a utilizadores aluno');
             }

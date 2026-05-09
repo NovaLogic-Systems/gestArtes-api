@@ -407,14 +407,13 @@ async function updateUserRoles(req, res, next) {
                     throw error;
                 }
 
-                if (!studentNumber) {
-                    const error = new Error('Student number is required when assigning student role');
-                    error.status = 400;
-                    throw error;
+                let finalStudentNumber = studentNumber;
+                if (!finalStudentNumber) {
+                    finalStudentNumber = `ST-${Math.floor(100000 + Math.random() * 900000)}`;
                 }
 
                 const existingStudentNumber = await tx.user.findUnique({
-                    where: { AuthUID: studentNumber },
+                    where: { AuthUID: finalStudentNumber },
                     select: { UserID: true },
                 });
 
@@ -445,8 +444,15 @@ async function updateUserRoles(req, res, next) {
             });
 
             if (willBeStudent && !hasStudentAccount) {
+                const maxStudent = await tx.studentAccount.findFirst({
+                    orderBy: { StudentAccountID: 'desc' },
+                    select: { StudentAccountID: true }
+                });
+                const nextStudentId = maxStudent ? maxStudent.StudentAccountID + 1 : 1;
+
                 await tx.studentAccount.create({
                     data: {
+                        StudentAccountID: nextStudentId,
                         UserID: targetUserId,
                         BirthDate: birthDate,
                         GuardianName: guardianName,
@@ -457,7 +463,7 @@ async function updateUserRoles(req, res, next) {
                 await tx.user.update({
                     where: { UserID: targetUserId },
                     data: {
-                        AuthUID: studentNumber,
+                        AuthUID: finalStudentNumber,
                         UpdatedAt: new Date(),
                     },
                 });
@@ -662,6 +668,19 @@ async function getDashboard(req, res, next) {
     }
 }
 
+async function getOperationalSummary(req, res, next) {
+    try {
+        const summary = await adminService.getStudioOccupancy({
+            from: req.query.from,
+            to: req.query.to,
+        });
+
+        return res.json(summary);
+    } catch (error) {
+        return next(error);
+    }
+}
+
 function toUTCDateStr(date) {
     if (!date) return null;
     const d = date instanceof Date ? date : new Date(date);
@@ -817,5 +836,6 @@ module.exports = {
     resetUserPassword,
     createSession,
     getDashboard,
+    getOperationalSummary,
 };
 

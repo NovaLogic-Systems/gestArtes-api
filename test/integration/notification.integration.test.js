@@ -4,6 +4,19 @@
  * @project GestArtes - Projeto 50+10 para Entartes
  */
 
+/**
+ * Integração do módulo de notificações.
+ *
+ * O que valida:
+ * - listagem de notificações do utilizador autenticado
+ * - marcação como lida
+ * - criação de notificações por outros módulos do sistema
+ * - preview limitado ao utilizador logado
+ *
+ * O foco é garantir isolamento entre utilizadores e compatibilidade entre
+ * service layer e endpoints HTTP.
+ */
+
 const test = require('node:test');
 const assert = require('node:assert/strict');
 require('dotenv').config();

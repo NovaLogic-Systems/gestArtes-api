@@ -4,6 +4,24 @@
  * @project GestArtes - Projeto 50+10 para Entartes
  */
 
+/**
+ * ═════════════════════════════════════════════════════════════════════════
+ * TESTES: auth.middleware.js (Middleware de Autenticação e Autorização)
+ * ═════════════════════════════════════════════════════════════════════════
+ * 
+ * O QUE ESTÁ A SER TESTADO:
+ * ─────────────────────────
+ *   Este ficheiro testa as funções de middleware que protegem endpoints:
+ *   - requireRole(roles): Permite apenas utilizadores com papéis específicos
+ *   - requirePermission(perm): Permite apenas utilizadores com permissão
+ *   - requireAdminRole: Apenas administradores\n *   - getPermissionsForActor(actor): Mapeia papéis → permissões
+ *   - requireAllPermissions(perms): Valida múltiplas permissões
+ * 
+ * FLUXO DE PROTEÇÃO:
+ * ─────────────────\n *   Request HTTP com JWT\n *       ↓\n *   auth.middleware.buildRequestAuthContext() extrai {userId, role} do JWT\n *       ↓\n *   req.auth ← {userId, role, permissions}\n *       ↓\n *   Middleware de proteção (requireRole/requirePermission)\n *       ↓\n *   Se autorizado: next() → Controller\n *   Se não autorizado: res.status(401|403) → erro\n * 
+ * PADRÃO DE TESTES:\n * ─────────────────\n *   Cada middleware testado com:\n *   1. Caso não-autenticado (sem req.auth) → 401 Unauthorized\n *   2. Caso autenticado mas sem permissão → 403 Forbidden\n *   3. Caso autorizado → next() chamado, sem erro\n *   4. Casos edge (papel null, permissões vazias, etc.)\n * 
+ * RAZÃO CRÍTICA PARA TESTES:\n * ──────────────────────────\n *   Autorização é um pilar de segurança. Um bug aqui permite:\n *   - Alunos acederem a dados de professores\n *   - Utilizadores acederem a funcionalidades admin\n *   - Contorno de toda a proteção de dados\n *   Por isso, CADA middleware tem testes específicos.\n * \n * NOTA SOBRE PAPÉIS E PERMISSÕES:\n * ────────────────────────────────\n *   - PAPÉIS (role): 'admin', 'teacher', 'student' (valores naturais)\n *   - PERMISSÕES (perm): constantes como APP_PERMISSIONS.ADMIN_PORTAL_ACCESS\n *     (granularidade fina para controlo de features)\n *   - Mapeamento: role → permissões via getPermissionsForActor()\n * \n */
+
 const test = require('node:test');
 const assert = require('node:assert/strict');
 

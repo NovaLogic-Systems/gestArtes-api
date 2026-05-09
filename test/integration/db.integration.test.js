@@ -4,6 +4,16 @@
  * @project GestArtes - Projeto 50+10 para Entartes
  */
 
+/**
+ * Integração mínima de conectividade à base de dados.
+ *
+ * O que valida:
+ * - ligação ao motor de BD através do Prisma
+ * - execução de uma query simples de saúde
+ *
+ * Este teste serve como verificação de base para o ambiente de integração.
+ */
+
 const test = require('node:test');
 const assert = require('node:assert/strict');
 require('dotenv').config();

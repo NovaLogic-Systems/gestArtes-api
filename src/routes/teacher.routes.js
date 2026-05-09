@@ -35,7 +35,9 @@ router.patch('/sessions/:sessionId/confirm-completion', ...teacherAccess, teache
 router.post('/sessions/:sessionId/no-show', ...teacherAccess, teacherController.registerNoShow);
 
 router.post('/availability', ...teacherAccess, availabilityController.submitTeacherAvailability);
+router.post('/availability/submit', ...teacherAccess, availabilityController.submitTeacherAvailability);
 router.get('/availability', ...teacherAccess, availabilityController.listTeacherAvailability);
+router.get('/calendar', ...teacherAccess, availabilityController.getTeacherCalendar);
 router.patch('/availability/:availabilityId', ...teacherAccess, availabilityController.updateTeacherAvailability);
 router.post('/availability/exceptions', ...teacherAccess, availabilityController.createTeacherException);
 router.get('/availability/exceptions/pending', ...teacherAccess, availabilityController.listPendingTeacherExceptions);

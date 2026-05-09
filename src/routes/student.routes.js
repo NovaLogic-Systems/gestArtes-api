@@ -17,6 +17,8 @@ const router = express.Router();
 const studentAccess = [requireAuth, requirePermission(APP_PERMISSIONS.STUDENT_PORTAL_ACCESS)];
 
 router.get('/profile', ...studentAccess, studentController.getProfile);
+router.patch('/profile', ...studentAccess, studentController.updateProfile);
+router.post('/profile/password', ...studentAccess, studentController.changePassword);
 router.get('/dashboard', ...studentAccess, studentController.getDashboard);
 router.get('/schedule/upcoming', ...studentAccess, studentController.getUpcomingSchedule);
 

@@ -30,6 +30,12 @@ router.get(
 );
 
 router.get(
+    '/dashboard/operational-summary',
+    ...adminAccess,
+    adminController.getOperationalSummary
+);
+
+router.get(
     '/users',
     ...adminAccess,
     adminController.listUsers

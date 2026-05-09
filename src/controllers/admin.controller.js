@@ -662,6 +662,19 @@ async function getDashboard(req, res, next) {
     }
 }
 
+async function getOperationalSummary(req, res, next) {
+    try {
+        const summary = await adminService.getStudioOccupancy({
+            from: req.query.from,
+            to: req.query.to,
+        });
+
+        return res.json(summary);
+    } catch (error) {
+        return next(error);
+    }
+}
+
 function toUTCDateStr(date) {
     if (!date) return null;
     const d = date instanceof Date ? date : new Date(date);
@@ -817,5 +830,6 @@ module.exports = {
     resetUserPassword,
     createSession,
     getDashboard,
+    getOperationalSummary,
 };
 

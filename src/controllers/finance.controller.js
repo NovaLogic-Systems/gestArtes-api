@@ -59,7 +59,7 @@ async function exportTransactions(req, res, next) {
       periodEnd,
       studentAccountId,
       studentNumber,
-      includeExported: includeExported ?? false,
+      includeExported: includeExported ?? true,
       userId,
     });
 

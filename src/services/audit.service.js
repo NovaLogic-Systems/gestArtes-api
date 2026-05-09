@@ -32,6 +32,7 @@ function createAuditService() {
     const parsedOffset = Number(offset);
     const start = periodStart ? new Date(periodStart) : null;
     const end = periodEnd ? new Date(periodEnd) : null;
+    if (end) end.setHours(23, 59, 59, 999);
 
     const where = {
       ...(start || end
@@ -72,6 +73,7 @@ function createAuditService() {
   async function getSummary({ periodStart, periodEnd } = {}) {
     const start = periodStart ? new Date(periodStart) : null;
     const end = periodEnd ? new Date(periodEnd) : null;
+    if (end) end.setHours(23, 59, 59, 999);
 
     const where = {
       ...(start || end

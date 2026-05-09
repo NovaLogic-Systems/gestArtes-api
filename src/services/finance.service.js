@@ -78,8 +78,12 @@ function createFinanceService(prismaClient) {
     limit = 50,
     offset = 0,
   } = {}) {
+    const start = periodStart ? new Date(periodStart) : null;
+    const end = periodEnd ? new Date(periodEnd) : null;
+    if (end) end.setHours(23, 59, 59, 999);
+
     const resolvedStudentAccountId = studentAccountId ?? (await _resolveStudentAccountId(studentNumber));
-    const where = _buildWhere({ periodStart, periodEnd, resolvedStudentAccountId, entryType, isExported });
+    const where = _buildWhere({ periodStart: start, periodEnd: end, resolvedStudentAccountId, entryType, isExported });
 
     const [entries, total] = await Promise.all([
       prismaClient.financialEntry.findMany({
@@ -108,11 +112,15 @@ function createFinanceService(prismaClient) {
   }
 
   async function getSummary({ periodStart, periodEnd, studentAccountId, studentNumber } = {}) {
+    const start = periodStart ? new Date(periodStart) : null;
+    const end = periodEnd ? new Date(periodEnd) : null;
+    if (end) end.setHours(23, 59, 59, 999);
+
     const resolvedStudentAccountId = studentAccountId ?? (await _resolveStudentAccountId(studentNumber));
 
     const conditions = [];
-    if (periodStart) conditions.push(Prisma.sql`fe.CreatedAt >= ${periodStart}`);
-    if (periodEnd) conditions.push(Prisma.sql`fe.CreatedAt <= ${periodEnd}`);
+    if (start) conditions.push(Prisma.sql`fe.CreatedAt >= ${start}`);
+    if (end) conditions.push(Prisma.sql`fe.CreatedAt <= ${end}`);
     if (resolvedStudentAccountId) {
       conditions.push(
         Prisma.sql`EXISTS (SELECT 1 FROM SessionStudent ss WHERE ss.SessionID = fe.SessionID AND ss.StudentAccountID = ${resolvedStudentAccountId})`
@@ -157,8 +165,8 @@ function createFinanceService(prismaClient) {
     }
 
     return {
-      periodStart: periodStart ?? null,
-      periodEnd: periodEnd ?? null,
+      periodStart: start ?? null,
+      periodEnd: end ?? null,
       totalsByType,
       totalRevenue: Number(totalRevenue.toFixed(2)),
       totalPenalties: Number(totalPenalties.toFixed(2)),
@@ -220,10 +228,14 @@ function createFinanceService(prismaClient) {
     includeExported = false,
     userId,
   } = {}) {
+    const start = periodStart ? new Date(periodStart) : null;
+    const end = periodEnd ? new Date(periodEnd) : null;
+    if (end) end.setHours(23, 59, 59, 999);
+
     const resolvedStudentAccountId = studentAccountId ?? (await _resolveStudentAccountId(studentNumber));
     const where = _buildWhere({
-      periodStart,
-      periodEnd,
+      periodStart: start,
+      periodEnd: end,
       resolvedStudentAccountId,
       entryType: undefined,
       isExported: includeExported ? undefined : false,

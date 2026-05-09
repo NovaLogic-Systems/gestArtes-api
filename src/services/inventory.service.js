@@ -204,7 +204,17 @@ function serializeRental(record) {
       itemId: record.InventoryItem.InventoryItemID,
       itemName: record.InventoryItem.ItemName,
       photoUrl: record.InventoryItem.PhotoURL,
+      isSchoolOwned: isSchoolOwnedItem(record.InventoryItem),
     },
+    borrower: record.User
+      ? {
+        userId: record.User.UserID,
+        firstName: record.User.FirstName,
+        lastName: record.User.LastName,
+        email: record.User.Email,
+        phoneNumber: record.User.PhoneNumber,
+      }
+      : null,
     returnVerification: {
       conditionChecked: Boolean(record.ConditionChecked),
       returnVerified: Boolean(record.ReturnVerified),
@@ -556,6 +566,15 @@ async function listRentalsByRenterId(renterId) {
           MethodName: true,
         },
       },
+      User: {
+        select: {
+          UserID: true,
+          FirstName: true,
+          LastName: true,
+          Email: true,
+          PhoneNumber: true,
+        },
+      },
     },
     orderBy: {
       TransactionID: 'desc',
@@ -563,6 +582,47 @@ async function listRentalsByRenterId(renterId) {
   });
 
   return rentals.map(serializeRental);
+}
+
+async function listActiveSchoolRentals() {
+  const rentals = await prisma.inventoryTransaction.findMany({
+    where: {
+      IsCompleted: false,
+    },
+    include: {
+      InventoryItem: {
+        select: {
+          InventoryItemID: true,
+          ItemName: true,
+          PhotoURL: true,
+          SymbolicFee: true,
+          IsSchoolOwned: true,
+        },
+      },
+      PaymentMethod: {
+        select: {
+          PaymentMethodID: true,
+          MethodName: true,
+        },
+      },
+      User: {
+        select: {
+          UserID: true,
+          FirstName: true,
+          LastName: true,
+          Email: true,
+          PhoneNumber: true,
+        },
+      },
+    },
+    orderBy: {
+      TransactionID: 'desc',
+    },
+  });
+
+  return rentals
+    .filter((record) => isSchoolOwnedItem(record.InventoryItem))
+    .map(serializeRental);
 }
 
 async function ensureActiveCategory(db, categoryId) {
@@ -830,6 +890,7 @@ module.exports = {
   createRental,
   startRental,
   listRentalsByRenterId,
+  listActiveSchoolRentals,
   getAdminInventoryItems,
   createSchoolInventoryItem,
   updateSchoolInventoryItem,

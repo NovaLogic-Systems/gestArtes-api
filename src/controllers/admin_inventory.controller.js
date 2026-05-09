@@ -21,6 +21,15 @@ async function getItems(req, res, next) {
   }
 }
 
+async function getRentals(req, res, next) {
+  try {
+    const rentals = await inventoryService.listActiveSchoolRentals();
+    res.json({ rentals });
+  } catch (error) {
+    next(error);
+  }
+}
+
 async function createItem(req, res, next) {
   try {
     const item = await inventoryService.createSchoolInventoryItem(req.body);
@@ -93,6 +102,7 @@ const verifyReturn = completeRental;
 
 module.exports = {
   getItems,
+  getRentals,
   createItem,
   updateItem,
   removeItem,

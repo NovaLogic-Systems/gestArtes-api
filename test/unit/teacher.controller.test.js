@@ -4,35 +4,60 @@
  * @project GestArtes - Projeto 50+10 para Entartes
  */
 
+/**
+ * @author NovaLogic System
+ * @institution IPCA
+ * @project GestArtes - Projeto 50+10 para Entartes
+ */
+
 const test = require('node:test');
 const assert = require('node:assert/strict');
 const Module = require('node:module');
 
-// ---------------------------------------------------------------------------
-// Fábrica de estado
-// ---------------------------------------------------------------------------
+/**
+ * ═════════════════════════════════════════════════════════════════════════
+ * TESTES: teacher.controller.js (Endpoints do Painel do Professor)
+ * ═════════════════════════════════════════════════════════════════════════
+ * 
+ * O QUE ESTÁ A SER TESTADO:
+ * ─────────────────────────
+ *   Endpoints para gestão de coaching (aulas) pelo professor:
+ *   - getTeacherDashboard(): KPIs (aulas, alunos, receita)
+ *   - getTeacherCoachingSessions(): Lista aulas do professor
+ *   - getCoachingSessionDetail(): Detalhes de uma aula
+ *   - submitTeacherAvailability(): Registar horários disponíveis
+ *   - getTeacherAdmissionRequests(): Pedidos de alunos para aderir
+ *   - respondToAdmissionRequest(): Aprovar/rejeitar pedido
+ * 
+ * LÓGICA CHAVE:
+ * ─────────────
+ *   Professores têm dois fluxos:
+ *   1. COACHING: Aulas em estúdios (agendadas, com alunos, pagáveis)
+ *   2. DISPONIBILIDADE: Calendário de quando está disponível para coaching
+ * 
+ * VALIDAÇÕES CRÍTICAS:
+ * ────────────────────
+ *   - Apenas alunos autenticados podem ver disponibilidade/agendar
+ *   - Apenas professores do coaching podem responder a pedidos
+ *   - Pedidos em estados específicos (PendingTeacher, PendingAdmin, etc.)
+ *   - Horários sobrepostos invalidam novos agendamentos
+ * 
+ */
 
 function buildState() {
   return {
-    // resultados de coachingJoinRequest.findMany / findFirst
     joinRequests: [],
-    // coachingJoinRequest.findUnique (para getAdmissionRequestForTeacher)
     joinRequestById: null,
-    // coachingJoinRequestStatus.findFirst
     statusRows: [
       { StatusID: 10, StatusName: 'TEACHER_APPROVED' },
       { StatusID: 11, StatusName: 'TEACHER_REJECTED' },
     ],
-    // contadores devolvidos por prisma.sessionTeacher.count, etc.
     classesToday: 3,
     pendingConfirmations: 1,
     admissionRequests: 2,
     noShows: 0,
-    // sessionTeacher.findMany para o horário de hoje
     sessionTeacherRows: [],
-    // valores capturados de coachingJoinRequest.update
     updatedJoinRequestData: null,
-    // captura de notification.create
     createdNotification: null,
   };
 }

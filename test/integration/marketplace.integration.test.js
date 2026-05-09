@@ -4,6 +4,16 @@
  * @project GestArtes - Projeto 50+10 para Entartes
  */
 
+/**
+ * Integração do marketplace da escola.
+ *
+ * O que valida:
+ * - listagem pública com filtros, detalhe e ciclo de vida de soft-delete
+ * - criação e manutenção de anúncios com autenticação real
+ * - reutilização das mesmas regras para o fluxo do professor
+ * - limpeza de dados criados durante o teste
+ */
+
 const test = require('node:test');
 const assert = require('node:assert/strict');
 require('dotenv').config();

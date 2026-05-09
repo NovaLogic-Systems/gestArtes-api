@@ -259,6 +259,30 @@ function resetMockState() {
   mockState.finalizationArgs = null;
 }
 
+/**
+ * TEST: Criação de utilizador Direction com mapeamento para admin
+ * ─────────────────────────────────────────────────────────────
+ * O QUE É TESTADO:
+ *   Valida que ao criar um utilizador com função 'Direction' (papel de negócio),
+ *   o sistema o mapeia corretamente para 'admin' (papel da API) e cria a atribuição
+ *   de papel correspondente na base de dados.
+ *
+ * COMO FUNCIONA:
+ *   1. Prepara um request com dados de um novo utilizador Direction
+ *   2. Chama createUser() com esses dados
+ *   3. Valida statusCode (201 Created), as mudanças no estado interno, e a resposta
+ *
+ * POR QUE É IMPORTANTE:
+ *   O mapeamento correto de papéis é crítico para autorização e controlo de acesso.
+ *   Garante que utilizadores Direction têm privilégios de admin sem regredir para
+ *   aluno ou outro papel incorrecto.
+ *
+ * ASSERTIONS EXPLICADAS:
+ *   - statusCode 201: Utilizador foi criado com sucesso (código HTTP 201 Created)
+ *   - RoleID 1: A função 'Direction' é armazenada com RoleID 1 no banco de dados
+ *   - studentAccountCreateData null: Direction nunca requer conta de aluno complementar
+ *   - user.role 'admin': A resposta serializa Direction como 'admin' para consumidores da API
+ */
 test('createUser maps Direction to admin and creates a role assignment', async () => {
   resetMockState();
 
@@ -284,6 +308,27 @@ test('createUser maps Direction to admin and creates a role assignment', async (
   assert.equal(res.payload.user.role, 'admin');
 });
 
+/**
+ * TEST: Validação obrigatória de número de aluno para utilizadores estudante
+ * ──────────────────────────────────────────────────────────────────────────
+ * O QUE É TESTADO:
+ *   Confirma que a criação de um aluno falha com erro 400 se o campo
+ *   'studentNumber' não for fornecido, prevenindo registos incompletos.
+ *
+ * COMO FUNCIONA:
+ *   1. Tenta criar um utilizador 'student' SEM o campo studentNumber
+ *   2. Valida que a resposta HTTP é 400 Bad Request
+ *   3. Valida que a mensagem de erro é específica e útil
+ *
+ * POR QUE É IMPORTANTE:
+ *   O número de aluno é um identificador único obrigatório na escola.
+ *   Alunos sem número não podem ser autenticados, localizados ou
+ *   processados em operações de turma. É uma invariante crítica.
+ *
+ * ASSERTIONS EXPLICADAS:
+ *   - statusCode 400: Requisição inválida, dado obrigatório em falta
+ *   - error message específica: Identifica exatamente qual campo falta
+ */
 test('createUser requires student number when creating a student user', async () => {
   resetMockState();
 
@@ -306,6 +351,27 @@ test('createUser requires student number when creating a student user', async ()
   assert.deepEqual(res.payload, { error: 'Student number is required for student users' });
 });
 
+/**
+ * TEST: Validação obrigatória de data de nascimento para alunos
+ * ─────────────────────────────────────────────────────────────
+ * O QUE É TESTADO:
+ *   Confirma que a criação de um aluno falha com erro 400 se o campo
+ *   'birthDate' não for fornecido, mantendo dados de alunos sempre completos.
+ *
+ * COMO FUNCIONA:
+ *   1. Tenta criar um utilizador 'student' SEM o campo birthDate
+ *   2. Valida que a resposta é 400 Bad Request
+ *   3. Valida que next() NÃO foi chamado (erro é tratado, não propaga)
+ *
+ * POR QUE É IMPORTANTE:
+ *   Data de nascimento é usada para múltiplos fins críticos:
+ *   - Verificar maioridade (consentimento parental, proteção de menores)
+ *   - Rastrear alunos por cohort de idade (agregação estatística)
+ *   - Cumprir requisitos de RGPD (saber idade de dados pessoais)
+ *   Sem ela, não conseguimos diferenciar menores de maiores de idade.\n *
+ * ASSERTIONS EXPLICADAS:
+ *   - statusCode 400: Validação falhou, dado obrigatório em falta\n *   - error message: Mensagem descritiva do problema
+ *   - nextCalled false: Erro é tratado no controlador, não passa para middleware\n */
 test('createUser requires birth date when creating a student user', async () => {
   resetMockState();
 
@@ -329,6 +395,27 @@ test('createUser requires birth date when creating a student user', async () => 
   assert.equal(nextCalled, false);
 });
 
+/**
+ * TEST: Normalização de papéis armazenados para papéis da API
+ * ──────────────────────────────────────────────────────────
+ * O QUE É TESTADO:
+ *   Valida que listUsers() converte papéis armazenados em português
+ *   ('Direção', 'Professor', 'Aluno') para papéis normalizados da API
+ *   ('admin', 'teacher', 'student'), mantendo labels originais em PT.
+ *
+ * COMO FUNCIONA:
+ *   1. Define um utilizador no banco de dados com RoleName 'Direção'
+ *   2. Chama listUsers() para recuperar a lista de utilizadores
+ *   3. Valida que a resposta tem papel normalizado + label em português\n *
+ * POR QUE É IMPORTANTE:
+ *   O código utiliza papéis internos em inglês (req.auth.role = 'admin'),
+ *   mas a base de dados armazena em português por razões históricas.
+ *   A normalização na leitura garante que TODA a API fala em inglês\n *   ('admin'/'teacher'/'student') consistentemente. Isto evita bugs onde\n *   diferentes partes do código usam diferentes convenções.
+ *
+ * ASSERTIONS EXPLICADAS:
+ *   - users[0].role 'admin': Papel foi normalizado para código (inglês)\n *   - users[0].roleLabel 'Direção': Label português mantido para UI/exibição
+ *   - users.length 1: Retorna quantidade correta de registos
+ */
 test('listUsers normalizes stored business roles to app roles', async () => {
   resetMockState();
 
@@ -370,6 +457,26 @@ test('listUsers normalizes stored business roles to app roles', async () => {
   assert.equal(res.payload.users[0].roleLabel, 'Direção');
 });
 
+/**
+ * TEST: Atualização de número de aluno para utilizadores estudante
+ * ───────────────────────────────────────────────────────────────
+ * O QUE É TESTADO:
+ *   Valida que updateUser() consegue alterar o número de aluno de um
+ *   utilizador existente, atualizando o identificador único (AuthUID).
+ *
+ * COMO FUNCIONA:
+ *   1. Define um aluno existente no estado do banco de dados
+ *   2. Envia request para atualizar seu studentNumber para 'ST-0999'
+ *   3. Valida que AuthUID foi atualizado na base de dados E na resposta\n *
+ * POR QUE É IMPORTANTE:
+ *   Alunos podem trocar de turma, série, ou a escola pode corrigir números\n *   atribuídos incorretamente. O sistema precisa permitir estas correções
+ *   mantendo registos históricos intactos (soft updates, nunca apagar dados).
+ *   AuthUID é o identificador único para autenticação, por isso precisa\n *   ser sempre mantido sincronizado com o número de aluno.
+ *
+ * ASSERTIONS EXPLICADAS:
+ *   - userUpdateData.data.AuthUID 'ST-0999': Banco de dados foi atualizado
+ *   - res.payload.user.studentNumber 'ST-0999': Resposta reflete a mudança
+ */
 test('updateUser updates student number for student users', async () => {
   resetMockState();
 
@@ -407,6 +514,28 @@ test('updateUser updates student number for student users', async () => {
   assert.equal(res.payload.user.studentNumber, 'ST-0999');
 });
 
+/**
+ * TEST: Substituição de papéis e criação de perfil de aluno quando necessário
+ * ──────────────────────────────────────────────────────────────────────────
+ * O QUE É TESTADO:
+ *   Valida o cenário complexo onde um utilizador muda de papéis. Neste caso,
+ *   um professor (sem perfil de aluno) é promovido para professor+aluno,
+ *   requerendo a criação de uma conta de aluno complementar.
+ *
+ * COMO FUNCIONA:
+ *   1. Define um professor existente (sem StudentAccount na BD)\n *   2. Envia request para mudar para roles ['student', 'teacher'] com dados de aluno
+ *   3. Valida que:\n *      - Papéis antigos foram removidos via deleteMany()\n *      - Novos papéis foram criados em lote via createMany()\n *      - Perfil de aluno foi criado (StudentAccount)\n *      - Número de aluno foi sincronizado
+ *
+ * POR QUE É IMPORTANTE:
+ *   Utilizadores multifuncionais (professor que também faz formação contínua)\n *   são comuns em escolas. O sistema precisa coordenar mudanças de papéis com\n *   criação de perfis secundários de forma ATÓMICA (tudo acontece ou nada).\n *   Isto evita estados inconsistentes (ex: aluno sem conta, ou conta órfã).
+ *
+ * ASSERTIONS EXPLICADAS:
+ *   - userRoleDeleteWhere.UserID 55: Papéis antigos foram removidos para este utilizador
+ *   - userRoleCreateManyData.length 2: Exatamente 2 novos papéis criados
+ *   - studentAccountCreateData.UserID 55: Perfil de aluno criado para este utilizador
+ *   - userUpdateData.data.AuthUID 'ST-0123': Número de aluno sincronizado (para autenticação)
+ *   - user.roles.includes('student') true: Resposta reflete o novo papel de aluno
+ */
 test('updateUserRoles replaces role assignments and creates student profile when needed', async () => {
   resetMockState();
 
@@ -447,6 +576,24 @@ test('updateUserRoles replaces role assignments and creates student profile when
   assert.equal(res.payload.user.roles.includes('student'), true);
 });
 
+/**
+ * TEST: Eliminação reversível (soft-delete) de utilizadores
+ * ────────────────────────────────────────────────────────
+ * O QUE É TESTADO:
+ *   Valida que deleteUser() NÃO remove dados da base de dados mas marca\n *   o utilizador como eliminado (DeletedAt != null) e desativa (IsActive=false).
+ *
+ * COMO FUNCIONA:
+ *   1. Define um utilizador existente no estado\n *   2. Chama deleteUser() com o seu ID
+ *   3. Valida que o registro foi marcado como eliminado (não apagado)\n *
+ * POR QUE É IMPORTANTE:
+ *   Soft-delete é essencial para integridade da aplicação:
+ *   - AUDITORIA: Manter histórico completo de ações/relações do utilizador\n *   - INTEGRIDADE REFERENCIAL: Não orfanizar dados relacionados (sessões, pagamentos)
+ *   - CONFORMIDADE: Manter registos financeiros/legais mesmo após remoção\n *   - RECOVERY: Permitir restauro acidental de dados em caso de erro
+ *   Hard-delete quebraria todas estas garantias.\n *
+ * ASSERTIONS EXPLICADAS:
+ *   - statusCode 204: No Content (sucesso sem corpo de resposta)\n *   - DeletedAt != null: Timestamp de eliminação foi definido (marca a data/hora)
+ *   - IsActive false: Utilizador é desativado para não aparecer em listagens
+ */
 test('deleteUser performs a soft delete', async () => {
   resetMockState();
 
@@ -469,6 +616,20 @@ test('deleteUser performs a soft delete', async () => {
   assert.equal(mockState.userUpdateData.data.IsActive, false);
 });
 
+/**
+ * TEST: Recuperação da fila de validações pós-sessão
+ * ────────────────────────────────────────────────
+ * O QUE É TESTADO:
+ *   Valida que o endpoint getPostSessionValidations() retorna a lista de\n *   sessões de coaching pendentes de validação (aguardando aprovação admin).
+ *
+ * COMO FUNCIONA:
+ *   1. Define uma ou mais sessões na fila de validações do estado\n *   2. Chama getPostSessionValidations()\n *   3. Valida que a resposta contém exatamente a fila armazenada\n *
+ * POR QUE É IMPORTANTE:
+ *   A administração precisa de um painel com sessões aguardando validação.\n *   Este endpoint alimenta:\n *   - Dashboard com número de validações pendentes (KPI em tempo real)
+ *   - Lista detalhada para aprovação/rejeição de cada sessão\n *   - Fluxo de trabalho de pós-sessão (validar aulas antes de processar pagamentos)\n *
+ * ASSERTIONS EXPLICADAS:
+ *   - res.payload exatamente { sessions: [...] }: Estrutura esperada (validação de contrato)\n *   - Contém sessionId, sessionReference, title: Campos necessários para exibição na UI
+ */
 test('getPostSessionValidations returns the validation queue payload', async () => {
   resetMockState();
 
@@ -490,6 +651,21 @@ test('getPostSessionValidations returns the validation queue payload', async () 
   assert.deepEqual(res.payload, { sessions: mockState.postSessionValidations });
 });
 
+/**
+ * TEST: Finalização de validação de sessão de coaching
+ * ──────────────────────────────────────────────────
+ * O QUE É TESTADO:
+ *   Valida que finalizeSessionValidation() consegue processar a validação\n *   de uma sessão de coaching, passando corretamente:\n *   - ID da sessão a validar\n *   - ID do admin que está a fazer a validação\n *
+ * COMO FUNCIONA:
+ *   1. Envia request para finalizar validação da sessão #321\n *   2. Identifica o admin autenticado (userId 44)\n *   3. Valida que sessionId e adminUserId foram passados ao serviço\n *   4. Valida que a resposta contém o resultado (IDs criados, preço final)
+ *
+ * POR QUE É IMPORTANTE:
+ *   A finalização de validação é a operação crítica que:\n *   - Marca uma sessão como validada e completa\n *   - Cria um lançamento financeiro (para pagamento ao professor)\n *   - Recalcula preço final (se houve ajustes de duração, etc)\n *   - Notifica professor e alunos da conclusão\n *   Se dados forem passados incorretamente, a auditoria fica inconsistente\n *   e o fluxo de pagamentos quebra. Esta é uma operação crítica.\n *
+ * ASSERTIONS EXPLICADAS:
+ *   - finalizationArgs.sessionId 321: ID de sessão foi passado corretamente
+ *   - finalizationArgs.adminUserId 44: ID do admin foi extraído do JWT e passado
+ *   - res.payload: Contém resultado da operação (IDs criados, preço calculado)
+ */
 test('finalizeValidation validates the session id and forwards the admin user id', async () => {
   resetMockState();
 

@@ -4,9 +4,47 @@
  * @project GestArtes - Projeto 50+10 para Entartes
  */
 
+/**
+ * @author NovaLogic System
+ * @institution IPCA
+ * @project GestArtes - Projeto 50+10 para Entartes
+ */
+
 const test = require('node:test');
 const assert = require('node:assert/strict');
 const Module = require('node:module');
+
+/**
+ * ═════════════════════════════════════════════════════════════════════════
+ * TESTES: student.controller.js (Endpoints do Painel do Aluno)
+ * ═════════════════════════════════════════════════════════════════════════
+ * 
+ * O QUE ESTÁ A SER TESTADO:
+ * ─────────────────────────
+ *   Endpoints que servem o painel do aluno (dashboard):
+ *   - getStudentDashboard(): Retorna KPIs (coaching, marketplace, inventário)
+ *   - getDashboardNotifications(): Notificações pendentes
+ *   - getStudentProfile(): Dados do aluno (nome, email, etc.)
+ *   - updateStudentProfile(): Alterar dados de conta
+ * 
+ * LÓGICA TESTADA:
+ * ───────────────
+ *   Cada endpoint precisa:
+ *   1. Extrair userId do contexto autenticado (req.auth.userId)
+ *   2. Buscar dados do aluno (user, perfil, notificações)
+ *   3. Validar que aluno existe e está ativo
+ *   4. Agregar dados (KPIs de múltiplas tabelas)
+ *   5. Serializar resposta com campos corretos
+ * 
+ * PADRÕES TESTADOS:
+ * ────────────────
+ *   - Aluno não existe → 404
+ *   - Aluno existe → 200 com dados
+ *   - Notificações agregadas de múltiplas tabelas
+ *   - Campos corretos na resposta (userId, email, firstName, etc.)
+ *   - Contagem de transações, pedidos, sessões
+ * 
+ */
 
 const mockState = {
   user: null,

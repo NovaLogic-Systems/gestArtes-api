@@ -9,12 +9,12 @@ const assert = require('node:assert/strict');
 const { spawn } = require('node:child_process');
 
 /**
- * TEST-2: Testes dos endpoints nucleares da API
+ * Integração dos endpoints nucleares da API.
  *
- * Cobre BE-10, BE-11 e BE-12 com:
+ * O que valida:
  * - autorização por função, validação de entradas e tratamento de erros
  * - lógica de preços e penalizações (base, fora de horário, externo, no-show)
- * - timeout de 48h (simulado)
+ * - timeout de 48h simulado para validações pendentes
  * - fluxo de dupla aprovação de pedidos de inscrição
  *
  * Objetivo: cobertura >= 70% nos módulos nucleares

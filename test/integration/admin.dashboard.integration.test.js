@@ -4,6 +4,19 @@
  * @project GestArtes - Projeto 50+10 para Entartes
  */
 
+/**
+ * Integração do dashboard de administração.
+ *
+ * O que valida:
+ * - GET /admin/dashboard
+ * - agregação de KPIs principais do painel
+ * - mapa/estado de ocupação dos estúdios
+ * - lista de avisos/notificações apresentada no dashboard
+ *
+ * Este ficheiro usa Prisma injetado via mock para confirmar que a rota
+ * combina várias fontes de dados antes de devolver a resposta final.
+ */
+
 const test = require('node:test');
 const assert = require('node:assert/strict');
 const express = require('express');

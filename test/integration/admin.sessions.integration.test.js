@@ -4,6 +4,19 @@
  * @project GestArtes - Projeto 50+10 para Entartes
  */
 
+/**
+ * Integração da criação de sessões de administração.
+ *
+ * O que valida:
+ * - POST /admin/sessions com payload válido
+ * - conflitos de agenda do estúdio
+ * - dupla marcação do professor
+ * - bloqueio quando o professor está ausente
+ *
+ * O objetivo é confirmar que a rota aplica todas as regras de agendamento
+ * antes de persistir uma nova sessão.
+ */
+
 const test = require('node:test');
 const assert = require('node:assert/strict');
 const express = require('express');

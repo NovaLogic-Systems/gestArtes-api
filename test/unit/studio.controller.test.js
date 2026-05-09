@@ -4,9 +4,46 @@
  * @project GestArtes - Projeto 50+10 para Entartes
  */
 
+/**
+ * @author NovaLogic System
+ * @institution IPCA
+ * @project GestArtes - Projeto 50+10 para Entartes
+ */
+
 const test = require('node:test');
 const assert = require('node:assert/strict');
 const Module = require('node:module');
+
+/**
+ * ═════════════════════════════════════════════════════════════════════════
+ * TESTES: studio.controller.js (Endpoints de Gestão de Estúdios)
+ * ═════════════════════════════════════════════════════════════════════════
+ * 
+ * O QUE ESTÁ A SER TESTADO:
+ * ─────────────────────────
+ *   Endpoints para CRUD de estúdios (salas de aula):
+ *   - getStudios(): Listar todos os estúdios
+ *   - getStudio(id): Detalhes de um estúdio
+ *   - createStudio(): Criar novo estúdio (admin only)
+ *   - updateStudio(id): Editar estúdio (admin only)
+ *   - deleteStudio(id): Eliminar estúdio (admin only)
+ * 
+ * DADOS DE ESTÚDIO:
+ * ────────────────
+ *   - Nome (E1, E2, etc.)
+ *   - Capacidade (num. alunos máx)
+ *   - Modalidades (Jazz, Ballet, etc. - muitos-para-muitos)
+ *   - Status (ativo/inativo)
+ * 
+ * VALIDAÇÕES:
+ * ────────────
+ *   - Nome obrigatório e único
+ *   - Capacidade > 0
+ *   - Modalidades devem existir
+ *   - Apenas admin consegue criar/editar/deletar
+ *   - Soft-delete (nunca apaga, marca como inativo)
+ * 
+ */
 
 const mockState = {
   listedStudios: [],

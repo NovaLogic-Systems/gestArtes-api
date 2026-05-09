@@ -4,6 +4,18 @@
  * @project GestArtes - Projeto 50+10 para Entartes
  */
 
+/**
+ * Integração do fluxo de pedidos de inscrição dos professores.
+ *
+ * O que valida:
+ * - listagem dos pedidos pendentes criados pelo professor
+ * - aprovação de pedidos com criação de notificação
+ * - rejeição de pedidos com observações do professor
+ *
+ * O objetivo é confirmar o ciclo completo de revisão docente sobre os pedidos
+ * de admissão à sua turma/sessão.
+ */
+
 const test = require('node:test');
 const assert = require('node:assert/strict');
 const crypto = require('node:crypto');

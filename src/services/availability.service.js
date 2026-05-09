@@ -362,14 +362,16 @@ async function submitAvailability(teacherId, body) {
           throw createHttpError(400, 'Slot overlaps with an existing availability');
         }
 
-        const h = new Date(slot.startTime).getUTCHours();
+        const [hourStr, minStr] = slot.startTime.split(':');
+        const h = parseInt(hourStr, 10);
+        const m = parseInt(minStr, 10);
         const isWeekday = slot.dayOfWeek >= 1 && slot.dayOfWeek <= 5;
         const isSaturday = slot.dayOfWeek === 6;
         const isSunday = slot.dayOfWeek === 0;
 
         let invalidHour = false;
-        if (isWeekday && h < 18) invalidHour = true;
-        if (isSaturday && (h < 9 || h > 12)) invalidHour = true;
+        if (isWeekday && (h < 18 || (h === 21 && m > 30) || h > 21)) invalidHour = true;
+        if (isSaturday && (h < 9 || h > 12 || (h === 12 && m > 30))) invalidHour = true;
         if (isSunday) invalidHour = true;
 
         if (invalidHour) {
@@ -378,6 +380,7 @@ async function submitAvailability(teacherId, body) {
       } else if (slot.mode === 'semester') {
         const d = new Date(slot.startDateTime);
         const h = d.getHours();
+        const m = d.getMinutes();
         const jsDay = d.getDay();
 
         const isWeekday = jsDay >= 1 && jsDay <= 5;
@@ -385,8 +388,8 @@ async function submitAvailability(teacherId, body) {
         const isSunday = jsDay === 0;
 
         let invalidHour = false;
-        if (isWeekday && h < 18) invalidHour = true;
-        if (isSaturday && (h < 9 || h > 12)) invalidHour = true;
+        if (isWeekday && (h < 18 || (h === 21 && m > 30) || h > 21)) invalidHour = true;
+        if (isSaturday && (h < 9 || h > 12 || (h === 12 && m > 30))) invalidHour = true;
         if (isSunday) invalidHour = true;
 
         if (invalidHour) {

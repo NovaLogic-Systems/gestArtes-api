@@ -884,12 +884,39 @@ async function completeRental(rentalId, data) {
   return verifyRentalReturn(rentalId, data);
 }
 
+async function listAllRentals() {
+  const rentals = await prisma.inventoryTransaction.findMany({
+    include: {
+      InventoryItem: {
+        select: {
+          InventoryItemID: true,
+          ItemName: true,
+          PhotoURL: true,
+          SymbolicFee: true,
+        },
+      },
+      PaymentMethod: {
+        select: {
+          PaymentMethodID: true,
+          MethodName: true,
+        },
+      },
+    },
+    orderBy: {
+      TransactionID: 'desc',
+    },
+  });
+
+  return rentals.map(serializeRental);
+}
+
 module.exports = {
   listItems,
   getItemById,
   createRental,
   startRental,
   listRentalsByRenterId,
+  listAllRentals,
   listActiveSchoolRentals,
   getAdminInventoryItems,
   createSchoolInventoryItem,

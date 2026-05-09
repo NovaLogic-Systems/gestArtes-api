@@ -23,7 +23,7 @@ async function getItems(req, res, next) {
 
 async function getRentals(req, res, next) {
   try {
-    const rentals = await inventoryService.listActiveSchoolRentals();
+    const rentals = await inventoryService.listAllRentals();
     res.json({ rentals });
   } catch (error) {
     next(error);

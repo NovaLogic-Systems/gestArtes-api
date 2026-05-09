@@ -200,16 +200,11 @@ async function resolveAdminFinalStepId() {
     }
   }
 
-  const created = await prisma.validationStep.create({
-    data: {
-      StepName: 'AdminFinalValidation',
-    },
-    select: {
-      StepID: true,
-    },
-  });
-
-  return created.StepID;
+  // ValidationStep rows are seeded data — throw a clear error if missing
+  throw createHttpError(
+    500,
+    'Passo de validação "AdminFinalValidation" não está configurado na base de dados. Execute o seed SQL em prisma/sql/20260509_seed_validation_steps.sql.'
+  );
 }
 
 async function assertNoFinalFinancialEntry(sessionId) {

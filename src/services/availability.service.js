@@ -322,6 +322,27 @@ function serializeException(row) {
 }
 
 async function submitAvailability(teacherId, body) {
+  // ---- Conflict detection ----
+  // Ensure no overlapping recurring slots are created for the same teacher.
+  // This checks existing recurring slots (weekly) for the same day and overlapping time ranges.
+  async function hasConflict(teacherId, newSlot) {
+    const existing = await prisma.teacherAvailabilityRecurring.findMany({
+      where: {
+        TeacherAvailability: { TeacherID: teacherId },
+        DayOfWeek: newSlot.dayOfWeek,
+        IsActive: true,
+      },
+      select: { StartTime: true, EndTime: true },
+    });
+    const newStart = new Date(newSlot.startTime);
+    const newEnd = new Date(newSlot.endTime);
+    return existing.some(rec => {
+      const recStart = new Date(rec.StartTime);
+      const recEnd = new Date(rec.EndTime);
+      // Overlap if start < other.end && end > other.start
+      return newStart < recEnd && newEnd > recStart;
+    });
+  }
   const payload = normalizeAvailabilityPayload(body);
 
   return prisma.$transaction(async (tx) => {
@@ -334,6 +355,45 @@ async function submitAvailability(teacherId, body) {
     const created = [];
 
     for (const slot of payload.slots) {
+      // Detect overlapping recurring slots for the same teacher
+      if (slot.mode === 'weekly') {
+        const conflict = await hasConflict(teacherId, slot);
+        if (conflict) {
+          throw createHttpError(400, 'Slot overlaps with an existing availability');
+        }
+
+        const h = new Date(slot.startTime).getUTCHours();
+        const isWeekday = slot.dayOfWeek >= 1 && slot.dayOfWeek <= 5;
+        const isSaturday = slot.dayOfWeek === 6;
+        const isSunday = slot.dayOfWeek === 0;
+
+        let invalidHour = false;
+        if (isWeekday && h < 18) invalidHour = true;
+        if (isSaturday && (h < 9 || h > 12)) invalidHour = true;
+        if (isSunday) invalidHour = true;
+
+        if (invalidHour) {
+          throw createHttpError(400, 'Fora do horario de funcionamento permitido');
+        }
+      } else if (slot.mode === 'semester') {
+        const d = new Date(slot.startDateTime);
+        const h = d.getHours();
+        const jsDay = d.getDay();
+
+        const isWeekday = jsDay >= 1 && jsDay <= 5;
+        const isSaturday = jsDay === 6;
+        const isSunday = jsDay === 0;
+
+        let invalidHour = false;
+        if (isWeekday && h < 18) invalidHour = true;
+        if (isSaturday && (h < 9 || h > 12)) invalidHour = true;
+        if (isSunday) invalidHour = true;
+
+        if (invalidHour) {
+          throw createHttpError(400, 'Fora do horario de funcionamento permitido');
+        }
+      }
+      
       const row = await createAvailabilityWithSlot(tx, teacherId, slot, payload.notes, statusId);
       created.push(serializeAvailability(row));
     }

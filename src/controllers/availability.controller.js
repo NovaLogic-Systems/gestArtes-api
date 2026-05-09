@@ -5,6 +5,7 @@
  * @project GestArtes - Projeto 50+10 para Entartes
  */
 
+const prisma = require('../config/prisma');
 const {
   createException,
   getAvailability,
@@ -237,9 +238,86 @@ async function rejectAvailability(req, res, next) {
   }
 }
 
+async function getTeacherCalendar(req, res, next) {
+  try {
+    const teacherUserId = getAuthenticatedTeacherUserId(req, res);
+
+    if (!teacherUserId) {
+      return;
+    }
+
+    // Fetch teacher's availability records and convert to UI slots
+    const result = await getAvailability(teacherUserId);
+    const { TeacherAvailabilityStatus } = prisma;
+
+    // Get status names for mapping
+    const statuses = await TeacherAvailabilityStatus.findMany({
+      select: { StatusID: true, StatusName: true }
+    });
+
+    const statusMap = new Map(statuses.map(s => [s.StatusID, s.StatusName.toLowerCase()]));
+
+    // Build slots array for 7 days × 13 hours (8-20)
+    const slots = [];
+    const hourRange = Array.from({ length: 13 }, (_, i) => i + 8);
+    const dayOfWeekRange = Array.from({ length: 7 }, (_, i) => i);
+
+    // For each day/hour combination, create a slot entry
+    if (result && result.availability && Array.isArray(result.availability)) {
+      // Mark approved/pending slots based on availability records
+      for (const record of result.availability) {
+        const statusName = statusMap.get(record.StatusID) || 'pending';
+
+        // Handle recurring (weekly) availability
+        if (record.RecurringSlot) {
+          const slot = record.RecurringSlot;
+          const dayOfWeek = slot.DayOfWeek; // 0-6
+
+          // Calculate hours from StartTime and EndTime
+          if (slot.StartTime && slot.EndTime) {
+            const startHour = new Date(slot.StartTime).getHours();
+            const endHour = new Date(slot.EndTime).getHours();
+
+            for (let hour = startHour; hour < endHour && hour < 21; hour++) {
+              slots.push({
+                day: dayOfWeek,
+                hour,
+                status: statusName
+              });
+            }
+          }
+        }
+      }
+    }
+
+    // Return slots array (frontend will visualize this)
+    res.json({
+      slots: slots.length > 0 ? slots : generateEmptySlots()
+    });
+  } catch (error) {
+    next(error);
+  }
+}
+
+function generateEmptySlots() {
+  // Return empty calendar for initial load
+  const slots = [];
+  for (let day = 0; day < 7; day++) {
+    for (let hour = 8; hour < 21; hour++) {
+      slots.push({
+        day,
+        hour,
+        status: 'available'
+      });
+    }
+  }
+  return slots;
+}
+
 module.exports = {
   approveAvailability,
   createTeacherException,
+  getTeacherCalendar,
   listAdminPendingAvailability,
   listPendingTeacherExceptions,
   listTeacherAvailability,

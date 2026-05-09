@@ -753,8 +753,9 @@ async function getOrCreateValidationStep(db, stepName) {
   const normalized = stepName.toLowerCase();
   const match = all.find((s) => s.StepName.toLowerCase().includes(normalized) || normalized.includes(s.StepName.toLowerCase()));
   if (match) return match.StepID;
-  const created = await db.validationStep.create({ data: { StepName: stepName } });
-  return created.StepID;
+  // ValidationStep rows are seeded data — throw a clear error if missing
+  const { createHttpError } = require('../utils/http-error');
+  throw createHttpError(500, `Passo de validação "${stepName}" não está configurado na base de dados. Execute o seed SQL em prisma/sql/20260509_seed_validation_steps.sql.`);
 }
 
 async function listAdminUserIds(db) {

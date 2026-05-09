@@ -507,16 +507,13 @@ async function getDashboard(req, res, next) {
           CoachingSession: { StartTime: { gte: now } },
         },
       }),
+      // Count sessions with any validation entry. Avoids filtering by ValidationStep
+      // since that relation requires the ValidationStepID column in SessionValidation
+      // which may not exist in the DB until the migration is applied.
       prisma.sessionValidation.findMany({
         where: {
           CoachingSession: {
             SessionStudent: { some: { StudentAccountID: studentAccountId } },
-          },
-          ValidationStep: {
-            OR: [
-              { StepName: { contains: 'pending' } },
-              { StepName: { contains: 'finalization' } },
-            ],
           },
         },
         select: { SessionID: true },

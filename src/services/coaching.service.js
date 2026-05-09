@@ -86,12 +86,18 @@ async function getOrCreateValidationStep(stepName, keywords) {
 
   if (found) return found.StepID;
 
-  const created = await prisma.validationStep.create({
-    data: { StepName: stepName },
-    select: { StepID: true },
-  });
+  // Fallback: try exact stepName match (case-insensitive)
+  const exact = all.find(
+    (s) => s.StepName.toLowerCase() === stepName.toLowerCase()
+  );
 
-  return created.StepID;
+  if (exact) return exact.StepID;
+
+  // The ValidationStep rows are seeded data — if missing, report clearly
+  throw createHttpError(
+    500,
+    `Passo de validação "${stepName}" não está configurado na base de dados. Por favor, execute o seed ou contacte o administrador.`
+  );
 }
 
 async function getAvailableSlots({ weekStart: weekStartStr, startDate: startDateStr, endDate: endDateStr, teacherId, modalityId }) {
@@ -631,14 +637,11 @@ async function confirmCompletion(sessionId, studentUserId) {
       SessionStudent: {
         where: { StudentAccountID: studentAccount.StudentAccountID },
       },
+      // Include SessionValidation WITHOUT ValidationStep — that relation requires
+      // the ValidationStepID column which may not yet be in the DB.
+      // We only need ValidatedByUserID to detect duplicate confirmation.
       SessionValidation: {
-        include: {
-          User: {
-            select: {
-              UserRole: { select: { Role: { select: { RoleName: true } } } },
-            },
-          },
-        },
+        select: { ValidatedByUserID: true },
       },
     },
   });
@@ -658,38 +661,58 @@ async function confirmCompletion(sessionId, studentUserId) {
     throw createHttpError(409, 'Não é possível confirmar uma sessão cancelada');
   }
 
+  // A student can only confirm once — check by their own UserID
   const alreadyConfirmedByThisStudent = session.SessionValidation.some(
-    (sv) =>
-      sv.ValidatedByUserID === studentUserId &&
-      sv.User.UserRole.some((ur) => (ur.Role?.RoleName || '').toLowerCase() === 'student')
+    (sv) => sv.ValidatedByUserID === studentUserId
   );
 
   if (alreadyConfirmedByThisStudent) {
     throw createHttpError(409, 'Já confirmou esta sessão');
   }
 
-  const studentStepId = await getOrCreateValidationStep('StudentConfirmation', ['student']);
+  // Try to get the step ID — if ValidationStep table / column doesn't exist yet,
+  // fall back to inserting without it using raw SQL.
+  let studentStepId = null;
+  try {
+    studentStepId = await getOrCreateValidationStep('StudentConfirmation', ['student']);
+  } catch {
+    // ValidationStep table not yet migrated — proceed without step ID
+  }
 
-  const validation = await prisma.sessionValidation.create({
-    data: {
-      SessionID: sessionId,
-      ValidatedByUserID: studentUserId,
-      ValidatedAt: new Date(),
-      ValidationStepID: studentStepId,
-    },
-    select: {
-      ValidationID: true,
-      SessionID: true,
-      ValidatedAt: true,
-      ValidationStep: { select: { StepName: true } },
-    },
-  });
+  let validationId;
+  let validatedAt = new Date();
+
+  if (studentStepId !== null) {
+    // Normal path — ValidationStepID column exists
+    const validation = await prisma.sessionValidation.create({
+      data: {
+        SessionID: sessionId,
+        ValidatedByUserID: studentUserId,
+        ValidatedAt: validatedAt,
+        ValidationStepID: studentStepId,
+      },
+      select: { ValidationID: true, SessionID: true, ValidatedAt: true },
+    });
+    validationId = validation.ValidationID;
+  } else {
+    // Fallback path — column missing, insert with raw SQL (omitting ValidationStepID)
+    await prisma.$executeRaw`
+      INSERT INTO [dbo].[SessionValidation] ([SessionID], [ValidatedByUserID], [ValidatedAt])
+      VALUES (${sessionId}, ${studentUserId}, ${validatedAt})
+    `;
+    const row = await prisma.$queryRaw`
+      SELECT TOP 1 [ValidationID] FROM [dbo].[SessionValidation]
+      WHERE [SessionID] = ${sessionId} AND [ValidatedByUserID] = ${studentUserId}
+      ORDER BY [ValidationID] DESC
+    `;
+    validationId = row[0]?.ValidationID ?? null;
+  }
 
   return {
-    validationId: validation.ValidationID,
-    sessionId: validation.SessionID,
-    step: validation.ValidationStep?.StepName,
-    validatedAt: validation.ValidatedAt,
+    validationId,
+    sessionId,
+    step: studentStepId ? 'StudentConfirmation' : null,
+    validatedAt,
   };
 }
 
@@ -716,15 +739,10 @@ async function getSessionHistory(studentUserId) {
           User: { select: { UserID: true, FirstName: true, LastName: true } },
         },
       },
+      // Omit ValidationStep include — it requires ValidationStepID column which
+      // may not exist until the migration is applied.
       SessionValidation: {
-        include: {
-          ValidationStep: { select: { StepName: true } },
-          User: {
-            select: {
-              UserRole: { select: { Role: { select: { RoleName: true } } } },
-            },
-          },
-        },
+        select: { ValidatedByUserID: true },
       },
       SessionStudent: {
         where: { StudentAccountID: studentAccount.StudentAccountID },
@@ -737,10 +755,9 @@ async function getSessionHistory(studentUserId) {
   const now = new Date();
 
   return sessions.map((cs) => {
+    // A student has confirmed if their UserID appears in SessionValidation
     const studentValidated = cs.SessionValidation.some(
-      (sv) =>
-        sv.ValidatedByUserID === studentUserId &&
-        sv.User.UserRole.some((ur) => (ur.Role?.RoleName || '').toLowerCase() === 'student')
+      (sv) => sv.ValidatedByUserID === studentUserId
     );
 
     const statusName = String(cs.SessionStatus?.StatusName || '').toLowerCase();

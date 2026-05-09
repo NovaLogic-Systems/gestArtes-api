@@ -17,10 +17,10 @@ async function listEvents(req, res, next) {
       periodEnd,
       module,
       action,
-      userId,
+      userId: userId ? Number(userId) : undefined,
       result,
-      limit: limit ?? 100,
-      offset: offset ?? 0,
+      limit: Number(limit ?? 100),
+      offset: Number(offset ?? 0),
     });
     res.json(data);
   } catch (err) {

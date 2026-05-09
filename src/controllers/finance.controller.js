@@ -20,8 +20,8 @@ async function listTransactions(req, res, next) {
       studentNumber,
       entryType,
       isExported,
-      limit: limit ?? 50,
-      offset: offset ?? 0,
+      limit: Number(limit ?? 50),
+      offset: Number(offset ?? 0),
     });
     res.json(result);
   } catch (err) {
@@ -59,7 +59,7 @@ async function exportTransactions(req, res, next) {
       periodEnd,
       studentAccountId,
       studentNumber,
-      includeExported: includeExported ?? false,
+      includeExported: includeExported ?? true,
       userId,
     });
 

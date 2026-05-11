@@ -23,12 +23,14 @@ function toPositiveInt(value) {
 async function getAvailableSlots(req, res, next) {
   try {
     const { weekStart, startDate, endDate, teacherId, modalityId } = req.query;
+    const authenticatedUserId = req.auth?.userId;
     const result = await coachingService.getAvailableSlots({ 
       weekStart, 
       startDate, 
       endDate, 
       teacherId, 
-      modalityId 
+      modalityId,
+      authenticatedUserId,
     });
     res.json(result);
   } catch (error) {

@@ -18,7 +18,9 @@ const {
   updateInventoryAvailabilitySchema,
   inventoryRentalIdParamSchema,
   verifyReturnSchema,
+  rejectReturnSchema,
   listInventoryItemsQuerySchema,
+  approveRentalSchema,
 } = require('../middlewares/schemas/inventory.schema');
 
 const router = express.Router();
@@ -37,6 +39,15 @@ router.get(
   ...adminAccess,
   validateRequest,
   adminInventoryController.getRentals
+);
+
+router.patch(
+  '/rentals/:rentalId/approve',
+  ...adminAccess,
+  ...inventoryRentalIdParamSchema,
+  ...approveRentalSchema,
+  validateRequest,
+  adminInventoryController.approveRental
 );
 
 router.post(
@@ -82,6 +93,15 @@ router.patch(
   ...verifyReturnSchema,
   validateRequest,
   adminInventoryController.verifyReturn
+);
+
+router.patch(
+  '/rentals/:rentalId/reject-return',
+  ...adminAccess,
+  ...inventoryRentalIdParamSchema,
+  ...rejectReturnSchema,
+  validateRequest,
+  adminInventoryController.rejectReturn
 );
 
 module.exports = router;

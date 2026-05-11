@@ -7,6 +7,7 @@
 
 const inventoryService = require('../services/inventory.service');
 const { createInventoryUseCases } = require('../application/use-cases/inventory');
+const { sendNotification } = require('./notification.controller');
 
 // Factory de use-cases: injeção de dependências de serviço ao arranque
 const inventoryUseCases = createInventoryUseCases({ inventoryService });
@@ -98,6 +99,63 @@ async function completeRental(req, res, next) {
   }
 }
 
+async function rejectReturn(req, res, next) {
+  try {
+    const result = await inventoryUseCases.rejectReturn.execute({
+      rentalId: Number(req.params.rentalId),
+      payload: req.body,
+    });
+
+    if (!result || !result.rental) {
+      throw createHttpError(404, 'Aluguer não encontrado');
+    }
+
+    res.json({ rental: result.rental });
+  } catch (error) {
+    next(error);
+  }
+}
+
+async function approveRental(req, res, next) {
+  try {
+    const result = await inventoryUseCases.approveRental.execute({
+      rentalId: Number(req.params.rentalId),
+      payload: req.body,
+    });
+
+    if (!result || !result.rental) {
+      throw createHttpError(404, 'Pedido de aluguer não encontrado');
+    }
+
+    // Notify renter about decision (approved/rejected)
+    try {
+      const renterId = result.rental?.borrower?.userId;
+      if (Number.isInteger(Number(renterId)) && renterId > 0) {
+        const decision = String(req.body?.decision || '').toLowerCase();
+        const title = decision === 'approve' ? 'Pedido de aluguer aprovado' : 'Pedido de aluguer rejeitado';
+        const message = decision === 'approve'
+          ? `O seu pedido ${result.rental.reference} foi aprovado pelo administrador.`
+          : `O seu pedido ${result.rental.reference} foi rejeitado pelo administrador.`;
+
+        await sendNotification(req, {
+          userId: renterId,
+          type: 'inventory',
+          title,
+          message,
+        });
+      }
+    } catch (notifyErr) {
+      // do not block main flow if notification fails
+      // log and continue
+      console.error('Failed to send inventory approval notification', notifyErr);
+    }
+
+    res.json({ rental: result.rental });
+  } catch (error) {
+    next(error);
+  }
+}
+
 const verifyReturn = completeRental;
 
 module.exports = {
@@ -109,5 +167,7 @@ module.exports = {
   updateAvailability,
   completeRental,
   verifyReturn,
+  rejectReturn,
+  approveRental,
 };
 

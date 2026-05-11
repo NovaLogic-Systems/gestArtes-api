@@ -4,6 +4,7 @@
   "description": "",
   "main": "src/app.js",
   "scripts": {
+    "build": "node -e \"console.log('gestArtes-api: no compile build step required')\"",
     "test": "jest --coverage",
     "test:watch": "jest --watch",
     "test:node": "node --test test/unit/*.test.js test/integration/*.test.js",

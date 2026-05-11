@@ -6,7 +6,7 @@
 
 const test = require('node:test');
 const assert = require('node:assert/strict');
-const Module = require('node:module');
+const { withPatchedModules } = require('./helpers/moduleLoader');
 
 function createState() {
   return {
@@ -87,9 +87,31 @@ const fakePrisma = {
 
       return found ? buildAvailabilityRow(found) : null;
     },
-    findMany: async ({ where }) => state.availabilityRows
-      .filter((row) => row.TeacherID === where.TeacherID)
-      .map(buildAvailabilityRow),
+    findMany: async ({ where = {}, orderBy } = {}) => {
+      const rows = state.availabilityRows
+        .filter((row) => where.TeacherID == null || row.TeacherID === where.TeacherID)
+        .map(buildAvailabilityRow);
+
+      if (!Array.isArray(orderBy) || orderBy.length === 0) {
+        return rows;
+      }
+
+      return [...rows].sort((left, right) => {
+        for (const clause of orderBy) {
+          const [field, direction] = Object.entries(clause)[0] || [];
+          if (!field) continue;
+
+          const leftValue = left[field];
+          const rightValue = right[field];
+          if (leftValue === rightValue) continue;
+
+          const comparison = leftValue > rightValue ? 1 : -1;
+          return direction === 'desc' ? -comparison : comparison;
+        }
+
+        return 0;
+      });
+    },
     update: async ({ where, data }) => {
       const row = state.availabilityRows.find((item) => item.AvailabilityID === where.AvailabilityID);
       Object.assign(row, data);
@@ -121,6 +143,31 @@ const fakePrisma = {
         IsActive: data.IsActive,
         AcademicYear: state.academicYearById.get(data.AcademicYearID) || null,
       });
+    },
+    findMany: async ({ where = {}, select } = {}) => {
+      const teacherId = where.TeacherAvailability?.TeacherID;
+
+      const rows = [...state.recurringRows.values()]
+        .filter((row) => teacherId === undefined || teacherId === null || state.availabilityRows.some((availability) => availability.AvailabilityID === row.AvailabilityID && availability.TeacherID === teacherId))
+        .filter((row) => where.DayOfWeek === undefined || row.DayOfWeek === where.DayOfWeek)
+        .filter((row) => where.IsActive === undefined || row.IsActive === where.IsActive)
+        .map((row) => ({
+          AvailabilityID: row.AvailabilityID,
+          DayOfWeek: row.DayOfWeek,
+          StartTime: row.StartTime,
+          EndTime: row.EndTime,
+          AcademicYearID: row.AcademicYearID,
+          IsActive: row.IsActive,
+          AcademicYear: row.AcademicYear,
+        }));
+
+      if (!select) {
+        return rows;
+      }
+
+      return rows.map((row) => Object.fromEntries(
+        Object.keys(select).filter((key) => select[key]).map((key) => [key, row[key]])
+      ));
     },
     update: async ({ where, data }) => {
       const row = state.recurringRows.get(where.AvailabilityID);
@@ -189,22 +236,10 @@ const fakePrisma = {
   },
 };
 
-const originalLoad = Module._load;
-Module._load = function patchedLoad(request, parent, isMain) {
-  if (request === '../config/prisma') {
-    return fakePrisma;
-  }
-
-  return originalLoad.call(this, request, parent, isMain);
-};
-
-let availabilityService;
-
-try {
-  availabilityService = require('../../src/services/availability.service');
-} finally {
-  Module._load = originalLoad;
-}
+const availabilityService = withPatchedModules(
+  { '../config/prisma': fakePrisma },
+  () => require('../../src/services/availability.service')
+);
 
 function resetState() {
   state = createState();

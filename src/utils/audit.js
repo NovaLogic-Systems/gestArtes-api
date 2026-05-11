@@ -36,6 +36,20 @@ const AUDIT_RESULTS = Object.freeze({
   FAILURE: 'failure',
 });
 
+function _normalizeUserId(userId) {
+  if (userId === null || userId === undefined || userId === '') {
+    return null;
+  }
+
+  const parsedUserId = Number(userId);
+  return Number.isFinite(parsedUserId) ? parsedUserId : null;
+}
+
+function _isAuditUserFkViolation(error) {
+  const message = String(error?.message ?? '');
+  return message.includes('FK_AuditLog_User') || message.includes('Foreign key constraint violated');
+}
+
 function logAudit({
   userId = null,
   userName = null,
@@ -69,20 +83,39 @@ function logAudit({
     return;
   }
 
+  const normalizedUserId = _normalizeUserId(userId);
+  const data = {
+    AuditTimestamp: new Date(),
+    UserID: normalizedUserId,
+    UserName: userName,
+    UserRole: userRole,
+    Action: action,
+    Module: module,
+    TargetType: targetType,
+    TargetID: targetId === null || targetId === undefined ? null : String(targetId),
+    Result: result,
+    Detail: detail,
+  };
+
   void prisma.auditLog.create({
-    data: {
-      AuditTimestamp: new Date(),
-      UserID: userId,
-      UserName: userName,
-      UserRole: userRole,
-      Action: action,
-      Module: module,
-      TargetType: targetType,
-      TargetID: targetId,
-      Result: result,
-      Detail: detail,
-    },
+    data,
   }).catch((error) => {
+    if (normalizedUserId !== null && _isAuditUserFkViolation(error)) {
+      void prisma.auditLog.create({
+        data: {
+          ...data,
+          UserID: null,
+        },
+      }).catch((retryError) => {
+        logger.error('Falha ao registar auditoria na base de dados', {
+          action,
+          module,
+          error: retryError?.message,
+        });
+      });
+      return;
+    }
+
     logger.error('Falha ao registar auditoria na base de dados', {
       action,
       module,

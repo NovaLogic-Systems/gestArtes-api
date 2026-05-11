@@ -15,6 +15,21 @@ function normalizeStatusName(statusName) {
     .replace(/[^a-z0-9]/g, '');
 }
 
+const STATUS_ALIASES = {
+  awaitingapproval: ['awaiting approval', 'PendingTeacher', 'Pending_Teacher', 'PENDING_TEACHER', 'Pending_Approval'],
+  pendingteacher: ['awaiting approval', 'PendingTeacher', 'Pending_Teacher', 'PENDING_TEACHER', 'Pending_Approval'],
+  teacherapproved: ['TEACHER_APPROVED', 'PendingAdmin', 'Pending_Admin', 'PENDING_ADMIN'],
+  pendingadmin: ['TEACHER_APPROVED', 'PendingAdmin', 'Pending_Admin', 'PENDING_ADMIN'],
+  approved: ['approved', 'Approved', 'ADMIN_APPROVED', 'APPROVED'],
+  notapproved: ['not approved', 'Rejected', 'TEACHER_REJECTED', 'ADMIN_REJECTED', 'REJECTED'],
+  rejected: ['not approved', 'Rejected', 'TEACHER_REJECTED', 'ADMIN_REJECTED', 'REJECTED'],
+};
+
+function getStatusAliases(key) {
+  const normalizedKey = normalizeStatusName(key);
+  return STATUS_ALIASES[normalizedKey] || [key];
+}
+
 async function getStatusIdByKey(db, key) {
   const statuses = await db.coachingJoinRequestStatus.findMany({
     select: {
@@ -27,7 +42,11 @@ async function getStatusIdByKey(db, key) {
     statuses.map((status) => [normalizeStatusName(status.StatusName), status.StatusID])
   );
 
-  const statusId = statusMap.get(normalizeStatusName(key));
+  const statusId = getStatusAliases(key)
+    .map(normalizeStatusName)
+    .map((candidate) => statusMap.get(candidate))
+    .find(Boolean);
+
   if (!statusId) {
     throw createHttpError(500, `O estado de pedido de adesão '${key}' não está configurado`);
   }
@@ -191,8 +210,8 @@ async function createJoinRequest({ sessionId, requesterUserId }) {
       throw createHttpError(409, 'O aluno já está inscrito nesta sessão');
     }
 
-    const pendingTeacherStatusId = await getStatusIdByKey(db, 'PendingTeacher');
-    const pendingAdminStatusId = await getStatusIdByKey(db, 'PendingAdmin');
+    const pendingTeacherStatusId = await getStatusIdByKey(db, 'awaiting approval');
+    const pendingAdminStatusId = await getStatusIdByKey(db, 'TEACHER_APPROVED');
 
     const existingOpenRequest = await db.coachingJoinRequest.findFirst({
       where: {
@@ -277,7 +296,7 @@ async function listJoinRequestsBySession({ sessionId, requesterUserId, requester
 }
 
 async function listTeacherPendingRequests({ teacherUserId }) {
-  const pendingTeacherStatusId = await getStatusIdByKey(prisma, 'PendingTeacher');
+  const pendingTeacherStatusId = await getStatusIdByKey(prisma, 'awaiting approval');
 
   const requests = await prisma.coachingJoinRequest.findMany({
     where: {
@@ -308,8 +327,8 @@ async function listTeacherPendingRequests({ teacherUserId }) {
 
 async function teacherApprove({ joinRequestId, teacherUserId }) {
   return prisma.$transaction(async (db) => {
-    const pendingTeacherStatusId = await getStatusIdByKey(db, 'PendingTeacher');
-    const pendingAdminStatusId = await getStatusIdByKey(db, 'PendingAdmin');
+    const pendingTeacherStatusId = await getStatusIdByKey(db, 'awaiting approval');
+    const pendingAdminStatusId = await getStatusIdByKey(db, 'TEACHER_APPROVED');
 
     const request = await db.coachingJoinRequest.findUnique({
       where: {
@@ -389,8 +408,8 @@ async function approveByTeacher({ joinRequestId, teacherUserId }) {
 
 async function teacherReject({ joinRequestId, teacherUserId }) {
   return prisma.$transaction(async (db) => {
-    const pendingTeacherStatusId = await getStatusIdByKey(db, 'PendingTeacher');
-    const rejectedStatusId = await getStatusIdByKey(db, 'Rejected');
+    const pendingTeacherStatusId = await getStatusIdByKey(db, 'awaiting approval');
+    const rejectedStatusId = await getStatusIdByKey(db, 'not approved');
 
     const request = await db.coachingJoinRequest.findUnique({
       where: {
@@ -458,7 +477,7 @@ async function rejectByTeacher({ joinRequestId, teacherUserId }) {
 }
 
 async function listAdminPendingRequests() {
-  const pendingAdminStatusId = await getStatusIdByKey(prisma, 'PendingAdmin');
+  const pendingAdminStatusId = await getStatusIdByKey(prisma, 'TEACHER_APPROVED');
 
   const requests = await prisma.coachingJoinRequest.findMany({
     where: {
@@ -482,8 +501,8 @@ async function listAdminPendingRequests() {
 
 async function adminApprove({ joinRequestId, adminUserId }) {
   return prisma.$transaction(async (db) => {
-    const pendingAdminStatusId = await getStatusIdByKey(db, 'PendingAdmin');
-    const approvedStatusId = await getStatusIdByKey(db, 'Approved');
+    const pendingAdminStatusId = await getStatusIdByKey(db, 'TEACHER_APPROVED');
+    const approvedStatusId = await getStatusIdByKey(db, 'approved');
 
     const request = await db.coachingJoinRequest.findUnique({
       where: {
@@ -573,8 +592,8 @@ async function approveByManagement({ joinRequestId, adminUserId }) {
 
 async function adminReject({ joinRequestId, adminUserId }) {
   return prisma.$transaction(async (db) => {
-    const pendingAdminStatusId = await getStatusIdByKey(db, 'PendingAdmin');
-    const rejectedStatusId = await getStatusIdByKey(db, 'Rejected');
+    const pendingAdminStatusId = await getStatusIdByKey(db, 'TEACHER_APPROVED');
+    const rejectedStatusId = await getStatusIdByKey(db, 'not approved');
 
     const request = await db.coachingJoinRequest.findUnique({
       where: {
@@ -658,6 +677,33 @@ async function listStudentRequests({ studentUserId }) {
   return requests.map(mapJoinRequest);
 }
 
+async function cancelJoinRequest({ joinRequestId, studentUserId }) {
+  const studentAccountId = await getStudentAccountIdByUserId(prisma, studentUserId);
+
+  const existing = await prisma.coachingJoinRequest.findUnique({
+    where: { JoinRequestID: joinRequestId },
+    include: {
+      CoachingJoinRequestStatus: true,
+    },
+  });
+
+  if (!existing) {
+    throw createHttpError(404, 'Pedido de adesão não encontrado');
+  }
+
+  if (existing.StudentAccountID !== studentAccountId) {
+    throw createHttpError(403, 'Sem permissão para remover este pedido');
+  }
+
+  if (existing.CoachingJoinRequestStatus.StatusName !== 'TEACHER_PENDING' && existing.CoachingJoinRequestStatus.StatusName !== 'ADMIN_PENDING') {
+    throw createHttpError(409, 'Apenas pedidos pendentes podem ser removidos');
+  }
+
+  await prisma.coachingJoinRequest.delete({
+    where: { JoinRequestID: joinRequestId },
+  });
+}
+
 module.exports = {
   createJoinRequest,
   listJoinRequestsBySession,
@@ -672,5 +718,5 @@ module.exports = {
   adminReject,
   rejectByManagement,
   listStudentRequests,
+  cancelJoinRequest,
 };
-

@@ -12,12 +12,22 @@ const { createHttpError } = require('../utils/http-error');
 // BR-11/BR-12: teacher initiatives are created pending management approval.
 // BR-19: initiative duration is one hour by default.
 const DEFAULT_TEACHER_INITIATIVE_DURATION_MS = 60 * 60 * 1000;
-const PENDING_APPROVAL_STATUS_NAME = 'PendingApproval';
+const PENDING_APPROVAL_STATUS_NAME = 'Pending_Approval';
+const PENDING_APPROVAL_STATUS_ALIASES = ['PendingApproval', 'Pending Approval', 'Pending'];
+const CANCELLED_JUSTIFIED_STATUS_NAME = 'Cancelled_Justified';
+const FINALIZATION_VALIDATION_PENDING_STATUS_NAME = 'Finalization_Validation_Pending';
 
 
 function toPositiveInt(value) {
   const parsed = Number(value);
   return Number.isInteger(parsed) && parsed > 0 ? parsed : null;
+}
+
+function normalizeStatusName(statusName) {
+  return String(statusName || '')
+    .trim()
+    .toLowerCase()
+    .replace(/[^a-z0-9]/g, '');
 }
 
 function buildApprovedAvailabilityStatusFilter() {
@@ -82,25 +92,18 @@ async function getOrCreateValidationStep(stepName, keywords) {
 
   const found = all.find((s) =>
     keywords.some((kw) => s.StepName.toLowerCase().includes(kw))
-  );
+  ) || all.find((s) => s.StepName.toLowerCase() === stepName.toLowerCase());
 
   if (found) return found.StepID;
 
-  // Fallback: try exact stepName match (case-insensitive)
-  const exact = all.find(
-    (s) => s.StepName.toLowerCase() === stepName.toLowerCase()
-  );
-
-  if (exact) return exact.StepID;
-
-  // The ValidationStep rows are seeded data — if missing, report clearly
-  throw createHttpError(
-    500,
-    `Passo de validação "${stepName}" não está configurado na base de dados. Por favor, execute o seed ou contacte o administrador.`
-  );
+  const created = await prisma.validationStep.create({
+    data: { StepName: stepName },
+    select: { StepID: true },
+  });
+  return created.StepID;
 }
 
-async function getAvailableSlots({ weekStart: weekStartStr, startDate: startDateStr, endDate: endDateStr, teacherId, modalityId }) {
+async function getAvailableSlots({ weekStart: weekStartStr, startDate: startDateStr, endDate: endDateStr, teacherId, modalityId, authenticatedUserId }) {
   let rangeStart, rangeEnd;
   let displayWeekStart, displayWeekEnd;
 
@@ -247,11 +250,49 @@ async function getAvailableSlots({ weekStart: weekStartStr, startDate: startDate
             MaxParticipants: true,
             SessionStatus: { select: { StatusName: true } },
             SessionStudent: { select: { StudentAccountID: true } },
+            Modality: { select: { ModalityID: true, ModalityName: true } },
           },
         },
       },
     }),
   ]);
+
+  let userJoinRequestsMap = new Map();
+  let userEnrolledSessionIds = new Set();
+
+  if (authenticatedUserId && Number.isInteger(Number(authenticatedUserId)) && Number(authenticatedUserId) > 0) {
+    const studentAccount = await prisma.studentAccount.findUnique({
+      where: { UserID: Number(authenticatedUserId) },
+      select: { StudentAccountID: true },
+    });
+
+    const sessionIds = [...new Set(sessionTeachers.map((st) => st.CoachingSession.SessionID))];
+
+    if (studentAccount && sessionIds.length > 0) {
+      const [userJoinRequests, enrolledSessions] = await Promise.all([
+        prisma.coachingJoinRequest.findMany({
+          where: {
+            StudentAccountID: studentAccount.StudentAccountID,
+            SessionID: { in: sessionIds },
+          },
+          select: {
+            SessionID: true,
+            CoachingJoinRequestStatus: { select: { StatusName: true } },
+          },
+        }),
+        prisma.sessionStudent.findMany({
+          where: {
+            StudentAccountID: studentAccount.StudentAccountID,
+            SessionID: { in: sessionIds },
+          },
+          select: { SessionID: true },
+        }),
+      ])
+
+      userJoinRequestsMap = new Map(userJoinRequests.map((jr) => [jr.SessionID, jr.CoachingJoinRequestStatus?.StatusName || null]))
+      userEnrolledSessionIds = new Set(enrolledSessions.map((record) => record.SessionID))
+    }
+  }
 
   function buildBookedSessions(teacherId, dayStart, dayEnd) {
     return sessionTeachers
@@ -269,6 +310,10 @@ async function getAvailableSlots({ weekStart: weekStartStr, startDate: startDate
         status: st.CoachingSession.SessionStatus?.StatusName,
         maxParticipants: st.CoachingSession.MaxParticipants,
         enrolledCount: st.CoachingSession.SessionStudent.length,
+        modalityId: st.CoachingSession.Modality?.ModalityID ?? null,
+        modalityName: st.CoachingSession.Modality?.ModalityName ?? null,
+        userJoinRequestStatus: userJoinRequestsMap.get(st.CoachingSession.SessionID) || null,
+        userIsEnrolled: userEnrolledSessionIds.has(st.CoachingSession.SessionID),
       }));
   }
 
@@ -339,6 +384,15 @@ async function getAvailableSlots({ weekStart: weekStartStr, startDate: startDate
     });
   }
 
+  const mergedWindows = mergeContiguousWindows(availabilityWindows);
+
+  const enrichedWindows = mergedWindows.map((w) => ({
+    ...w,
+    bookedSessions: w.bookedSessions.map((s) => ({
+      ...s,
+    })),
+  }));
+
   return {
     rangeStart: displayWeekStart.toISOString().slice(0, 10),
     rangeEnd: displayWeekEnd.toISOString().slice(0, 10),
@@ -354,8 +408,41 @@ async function getAvailableSlots({ weekStart: weekStartStr, startDate: startDate
       capacity: s.Capacity,
       modalityIds: s.StudioModality.map((sm) => sm.ModalityID),
     })),
-    availabilityWindows,
+    availabilityWindows: enrichedWindows,
   };
+}
+
+function mergeContiguousWindows(windows) {
+  const groups = new Map();
+  for (const w of windows) {
+    const key = `${w.teacherId}__${w.date}`;
+    if (!groups.has(key)) groups.set(key, []);
+    groups.get(key).push(w);
+  }
+
+  const result = [];
+  const timeToMin = (t) => {
+    const [h, m] = String(t).split(':').map(Number);
+    return h * 60 + m;
+  };
+
+  for (const list of groups.values()) {
+    list.sort((a, b) => timeToMin(a.windowStart) - timeToMin(b.windowStart));
+    let current = null;
+    for (const w of list) {
+      if (current && timeToMin(w.windowStart) <= timeToMin(current.windowEnd)) {
+        if (timeToMin(w.windowEnd) > timeToMin(current.windowEnd)) {
+          current.windowEnd = w.windowEnd;
+        }
+      } else {
+        if (current) result.push(current);
+        current = { ...w };
+      }
+    }
+    if (current) result.push(current);
+  }
+
+  return result;
 }
 
 async function getCompatibleStudios(modalityId) {
@@ -382,21 +469,52 @@ async function resolveSessionStatusId(statusName) {
     throw createHttpError(400, 'Estado da sessão inválido');
   }
 
-  const existingStatus = await prisma.sessionStatus.findFirst({
-    where: {
-      StatusName: {
-        equals: normalizedStatusName,
-        mode: 'insensitive',
-      },
-    },
-    select: { StatusID: true },
+  const statusNames = [
+    normalizedStatusName,
+    ...(normalizedStatusName === PENDING_APPROVAL_STATUS_NAME ? PENDING_APPROVAL_STATUS_ALIASES : []),
+  ];
+  const candidates = statusNames.map(normalizeStatusName).filter(Boolean);
+  const statusRows = await prisma.sessionStatus.findMany({
+    select: { StatusID: true, StatusName: true },
   });
+
+  let existingStatus = null;
+
+  for (const candidate of candidates) {
+    existingStatus = statusRows.find((status) => normalizeStatusName(status.StatusName) === candidate);
+    if (existingStatus) break;
+  }
 
   if (!existingStatus) {
     throw createHttpError(500, `Estado de sessão "${normalizedStatusName}" não configurado`);
   }
 
   return existingStatus.StatusID;
+}
+
+async function resolveOrCreateSessionStatusId(statusName) {
+  const normalizedStatusName = String(statusName || '').trim();
+
+  if (!normalizedStatusName) {
+    throw createHttpError(400, 'Estado da sessão inválido');
+  }
+
+  const expected = normalizeStatusName(normalizedStatusName);
+  const statusRows = await prisma.sessionStatus.findMany({
+    select: { StatusID: true, StatusName: true },
+  });
+  const existingStatus = statusRows.find((status) => normalizeStatusName(status.StatusName) === expected);
+
+  if (existingStatus) {
+    return existingStatus.StatusID;
+  }
+
+  const createdStatus = await prisma.sessionStatus.create({
+    data: { StatusName: normalizedStatusName },
+    select: { StatusID: true },
+  });
+
+  return createdStatus.StatusID;
 }
 
 async function resolvePricingRateId(pricingRateId) {
@@ -439,6 +557,10 @@ async function createSessionInitiative(
 
   if (Number.isNaN(startTime.getTime())) {
     throw createHttpError(400, 'date inválida');
+  }
+
+  if (startTime.getTime() <= Date.now()) {
+    throw createHttpError(400, 'Não é possível marcar para uma hora que já passou');
   }
 
   const endTime = new Date(startTime.getTime() + DEFAULT_TEACHER_INITIATIVE_DURATION_MS);
@@ -501,6 +623,10 @@ async function createBooking({ teacherId, studioId, modalityId, startTime, endTi
     throw createHttpError(400, 'Intervalo temporal inválido');
   }
 
+  if (startDt.getTime() <= Date.now()) {
+    throw createHttpError(400, 'Não é possível marcar para uma hora que já passou');
+  }
+
   const studentAccount = await prisma.studentAccount.findUnique({
     where: { UserID: studentUserId },
     select: { StudentAccountID: true },
@@ -508,11 +634,8 @@ async function createBooking({ teacherId, studioId, modalityId, startTime, endTi
 
   if (!studentAccount) throw createHttpError(404, 'Conta de aluno não encontrada');
 
-  const [pendingStatus, defaultPricingRate, attendanceStatus] = await Promise.all([
-    prisma.sessionStatus.findFirst({
-      where: { StatusName: { contains: 'Pending' } },
-      select: { StatusID: true },
-    }),
+  const [pendingStatusId, defaultPricingRate, attendanceStatus] = await Promise.all([
+    resolveSessionStatusId(PENDING_APPROVAL_STATUS_NAME),
     prisma.sessionPricingRate.findFirst({
       orderBy: { PricingRateID: 'asc' },
       select: { PricingRateID: true },
@@ -522,7 +645,6 @@ async function createBooking({ teacherId, studioId, modalityId, startTime, endTi
     }),
   ]);
 
-  if (!pendingStatus) throw createHttpError(500, 'Estado de sessão "Pending" não configurado');
   if (!defaultPricingRate) throw createHttpError(500, 'Nenhuma tabela de preços configurada');
   if (!attendanceStatus) throw createHttpError(500, 'Estado de presença não configurado');
 
@@ -533,7 +655,7 @@ async function createBooking({ teacherId, studioId, modalityId, startTime, endTi
       modalityId: parsedModalityId,
       startTime: startDt,
       endTime: endDt,
-      statusId: pendingStatus.StatusID,
+      statusId: pendingStatusId,
       pricingRateId: defaultPricingRate.PricingRateID,
       maxParticipants: maxParticipants ? Number(maxParticipants) : undefined,
       isExternal: false,
@@ -593,17 +715,12 @@ async function cancelBooking(sessionId, studentUserId, justification) {
     throw createHttpError(409, 'Esta sessão não pode ser cancelada');
   }
 
-  const cancelledStatus = await prisma.sessionStatus.findFirst({
-    where: { StatusName: { contains: 'Cancel' } },
-    select: { StatusID: true },
-  });
-
-  if (!cancelledStatus) throw createHttpError(500, 'Estado de cancelamento não configurado');
+  const cancelledStatusId = await resolveOrCreateSessionStatusId(CANCELLED_JUSTIFIED_STATUS_NAME);
 
   const updated = await prisma.coachingSession.update({
     where: { SessionID: sessionId },
     data: {
-      StatusID: cancelledStatus.StatusID,
+      StatusID: cancelledStatusId,
       CancellationReason: trimmedJustification.slice(0, 255),
     },
     include: {
@@ -679,12 +796,16 @@ async function confirmCompletion(sessionId, studentUserId) {
     // ValidationStep table not yet migrated — proceed without step ID
   }
 
-  let validationId;
-  let validatedAt = new Date();
+  const finalizationStatusId = await resolveOrCreateSessionStatusId(FINALIZATION_VALIDATION_PENDING_STATUS_NAME);
+  const validatedAt = new Date();
 
-  if (studentStepId !== null) {
-    // Normal path — ValidationStepID column exists
-    const validation = await prisma.sessionValidation.create({
+  const validation = await prisma.$transaction(async (tx) => {
+    await tx.coachingSession.update({
+      where: { SessionID: sessionId },
+      data: { StatusID: finalizationStatusId },
+    });
+
+    return tx.sessionValidation.create({
       data: {
         SessionID: sessionId,
         ValidatedByUserID: studentUserId,
@@ -693,20 +814,8 @@ async function confirmCompletion(sessionId, studentUserId) {
       },
       select: { ValidationID: true, SessionID: true, ValidatedAt: true },
     });
-    validationId = validation.ValidationID;
-  } else {
-    // Fallback path — column missing, insert with raw SQL (omitting ValidationStepID)
-    await prisma.$executeRaw`
-      INSERT INTO [dbo].[SessionValidation] ([SessionID], [ValidatedByUserID], [ValidatedAt])
-      VALUES (${sessionId}, ${studentUserId}, ${validatedAt})
-    `;
-    const row = await prisma.$queryRaw`
-      SELECT TOP 1 [ValidationID] FROM [dbo].[SessionValidation]
-      WHERE [SessionID] = ${sessionId} AND [ValidatedByUserID] = ${studentUserId}
-      ORDER BY [ValidationID] DESC
-    `;
-    validationId = row[0]?.ValidationID ?? null;
-  }
+  });
+  const validationId = validation.ValidationID;
 
   return {
     validationId,
@@ -761,7 +870,7 @@ async function getSessionHistory(studentUserId) {
     );
 
     const statusName = String(cs.SessionStatus?.StatusName || '').toLowerCase();
-    const isCancelled = statusName.includes('cancel');
+    const isNotConfirmable = statusName.includes('cancel') || statusName.includes('reject');
     const isPast = cs.EndTime < now;
 
     return {
@@ -780,8 +889,8 @@ async function getSessionHistory(studentUserId) {
       })),
       isPast,
       studentConfirmed: studentValidated,
-      canConfirm: isPast && !studentValidated && !isCancelled,
-      canCancel: !isPast && !isCancelled,
+      canConfirm: isPast && !studentValidated && !isNotConfirmable,
+      canCancel: !isPast && !isNotConfirmable,
     };
   });
 }
@@ -1087,4 +1196,3 @@ module.exports = {
   listAdminUserIds,
   getWeeklyMap,
 };
-

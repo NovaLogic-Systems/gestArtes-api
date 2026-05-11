@@ -1,0 +1,11 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(Get-ChildItem -Path \"c:\\\\Users\\\\pedro\\\\OneDrive\\\\Documentos\\\\IPCA\\\\Programação\\\\gestArtes\\\\gestArtes-web\\\\src\\\\pages\\\\admin\" -File)",
+      "PowerShell(Get-ChildItem -Path \"c:\\\\Users\\\\pedro\\\\OneDrive\\\\Documentos\\\\IPCA\\\\Programação\\\\gestArtes\\\\gestArtes-web\\\\src\\\\pages\\\\admin\" -File | Select-Object Name | ForEach-Object { $_.Name })",
+      "PowerShell(Get-ChildItem -Path \"c:\\\\Users\\\\pedro\\\\OneDrive\\\\Documentos\\\\IPCA\\\\Programação\\\\gestArtes\\\\gestArtes-web\\\\src\\\\pages\\\\student\" -File | Select-Object Name | ForEach-Object { $_.Name })",
+      "Bash(xargs grep -l \"coaching\")",
+      "Bash(npm test *)"
+    ]
+  }
+}

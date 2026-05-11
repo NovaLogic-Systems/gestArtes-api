@@ -7,7 +7,7 @@
 
 const bcrypt = require('bcrypt');
 const prisma = require('../config/prisma');
-const { getPrimaryRoleFromUser } = require('../utils/roles');
+const { getPrimaryRoleFromUser, getRolesFromUser, toAppRole } = require('../utils/roles');
 const logger = require('../utils/logger');
 const {
   issueAuthTokens,
@@ -56,7 +56,11 @@ function logLoginAttempt(req, details) {
   });
 }
 
-function serializeUser(user, role) {
+function serializeUser(user, role, roles) {
+  const availableRoles = Array.isArray(roles) && roles.length > 0
+    ? roles
+    : getRolesFromUser(user);
+
   return {
     userId: user.UserID,
     authUid: user.AuthUID,
@@ -64,6 +68,7 @@ function serializeUser(user, role) {
     lastName: user.LastName,
     email: user.Email,
     role,
+    roles: availableRoles,
     isActive: user.IsActive,
   };
 }
@@ -346,6 +351,53 @@ function logout(req, res, next) {
   res.status(204).send();
 }
 
+async function switchRole(req, res, next) {
+  try {
+    const userId = getRequestUserId(req);
+    if (!userId) {
+      res.status(401).json({ error: 'Not authenticated' });
+      return;
+    }
+
+    const requestedRole = toAppRole(req.body?.role);
+    if (!requestedRole) {
+      res.status(400).json({ error: 'Invalid role' });
+      return;
+    }
+
+    const user = await findUserById(userId);
+    if (!user || !user.IsActive) {
+      res.status(401).json({ error: 'Not authenticated' });
+      return;
+    }
+
+    const availableRoles = getRolesFromUser(user);
+    if (!availableRoles.includes(requestedRole)) {
+      res.status(403).json({ error: 'Role not available for this user' });
+      return;
+    }
+
+    const tokens = await issueAuthTokens({
+      user,
+      role: requestedRole,
+      ip: getClientIp(req),
+      userAgent: req.get('user-agent') || 'unknown',
+    });
+
+    setRefreshCookie(req, res, tokens.refreshToken, tokens.refreshTokenExpiresAt);
+
+    res.json({
+      user: serializeUser(user, requestedRole, availableRoles),
+      role: requestedRole,
+      accessToken: tokens.accessToken,
+      tokenType: 'Bearer',
+      expiresIn: getAccessTokenTtlMs(),
+    });
+  } catch (error) {
+    next(error);
+  }
+}
+
 async function logoutAll(req, res, next) {
   try {
     const userId = getRequestUserId(req);
@@ -371,5 +423,6 @@ module.exports = {
   logout,
   logoutAll,
   me,
+  switchRole,
 };
 

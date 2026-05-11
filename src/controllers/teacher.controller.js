@@ -6,11 +6,13 @@
  */
 
 const prisma = require('../config/prisma');
+const bcrypt = require('bcrypt');
 const {
   submitAvailability,
   getAvailability,
   updateAvailability,
 } = require('../services/availability.service');
+const { revokeAllRefreshTokensForUser } = require('../services/jwt.service');
 const { createTeacherUseCases } = require('../application/use-cases/teacher');
 
 // Factory de use-cases: injeção de serviço de disponibilidade ao arranque
@@ -20,6 +22,19 @@ const { getTeacherAvailabilityCounters } = require('../services/availabilityCoun
 const { emitAvailabilityCounter } = require('../events/availability.events');
 
 const DEFAULT_NOTIFICATION_TYPE_ID = 1;
+const COMPLETION_CONFIRMATION_PENDING_STATUS_NAMES = [
+  'Completion_Confirmation_Pending',
+  'COMPLETION_CONFIRMATION_PENDING',
+];
+const TEACHER_PENDING_JOIN_REQUEST_STATUS_NAMES = [
+  'awaiting approval',
+  'Awaiting Approval',
+  'PendingTeacher',
+  'PENDING_TEACHER',
+  'Pending_Teacher',
+  'Pending_Approval',
+  'PENDING_APPROVAL',
+];
 const TEACHER_APPROVED_STATUS = 'TEACHER_APPROVED';
 const TEACHER_REJECTED_STATUS = 'TEACHER_REJECTED';
 
@@ -36,6 +51,10 @@ function normalizeString(value) {
   return String(value || '')
     .trim()
     .toLowerCase();
+}
+
+function buildStatusNameOrFilter(statusNames) {
+  return statusNames.map((StatusName) => ({ StatusName }));
 }
 
 function normalizeAvailabilityWorkflowStatus(statusName) {
@@ -82,11 +101,21 @@ function getAuthenticatedTeacherUserId(req, res) {
 }
 
 function mapTodayScheduleRow(row) {
+  const maxParticipants = toInteger(row.maxParticipants);
+  let format = null;
+  if (Number.isFinite(maxParticipants) && maxParticipants > 0) {
+    if (maxParticipants === 1) format = 'Individual';
+    else if (maxParticipants === 2) format = 'Duo';
+    else format = `Grupo (${maxParticipants})`;
+  }
   return {
     sessionId: toInteger(row.sessionId),
     date: row.sessionDate,
     time: row.sessionTime,
     studio: row.studioName,
+    modalityName: row.modalityName || null,
+    maxParticipants: Number.isFinite(maxParticipants) ? maxParticipants : null,
+    format,
     status: row.sessionStatus,
     studentCount: toInteger(row.studentCount),
   };
@@ -183,6 +212,18 @@ function enrichAvailabilityWorkflow(availability) {
   return {
     ...availability,
     workflowStatus: normalizeAvailabilityWorkflowStatus(availability?.status),
+  };
+}
+
+function buildTeacherPendingAdmissionWhere(teacherUserId) {
+  return {
+    ReviewedAt: null,
+    CoachingJoinRequestStatus: {
+      OR: buildStatusNameOrFilter(TEACHER_PENDING_JOIN_REQUEST_STATUS_NAMES),
+    },
+    CoachingSession: {
+      SessionTeacher: { some: { TeacherID: teacherUserId } },
+    },
   };
 }
 
@@ -433,12 +474,7 @@ async function getPendingAdmissions(req, res, next) {
     }
 
     const joinRequests = await prisma.coachingJoinRequest.findMany({
-      where: {
-        ReviewedAt: null,
-        CoachingSession: {
-          SessionTeacher: { some: { TeacherID: teacherUserId } },
-        },
-      },
+      where: buildTeacherPendingAdmissionWhere(teacherUserId),
       include: {
         CoachingJoinRequestStatus: { select: { StatusName: true } },
         StudentAccount: {
@@ -620,21 +656,13 @@ async function getDashboard(req, res, next) {
           TeacherID: teacherUserId,
           CoachingSession: {
             SessionStatus: {
-              OR: [
-                { StatusName: { contains: 'pend' } },
-                { StatusName: { contains: 'confirm' } },
-              ],
+              OR: buildStatusNameOrFilter(COMPLETION_CONFIRMATION_PENDING_STATUS_NAMES),
             },
           },
         },
       }),
       prisma.coachingJoinRequest.count({
-        where: {
-          ReviewedAt: null,
-          CoachingSession: {
-            SessionTeacher: { some: { TeacherID: teacherUserId } },
-          },
-        },
+        where: buildTeacherPendingAdmissionWhere(teacherUserId),
       }),
       prisma.sessionStudent.count({
         where: {
@@ -658,6 +686,7 @@ async function getDashboard(req, res, next) {
     res.json({
       classesToday,
       pendingConfirmations,
+      pendingRequests: admissionRequests,
       admissionRequests,
       noShows,
     });
@@ -689,6 +718,7 @@ async function getTodaySchedule(req, res, next) {
         CoachingSession: {
           include: {
             Studio: { select: { StudioName: true } },
+            Modality: { select: { ModalityName: true } },
             SessionStatus: { select: { StatusName: true } },
             _count: { select: { SessionStudent: true } },
           },
@@ -704,6 +734,8 @@ async function getTodaySchedule(req, res, next) {
           sessionDate: toUTCDateString(st.CoachingSession.StartTime),
           sessionTime: toUTCTimeString(st.CoachingSession.StartTime),
           studioName: st.CoachingSession.Studio.StudioName,
+          modalityName: st.CoachingSession.Modality?.ModalityName,
+          maxParticipants: st.CoachingSession.MaxParticipants,
           sessionStatus: st.CoachingSession.SessionStatus.StatusName,
           studentCount: st.CoachingSession._count.SessionStudent,
         }),
@@ -714,16 +746,31 @@ async function getTodaySchedule(req, res, next) {
   }
 }
 
-const TERMINAL_SESSION_STATUSES = new Set(['cancel', 'finalized', 'no_show', 'cancelled', 'finalizado', 'no-show']);
-const FINALIZATION_VALIDATION_PENDING_STATUS = 'FINALIZATION_VALIDATION_PENDING';
+const TERMINAL_SESSION_STATUSES = new Set(['cancel', 'finalized', 'no_show', 'cancelled', 'finalizado', 'no-show', 'rejected', 'rejeitado', 'reject']);
+const FINALIZATION_VALIDATION_PENDING_STATUS = 'Finalization_Validation_Pending';
 const TEACHER_CONFIRMATION_STEP = 'TeacherConfirmation';
-const NO_SHOW_STATUS = 'NO_SHOW';
+const NO_SHOW_STATUS = 'No_Show';
 const NO_SHOW_ATTENDANCE_STATUS = 'NO_SHOW';
 const NO_SHOW_STEP = 'NoShowRecorded';
 
 function isTerminalStatus(statusName) {
   const normalized = String(statusName || '').trim().toLowerCase().replace(/[^a-z0-9]/g, '');
   return TERMINAL_SESSION_STATUSES.has(normalized);
+}
+
+function isCompletionConfirmationQueueStatus(statusName) {
+  const normalized = String(statusName || '').trim().toLowerCase().replace(/[^a-z0-9]/g, '');
+
+  if (!normalized || normalized.includes('pendingapproval')) {
+    return false;
+  }
+
+  return normalized.includes('approved')
+    || normalized.includes('aprov')
+    || normalized.includes('scheduled')
+    || normalized.includes('schedul')
+    || normalized === 'confirmed'
+    || normalized.includes('confirmado');
 }
 
 function appendNoShowRemark(previousNotes, remark) {
@@ -733,9 +780,22 @@ function appendNoShowRemark(previousNotes, remark) {
 }
 
 async function resolveOrCreateSessionStatusId(db, desiredName) {
-  const existing = await db.sessionStatus.findFirst({ where: { StatusName: { contains: desiredName } } });
+  const expected = String(desiredName || '').trim().toLowerCase().replace(/[^a-z0-9]/g, '');
+  const statuses = await db.sessionStatus.findMany({
+    select: {
+      StatusID: true,
+      StatusName: true,
+    },
+  });
+  const existing = statuses.find((status) =>
+    String(status.StatusName || '').trim().toLowerCase().replace(/[^a-z0-9]/g, '') === expected
+  );
+
   if (existing) return existing.StatusID;
-  const created = await db.sessionStatus.create({ data: { StatusName: desiredName } });
+  const created = await db.sessionStatus.create({
+    data: { StatusName: desiredName },
+    select: { StatusID: true },
+  });
   return created.StatusID;
 }
 
@@ -806,6 +866,7 @@ async function getPendingSessions(req, res, next) {
     const teacherUserId = getAuthenticatedTeacherUserId(req, res);
     if (!teacherUserId) return;
 
+    const queueView = String(req.query?.view || '').trim().toLowerCase();
     const now = new Date();
 
     const sessionTeachers = await prisma.sessionTeacher.findMany({
@@ -843,6 +904,7 @@ async function getPendingSessions(req, res, next) {
     const sessions = sessionTeachers
       .map((st) => st.CoachingSession)
       .filter((s) => !isTerminalStatus(s.SessionStatus.StatusName))
+      .filter((s) => (queueView === 'confirmation' ? isCompletionConfirmationQueueStatus(s.SessionStatus.StatusName) : true))
       .filter((s) => !hasTeacherConfirmation(s.SessionValidation, teacherUserId))
       .map((s) => ({
         sessionId: s.SessionID,
@@ -859,6 +921,54 @@ async function getPendingSessions(req, res, next) {
           email: ss.StudentAccount.User.Email,
           attendanceStatus: ss.AttendanceStatus.StatusName,
         })),
+      }));
+
+    return res.json({ sessions, total: sessions.length });
+  } catch (error) {
+    return next(error);
+  }
+}
+
+async function getActiveSessions(req, res, next) {
+  try {
+    const teacherUserId = getAuthenticatedTeacherUserId(req, res);
+    if (!teacherUserId) return;
+
+    const sessionTeachers = await prisma.sessionTeacher.findMany({
+      where: { TeacherID: teacherUserId },
+      include: {
+        CoachingSession: {
+          include: {
+            SessionStatus: { select: { StatusName: true } },
+            Studio: { select: { StudioName: true } },
+            Modality: { select: { ModalityName: true } },
+            SessionStudent: {
+              include: {
+                StudentAccount: {
+                  include: {
+                    User: { select: { UserID: true, FirstName: true, LastName: true } },
+                  },
+                },
+              },
+            },
+          },
+        },
+      },
+      orderBy: [{ CoachingSession: { StartTime: 'asc' } }],
+    });
+
+    const sessions = sessionTeachers
+      .map((st) => st.CoachingSession)
+      .filter((s) => !isTerminalStatus(s.SessionStatus.StatusName))
+      .map((s) => ({
+        sessionId: s.SessionID,
+        date: toUTCDateString(s.StartTime),
+        startTime: toUTCTimeString(s.StartTime),
+        endTime: toUTCTimeString(s.EndTime),
+        studioName: s.Studio.StudioName,
+        modalityName: s.Modality.ModalityName,
+        status: s.SessionStatus.StatusName,
+        studentCount: s.SessionStudent.length,
       }));
 
     return res.json({ sessions, total: sessions.length });
@@ -1056,17 +1166,207 @@ async function recordNoShow(req, res, next) {
   return registerNoShow(req, res, next);
 }
 
+async function loadTeacherProfile(userId) {
+  return prisma.user.findFirst({
+    where: { UserID: userId, IsActive: true, DeletedAt: null },
+    select: {
+      UserID: true,
+      FirstName: true,
+      LastName: true,
+      Email: true,
+      PhoneNumber: true,
+      CreatedAt: true,
+      AuthUID: true,
+      TeacherModality: {
+        select: {
+          Modality: { select: { ModalityID: true, ModalityName: true } },
+        },
+      },
+    },
+  });
+}
+
+function serializeTeacherProfile(row) {
+  if (!row) return null;
+  return {
+    userId: row.UserID,
+    firstName: row.FirstName,
+    lastName: row.LastName,
+    email: row.Email,
+    phoneNumber: row.PhoneNumber,
+    teacherCode: row.AuthUID || null,
+    memberSince: row.CreatedAt,
+    photoUrl: null,
+  };
+}
+
+async function getProfile(req, res, next) {
+  try {
+    const teacherUserId = getAuthenticatedTeacherUserId(req, res);
+    if (!teacherUserId) return;
+
+    const teacher = await loadTeacherProfile(teacherUserId);
+    if (!teacher) {
+      res.status(404).json({ error: 'Teacher account not found' });
+      return;
+    }
+
+    const now = new Date();
+    const startOfMonth = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), 1));
+    const startOfNextMonth = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth() + 1, 1));
+
+    const [
+      totalSessions,
+      upcomingSessions,
+      completedSessions,
+      monthSessions,
+      pendingAdmissions,
+      pendingAvailabilities,
+    ] = await Promise.all([
+      prisma.sessionTeacher.count({ where: { TeacherID: teacherUserId } }),
+      prisma.sessionTeacher.count({
+        where: {
+          TeacherID: teacherUserId,
+          CoachingSession: { StartTime: { gte: now } },
+        },
+      }),
+      prisma.sessionTeacher.count({
+        where: {
+          TeacherID: teacherUserId,
+          CoachingSession: { EndTime: { lt: now } },
+        },
+      }),
+      prisma.sessionTeacher.count({
+        where: {
+          TeacherID: teacherUserId,
+          CoachingSession: { StartTime: { gte: startOfMonth, lt: startOfNextMonth } },
+        },
+      }),
+      prisma.coachingJoinRequest.count({
+        where: buildTeacherPendingAdmissionWhere(teacherUserId),
+      }),
+      prisma.teacherAvailability.count({
+        where: {
+          TeacherID: teacherUserId,
+          TeacherAvailabilityStatus: { StatusName: { contains: 'pending' } },
+        },
+      }),
+    ]);
+
+    res.json({
+      profile: serializeTeacherProfile(teacher),
+      modalities: (teacher.TeacherModality || [])
+        .map((tm) => tm.Modality)
+        .filter(Boolean)
+        .map((m) => ({ modalityId: m.ModalityID, modalityName: m.ModalityName })),
+      statistics: {
+        totalSessions,
+        upcomingSessions,
+        completedSessions,
+        monthSessions,
+        pendingAdmissions,
+        pendingAvailabilities,
+      },
+    });
+  } catch (error) {
+    next(error);
+  }
+}
+
+async function updateProfile(req, res, next) {
+  try {
+    const teacherUserId = getAuthenticatedTeacherUserId(req, res);
+    if (!teacherUserId) return;
+
+    const phoneNumber = typeof req.body?.phoneNumber === 'string'
+      ? String(req.body.phoneNumber).trim()
+      : undefined;
+
+    await prisma.user.update({
+      where: { UserID: teacherUserId },
+      data: {
+        PhoneNumber: typeof phoneNumber === 'string' ? (phoneNumber || null) : undefined,
+        UpdatedAt: new Date(),
+      },
+    });
+
+    const refreshed = await loadTeacherProfile(teacherUserId);
+    if (!refreshed) {
+      res.status(404).json({ error: 'Teacher account not found' });
+      return;
+    }
+
+    res.json({
+      profile: serializeTeacherProfile(refreshed),
+      message: 'Phone number updated successfully.',
+    });
+  } catch (error) {
+    next(error);
+  }
+}
+
+async function changePassword(req, res, next) {
+  try {
+    const teacherUserId = getAuthenticatedTeacherUserId(req, res);
+    if (!teacherUserId) return;
+
+    const currentPassword = String(req.body?.currentPassword || '');
+    const newPassword = String(req.body?.newPassword || '');
+
+    if (!currentPassword || !newPassword) {
+      res.status(400).json({ error: 'Current and new passwords are required' });
+      return;
+    }
+
+    if (newPassword.length < 8) {
+      res.status(400).json({ error: 'Password must have at least 8 characters' });
+      return;
+    }
+
+    const user = await prisma.user.findFirst({
+      where: { UserID: teacherUserId, IsActive: true, DeletedAt: null },
+      select: { UserID: true, PasswordHash: true },
+    });
+
+    if (!user) {
+      res.status(404).json({ error: 'Teacher account not found' });
+      return;
+    }
+
+    const isValid = await bcrypt.compare(currentPassword, user.PasswordHash);
+    if (!isValid) {
+      res.status(400).json({ error: 'Current password is incorrect' });
+      return;
+    }
+
+    const passwordHash = await bcrypt.hash(newPassword, 12);
+    await prisma.user.update({
+      where: { UserID: teacherUserId },
+      data: { PasswordHash: passwordHash, UpdatedAt: new Date() },
+    });
+
+    await revokeAllRefreshTokensForUser(teacherUserId);
+
+    res.json({ message: 'Password updated successfully.' });
+  } catch (error) {
+    next(error);
+  }
+}
+
 module.exports = {
   approveJoinRequest,
+  changePassword,
   confirmCompletion,
+  getActiveSessions,
   getAdmissionRequests,
   getDashboard,
   getPendingAdmissions,
   getPendingSessions,
+  getProfile,
   getTodaySchedule,
   recordNoShow,
   registerNoShow,
   rejectJoinRequest,
   reviewAdmissionRequest,
+  updateProfile,
 };
-

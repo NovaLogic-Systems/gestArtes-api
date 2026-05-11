@@ -65,6 +65,7 @@ function createFinanceService(prismaClient) {
       studentAccountId: firstSS?.StudentAccountID ?? null,
       studentName: studentUser ? `${studentUser.FirstName} ${studentUser.LastName ?? ''}`.trim() : null,
       studentNumber: studentUser?.AuthUID ?? null,
+      sessionStatus: e.CoachingSession?.SessionStatus?.StatusName ?? null,
     };
   }
 
@@ -92,6 +93,7 @@ function createFinanceService(prismaClient) {
           FinancialEntryType: true,
           CoachingSession: {
             include: {
+              SessionStatus: { select: { StatusName: true } },
               SessionStudent: {
                 take: 1,
                 orderBy: { StudentAccountID: 'asc' },
@@ -291,7 +293,7 @@ function createFinanceService(prismaClient) {
       action: AUDIT_ACTIONS.FINANCE_EXPORT,
       module: AUDIT_MODULES.FINANCE,
       result: AUDIT_RESULTS.SUCCESS,
-      detail: `Exported ${count} entries`,
+      detail: `${count} entrada(s) exportada(s)`,
     });
 
     return { csv, count };

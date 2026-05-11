@@ -307,7 +307,9 @@ const fakePrisma = {
     count: async ({ where = {} } = {}) => {
       return inventoryTransactions.filter((transaction) => matchesInventoryTransactionWhere(transaction, where)).length;
     },
-    findMany: async ({ where = {}, include = {}, orderBy } = {}) => {
+    findMany: async ({ where = {}, include = {}, select = {}, orderBy } = {}) => {
+      const relationSpec = Object.keys(include || {}).length > 0 ? include : select;
+
       const sorted = [...inventoryTransactions]
         .filter((transaction) => matchesInventoryTransactionWhere(transaction, where))
         .sort((a, b) => {
@@ -322,9 +324,11 @@ const fakePrisma = {
           return 0;
         });
 
-      return sorted.map((transaction) => buildIncludedTransaction(transaction, include));
+      return sorted.map((transaction) => buildIncludedTransaction(transaction, relationSpec));
     },
-    create: async ({ data, include = {} }) => {
+    create: async ({ data, include = {}, select = {} }) => {
+      const relationSpec = Object.keys(include || {}).length > 0 ? include : select;
+
       const created = {
         TransactionID: nextTransactionId,
         InventoryItemID: data.InventoryItemID,
@@ -340,7 +344,7 @@ const fakePrisma = {
       nextTransactionId += 1;
       inventoryTransactions.push(created);
 
-      return buildIncludedTransaction(created, include);
+      return buildIncludedTransaction(created, relationSpec);
     },
   },
 };

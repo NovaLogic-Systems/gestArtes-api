@@ -7,6 +7,7 @@
 
 const prisma = require('../config/prisma');
 const {
+  cancelAvailability,
   createException,
   getAvailability,
   getPendingExceptions,
@@ -22,6 +23,7 @@ const logger = require('../utils/logger');
 
 const availabilityService = require('../services/availability.service');
 const availabilityUseCases = createAvailabilityUseCases({ availabilityService });
+const notificationService = require('../services/notification.service');
 
 function getAuthenticatedTeacherUserId(req, res) {
   const userId = Number(req.auth?.userId);
@@ -59,6 +61,36 @@ async function submitTeacherAvailability(req, res, next) {
       payload: req.body,
     });
     await emitAvailabilitySummary(req, teacherUserId);
+    // Notify all admins about the new availability submission
+    try {
+      const teacher = await prisma.user.findUnique({ where: { UserID: teacherUserId }, select: { FirstName: true, LastName: true, Email: true } });
+      const teacherName = teacher ? `${teacher.FirstName || ''} ${teacher.LastName || ''}`.trim() || teacher.Email : `Professor #${teacherUserId}`;
+      const title = 'Novo pedido de disponibilidade'
+      const message = `${teacherName} submeteu um pedido de disponibilidade (${summary?.totalSlots ?? 0} slots).`;
+
+      const admins = await prisma.user.findMany({
+        where: {
+          IsActive: true,
+          UserRole: { some: { Role: { RoleName: 'admin' } } },
+        },
+        select: { UserID: true },
+      });
+
+      const io = req.app.get('io');
+
+      await Promise.all(admins.map(async (a) => {
+        try {
+          const notif = await notificationService.create(a.UserID, message, title);
+          if (io) {
+            io.to(`user:${a.UserID}`).emit('notification', notif);
+          }
+        } catch (err) {
+          logger.warn('[Availability] failed to notify admin', { adminId: a.UserID, err: err?.message });
+        }
+      }));
+    } catch (err) {
+      logger.warn('[Availability] admin notification failed', { err: err?.message });
+    }
     res.status(201).json({ summary, availability });
   } catch (error) {
     next(error);
@@ -98,6 +130,29 @@ async function updateTeacherAvailability(req, res, next) {
     const result = await updateAvailability(teacherUserId, availabilityId, req.body);
     await emitAvailabilitySummary(req, teacherUserId);
     res.json({ availability: result });
+  } catch (error) {
+    next(error);
+  }
+}
+
+async function cancelTeacherAvailability(req, res, next) {
+  try {
+    const teacherUserId = getAuthenticatedTeacherUserId(req, res);
+
+    if (!teacherUserId) {
+      return;
+    }
+
+    const availabilityId = parseAvailabilityId(req.params?.availabilityId);
+
+    if (!availabilityId) {
+      res.status(400).json({ error: 'Invalid availabilityId' });
+      return;
+    }
+
+    await cancelAvailability(teacherUserId, availabilityId);
+    await emitAvailabilitySummary(req, teacherUserId);
+    res.json({ success: true });
   } catch (error) {
     next(error);
   }
@@ -279,11 +334,13 @@ async function getTeacherCalendar(req, res, next) {
             const endHour = new Date(slot.EndTime).getHours();
 
             for (let hour = startHour; hour < endHour && hour < 21; hour++) {
-              slots.push({
-                day: dayOfWeek,
-                hour,
-                status: statusName
-              });
+                slots.push({
+                  day: dayOfWeek,
+                  hour,
+                  status: statusName,
+                  availabilityId: record.AvailabilityID,
+                  reason: record.Reason
+                });
             }
           }
         }
@@ -315,6 +372,7 @@ function generateEmptySlots() {
 }
 
 module.exports = {
+  cancelTeacherAvailability,
   approveAvailability,
   createTeacherException,
   getTeacherCalendar,

@@ -88,6 +88,14 @@ function getPrimaryRoleFromUser(user) {
   );
 }
 
+function getRolesFromUser(user) {
+  const roles = (user?.UserRole || [])
+    .map((entry) => toAppRole(entry?.Role?.RoleName))
+    .filter(Boolean);
+  
+  return Array.from(new Set(roles));
+}
+
 module.exports = {
   APP_ROLES,
   ROLE_HIERARCHY,
@@ -96,6 +104,7 @@ module.exports = {
   ROLE_PRIORITY,
   getHighestPriorityRole,
   getPrimaryRoleFromUser,
+  getRolesFromUser,
   normalizeRole,
   toAppRole,
 };

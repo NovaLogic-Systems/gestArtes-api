@@ -25,6 +25,13 @@ const NOT_ATTENDED_STATUS_KEYWORDS = [
   'nao compareceu',
   'no show',
 ];
+const OPEN_JOIN_REQUEST_STATUS_KEYS = new Set([
+  'awaitingapproval',
+  'pendingteacher',
+  'pendingapproval',
+  'teacherapproved',
+  'pendingadmin',
+]);
 
 function toInteger(value) {
   if (typeof value === 'bigint') {
@@ -41,6 +48,10 @@ function normalizeStatusName(value) {
     .toLowerCase()
     .normalize('NFD')
     .replace(/[\u0300-\u036f]/g, '');
+}
+
+function normalizeWorkflowStatusKey(value) {
+  return normalizeStatusName(value).replace(/[^a-z0-9]/g, '');
 }
 
 function isAttendedStatus(statusName) {
@@ -157,6 +168,19 @@ async function loadStudentProfile(userId) {
     },
     studentAccountId: user.StudentAccount.StudentAccountID,
   };
+}
+
+async function listOpenJoinRequestStatusIds() {
+  const statuses = await prisma.coachingJoinRequestStatus.findMany({
+    select: {
+      StatusID: true,
+      StatusName: true,
+    },
+  });
+
+  return statuses
+    .filter((status) => OPEN_JOIN_REQUEST_STATUS_KEYS.has(normalizeWorkflowStatusKey(status.StatusName)))
+    .map((status) => status.StatusID);
 }
 
 function mapNotificationRow(row) {
@@ -492,6 +516,7 @@ async function getDashboard(req, res, next) {
     const { studentAccountId } = student;
 
     const now = new Date();
+    const openJoinRequestStatusIds = await listOpenJoinRequestStatusIds();
 
     const [
       upcomingSessions,
@@ -522,7 +547,7 @@ async function getDashboard(req, res, next) {
       prisma.coachingJoinRequest.count({
         where: {
           StudentAccountID: studentAccountId,
-          CoachingJoinRequestStatus: { StatusName: { contains: 'pend' } },
+          StatusID: { in: openJoinRequestStatusIds },
         },
       }),
       prisma.coachingSession.count({
@@ -607,4 +632,3 @@ module.exports = {
   getDashboard,
   getUpcomingSchedule,
 };
-

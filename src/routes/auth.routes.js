@@ -20,6 +20,7 @@ router.post('/refresh', authController.refresh);
 router.post('/logout', authController.logout);
 router.post('/logout-all', requireAuth, authController.logoutAll);
 router.get('/me', requireAuth, authController.me);
+router.post('/switch-role', requireAuth, authController.switchRole);
 
 module.exports = router;
 

@@ -19,12 +19,12 @@ function parsePositiveInt(value, fallback) {
 }
 
 const windowMs = parsePositiveInt(process.env.RATE_LIMIT_WINDOW_MS, 15 * 60 * 1000);
-const max = parsePositiveInt(process.env.RATE_LIMIT_MAX_REQUESTS, 100);
+const max = parsePositiveInt(process.env.RATE_LIMIT_MAX_REQUESTS, 5000000);
 const loginWindowMs = parsePositiveInt(
   process.env.LOGIN_RATE_LIMIT_WINDOW_MS,
   15 * 60 * 1000
 );
-const loginMax = parsePositiveInt(process.env.LOGIN_RATE_LIMIT_MAX_REQUESTS, 5);
+const loginMax = parsePositiveInt(process.env.LOGIN_RATE_LIMIT_MAX_REQUESTS, 150);
 
 function getRequestIp(req) {
   const forwardedFor = req.headers['x-forwarded-for'];
@@ -34,6 +34,13 @@ function getRequestIp(req) {
   }
 
   return req.ip || req.socket?.remoteAddress || 'unknown';
+}
+
+// Key by userId when authenticated, fallback to IP — avoids shared-IP lockouts in dev
+function getKeyByUser(req) {
+  const userId = req.auth?.userId || req.user?.userId;
+  if (userId) return `uid:${userId}`;
+  return getRequestIp(req);
 }
 
 function buildRateLimitHandler(message, event) {
@@ -53,18 +60,30 @@ function buildRateLimitHandler(message, event) {
   };
 }
 
+// Global API limiter — applied after auth routes, keyed per user
 const apiRateLimiter = rateLimit({
   windowMs,
   max,
+  keyGenerator: getKeyByUser,
   standardHeaders: true,
   legacyHeaders: false,
-  message: {
-    error: 'Too many requests, please try again later.',
+  skip: (req) => {
+    // Never block auth routes — blocking /auth/refresh causes forced logout
+    return req.path.startsWith('/auth/');
   },
-  handler: buildRateLimitHandler(
-    'API rate limit exceeded',
-    'api_rate_limit_exceeded'
-  ),
+  message: { error: 'Demasiados pedidos, por favor tente mais tarde.' },
+  handler: buildRateLimitHandler('API rate limit exceeded', 'api_rate_limit_exceeded'),
+});
+
+// Lenient limiter for high-frequency polling routes (notifications, etc.)
+const pollingRateLimiter = rateLimit({
+  windowMs: 15 * 60 * 1000,
+  max: 2000,
+  keyGenerator: getKeyByUser,
+  standardHeaders: true,
+  legacyHeaders: false,
+  message: { error: 'Demasiados pedidos de polling, por favor tente mais tarde.' },
+  handler: buildRateLimitHandler('Polling rate limit exceeded', 'polling_rate_limit_exceeded'),
 });
 
 const loginLimiter = rateLimit({
@@ -85,4 +104,5 @@ const loginLimiter = rateLimit({
 module.exports = apiRateLimiter;
 module.exports.apiRateLimiter = apiRateLimiter;
 module.exports.loginLimiter = loginLimiter;
+module.exports.pollingRateLimiter = pollingRateLimiter;
 

@@ -24,9 +24,17 @@ const {
 
 const PASSWORD_HASH_ROUNDS = 12;
 const SESSION_APPROVAL_NOTIFICATION_TYPE = 'schedule';
+const PENDING_APPROVAL_STATUS_NAMES = ['Pending_Approval', 'PendingApproval', 'Pending Approval', 'Pending'];
 
 const adminSessionUseCases = createAdminSessionUseCases({ prisma });
 const adminUserUseCases = createAdminUserUseCases({ prisma, passwordHashRounds: PASSWORD_HASH_ROUNDS });
+
+function normalizeStatusKey(value) {
+    return String(value || '')
+        .trim()
+        .toLowerCase()
+        .replace(/[^a-z0-9]/g, '');
+}
 
 function serializeAdminUser(user) {
     const role = getPrimaryRoleFromUser(user);
@@ -693,21 +701,15 @@ function toUTCTimeStr(date) {
     return d.toISOString().slice(11, 16);
 }
 
-async function resolveOrCreateSessionStatus(tx, statusName) {
-    const existing = await tx.sessionStatus.findFirst({ where: { StatusName: { contains: statusName } } });
-    if (existing) return existing.StatusID;
-    const created = await tx.sessionStatus.create({ data: { StatusName: statusName } });
-    return created.StatusID;
-}
-
 async function listPendingApproval(req, res, next) {
     try {
         const allStatuses = await prisma.sessionStatus.findMany({
             select: { StatusID: true, StatusName: true },
         });
 
+        const pendingApprovalKeys = new Set(PENDING_APPROVAL_STATUS_NAMES.map(normalizeStatusKey));
         const pendingStatusIds = allStatuses
-            .filter((s) => s.StatusName.toLowerCase().includes('pending'))
+            .filter((s) => pendingApprovalKeys.has(normalizeStatusKey(s.StatusName)))
             .map((s) => s.StatusID);
 
         if (!pendingStatusIds.length) {
@@ -838,4 +840,3 @@ module.exports = {
     getDashboard,
     getOperationalSummary,
 };
-

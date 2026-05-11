@@ -34,8 +34,14 @@ const createInventoryItemSchema = [
     .isLength({ min: 1, max: 100 }).withMessage('Nome do artigo inválido')
     .escape(),
   body('categoryId')
+    .optional()
     .isInt({ min: 1 }).withMessage('Categoria inválida')
     .toInt(),
+  body('categoryName')
+    .optional()
+    .trim()
+    .isLength({ min: 1, max: 50 }).withMessage('Categoria inválida')
+    .escape(),
   body('symbolicFee')
     .isFloat({ min: 0 }).withMessage('Taxa simbólica inválida')
     .toFloat(),
@@ -53,6 +59,17 @@ const createInventoryItemSchema = [
     .optional()
     .isInt({ min: 1 }).withMessage('Quantidade inválida')
     .toInt(),
+  body()
+    .custom((value) => {
+      const hasCategoryId = Number.isInteger(value?.categoryId) && value.categoryId > 0;
+      const hasCategoryName = String(value?.categoryName || '').trim().length > 0;
+
+      if (!hasCategoryId && !hasCategoryName) {
+        throw new Error('Categoria inválida');
+      }
+
+      return true;
+    }),
 ];
 
 const createInventoryTransactionSchema = [
@@ -149,6 +166,11 @@ const updateInventoryItemSchema = [
     .optional()
     .isInt({ min: 1 }).withMessage('Categoria inválida')
     .toInt(),
+  body('categoryName')
+    .optional()
+    .trim()
+    .isLength({ min: 1, max: 50 }).withMessage('Categoria inválida')
+    .escape(),
   body('symbolicFee')
     .optional()
     .isFloat({ min: 0 }).withMessage('Taxa simbólica inválida')
@@ -169,7 +191,7 @@ const updateInventoryItemSchema = [
     .toInt(),
   body()
     .custom((value) => {
-      const hasAnyField = ['itemName', 'categoryId', 'symbolicFee', 'description', 'photoUrl', 'totalQuantity']
+      const hasAnyField = ['itemName', 'categoryId', 'categoryName', 'symbolicFee', 'description', 'photoUrl', 'totalQuantity']
         .some((field) => Object.hasOwn(value || {}, field));
 
       if (!hasAnyField) {
@@ -223,6 +245,20 @@ const verifyReturnSchema = [
     .escape(),
 ];
 
+const rejectReturnSchema = [...verifyReturnSchema];
+
+const approveRentalSchema = [
+  body('decision')
+    .trim()
+    .customSanitizer((value) => String(value).toLowerCase())
+    .isIn(['approve', 'reject']).withMessage('Decisão inválida'),
+  body('notes')
+    .optional({ nullable: true })
+    .trim()
+    .isLength({ max: 255 }).withMessage('Notas inválidas')
+    .escape(),
+];
+
 module.exports = {
   createInventoryItemSchema,
   updateInventoryItemSchema,
@@ -232,4 +268,6 @@ module.exports = {
   listInventoryItemsQuerySchema,
   updateInventoryAvailabilitySchema,
   verifyReturnSchema,
+  rejectReturnSchema,
+  approveRentalSchema,
 };

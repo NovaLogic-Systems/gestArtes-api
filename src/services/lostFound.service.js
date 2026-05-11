@@ -16,6 +16,7 @@ function toPublicDto(item) {
     id: item.LostItemID,
     title: item.Title,
     description: item.Description,
+    location: item.Location,
     foundDate: item.FoundDate,
     claimedStatus: item.ClaimedStatus,
     photoUrl: item.PhotoURL,
@@ -89,6 +90,7 @@ async function createItem(data, registeredByUserId, role) {
     data: {
       Title: data.title,
       Description: data.description,
+      Location: data.location,
       FoundDate: data.foundDate,
       ClaimedStatus: data.claimedStatus ?? false,
       PhotoURL: data.photoUrl,
@@ -112,6 +114,7 @@ async function updateItem(id, data, role) {
     data: {
       Title: data.title,
       Description: data.description,
+      Location: data.location,
       FoundDate: data.foundDate,
       ClaimedStatus: data.claimedStatus,
       PhotoURL: data.photoUrl,

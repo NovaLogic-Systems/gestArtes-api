@@ -75,5 +75,11 @@ router.get(
   joinRequestController.getStudentRequests
 );
 
+router.delete(
+  '/coaching/join-requests/:id',
+  requirePermission(APP_PERMISSIONS.JOIN_REQUEST_CREATE),
+  joinRequestController.cancelJoinRequest
+);
+
 module.exports = router;
 

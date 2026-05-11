@@ -6,7 +6,7 @@
 
 const test = require('node:test');
 const assert = require('node:assert/strict');
-const Module = require('node:module');
+const { withPatchedModules } = require('./helpers/moduleLoader');
 
 function createState() {
   return {
@@ -127,32 +127,19 @@ const fakePrisma = {
   },
 };
 
-const originalLoad = Module._load;
-Module._load = function patchedLoad(request, parent, isMain) {
-  if (request === '../config/prisma') {
-    return fakePrisma;
-  }
-
-  if (request === '@prisma/client') {
-    return {
+const { createSessionWithBusinessRules } = withPatchedModules(
+  {
+    '../config/prisma': fakePrisma,
+    '@prisma/client': {
       Prisma: {
         TransactionIsolationLevel: {
           Serializable: 'Serializable',
         },
       },
-    };
-  }
-
-  return originalLoad.call(this, request, parent, isMain);
-};
-
-let createSessionWithBusinessRules;
-
-try {
-  ({ createSessionWithBusinessRules } = require('../../src/services/session.service'));
-} finally {
-  Module._load = originalLoad;
-}
+    },
+  },
+  () => require('../../src/services/session.service')
+);
 
 function resetState() {
   state = createState();

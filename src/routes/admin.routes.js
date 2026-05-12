@@ -11,6 +11,7 @@ const { requireAuth, requireAdminRole, requireRole } = require('../middlewares/a
 const {
     createUserSchema,
     deleteUserSchema,
+    listUsersQuerySchema,
     resetUserPasswordSchema,
     updateUserRolesSchema,
     updateUserSchema,
@@ -39,6 +40,8 @@ router.get(
 router.get(
     '/users',
     ...adminAccess,
+    ...listUsersQuerySchema,
+    validateRequest,
     adminController.listUsers
 );
 
@@ -126,6 +129,12 @@ router.get(
     '/validations/availability',
     ...adminAccess,
     availabilityController.listAdminPendingAvailability
+);
+
+router.get(
+    '/validations/absences',
+    ...adminAccess,
+    availabilityController.listAdminPendingAbsences
 );
 
 router.patch(

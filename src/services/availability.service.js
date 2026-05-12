@@ -332,6 +332,51 @@ function serializeException(row) {
   };
 }
 
+async function listPendingAbsencesForAdmin() {
+  const pendingStatus = await prisma.teacherAbsenceStatus.findFirst({
+    where: { StatusName: PENDING_STATUS_NAME },
+    select: { StatusID: true },
+  });
+
+  if (!pendingStatus) {
+    throw createHttpError(500, 'Estado de ausência não configurado');
+  }
+
+  const rows = await prisma.teacherAbsence.findMany({
+    where: { StatusID: pendingStatus.StatusID },
+    include: {
+      TeacherAbsenceStatus: {
+        select: {
+          StatusID: true,
+          StatusName: true,
+        },
+      },
+      User_TeacherAbsence_TeacherIDToUser: {
+        select: {
+          UserID: true,
+          FirstName: true,
+          LastName: true,
+          Email: true,
+        },
+      },
+    },
+    orderBy: [
+      { RequestedAt: 'asc' },
+      { AbsenceID: 'asc' },
+    ],
+  });
+
+  return rows.map((row) => ({
+    ...serializeException(row),
+    teacher: {
+      userId: row.User_TeacherAbsence_TeacherIDToUser?.UserID ?? null,
+      firstName: row.User_TeacherAbsence_TeacherIDToUser?.FirstName ?? null,
+      lastName: row.User_TeacherAbsence_TeacherIDToUser?.LastName ?? null,
+      email: row.User_TeacherAbsence_TeacherIDToUser?.Email ?? null,
+    },
+  }));
+}
+
 async function submitAvailability(teacherId, body) {
   // ---- Conflict detection ----
   // Ensure no overlapping recurring slots are created for the same teacher.
@@ -779,6 +824,7 @@ module.exports = {
   createException,
   getAvailability,
   getPendingExceptions,
+  listPendingAbsencesForAdmin,
   listPendingAvailabilityForAdmin,
   reviewAvailability,
   submitAvailability,

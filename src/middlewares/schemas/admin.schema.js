@@ -5,8 +5,30 @@
  * @project GestArtes - Projeto 50+10 para Entartes
  */
 
-const { body, param } = require('express-validator');
+const { body, param, query } = require('express-validator');
 const { toAppRole } = require('../../utils/roles');
+
+const listUsersQuerySchema = [
+    query('search')
+        .optional()
+        .trim()
+        .isLength({ max: 200 }).withMessage('Pesquisa inválida'),
+    query('role')
+        .optional()
+        .trim()
+        .custom((value) => Boolean(toAppRole(value))).withMessage('Role inválida'),
+    query('status')
+        .optional()
+        .isIn(['active', 'suspended']).withMessage('Estado inválido'),
+    query('limit')
+        .optional()
+        .isInt({ min: 1, max: 100 }).withMessage('limit deve estar entre 1 e 100')
+        .toInt(),
+    query('offset')
+        .optional()
+        .isInt({ min: 0 }).withMessage('offset inválido')
+        .toInt(),
+];
 
 const createUserSchema = [
     body('firstName')
@@ -206,6 +228,7 @@ const resetUserPasswordSchema = [
 module.exports = {
     createUserSchema,
     deleteUserSchema,
+    listUsersQuerySchema,
     resetUserPasswordSchema,
     updateUserRolesSchema,
     updateUserSchema,

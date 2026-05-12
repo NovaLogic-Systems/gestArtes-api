@@ -117,6 +117,80 @@ function parseTargetUserId(value) {
     return Number.isInteger(parsed) && parsed > 0 ? parsed : null;
 }
 
+function toPositiveLimit(value, fallback = 25, max = 100) {
+    const parsed = Number(value);
+
+    if (!Number.isInteger(parsed) || parsed <= 0) {
+        return fallback;
+    }
+
+    return Math.min(parsed, max);
+}
+
+function buildUserSearchWhere(search) {
+    const tokens = String(search || '')
+        .trim()
+        .split(/\s+/)
+        .filter(Boolean);
+
+    if (!tokens.length) {
+        return {};
+    }
+
+    return {
+        AND: tokens.map((token) => ({
+            OR: [
+                { FirstName: { contains: token } },
+                { LastName: { contains: token } },
+                { Email: { contains: token } },
+                { AuthUID: { contains: token } },
+            ],
+        })),
+    };
+}
+
+async function buildUsersWhere(tx, { search, role, status } = {}) {
+    const where = {
+        DeletedAt: null,
+        ...buildUserSearchWhere(search),
+    };
+
+    if (status === 'active') {
+        where.IsActive = true;
+    } else if (status === 'suspended') {
+        where.IsActive = false;
+    }
+
+    const appRole = toAppRole(role);
+    if (appRole) {
+        const roleRecords = await tx.role.findMany({
+            select: {
+                RoleID: true,
+                RoleName: true,
+            },
+            orderBy: {
+                RoleID: 'asc',
+            },
+        });
+
+        const matchingRoleIds = roleRecords
+            .filter((entry) => toAppRole(entry.RoleName) === appRole)
+            .map((entry) => entry.RoleID);
+
+        where.UserRole = matchingRoleIds.length
+            ? {
+                some: {
+                    RoleID: { in: matchingRoleIds },
+                },
+            }
+            : {
+                some: { RoleID: -1 },
+            };
+    }
+
+    return where;
+}
+
 async function getManagedUser(tx, targetUserId) {
     return tx.user.findUnique({
         where: {
@@ -135,25 +209,39 @@ async function getManagedUser(tx, targetUserId) {
 
 async function listUsers(req, res, next) {
     try {
-        const users = await prisma.user.findMany({
-            where: {
-                DeletedAt: null,
-            },
-            include: {
-                UserRole: {
-                    include: {
-                        Role: true,
+        const limit = toPositiveLimit(req.query?.limit, 25, 100);
+        const offset = Number.isInteger(Number(req.query?.offset)) ? Math.max(0, Number(req.query.offset)) : 0;
+        const search = String(req.query?.search || '').trim();
+        const role = String(req.query?.role || '').trim();
+        const status = String(req.query?.status || '').trim();
+
+        const where = await buildUsersWhere(prisma, { search, role, status });
+
+        const [total, users] = await prisma.$transaction([
+            prisma.user.count({ where }),
+            prisma.user.findMany({
+                where,
+                include: {
+                    UserRole: {
+                        include: {
+                            Role: true,
+                        },
                     },
+                    StudentAccount: true,
                 },
-                StudentAccount: true,
-            },
-            orderBy: {
-                CreatedAt: 'desc',
-            },
-        });
+                orderBy: {
+                    CreatedAt: 'desc',
+                },
+                skip: offset,
+                take: limit,
+            }),
+        ]);
 
         return res.json({
             users: users.map(serializeAdminUser),
+            total,
+            limit,
+            offset,
         });
     } catch (error) {
         return next(error);

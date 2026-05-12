@@ -39,11 +39,20 @@ const fakeBcrypt = {
 };
 
 const fakePrisma = {
-  $transaction: async (callback) => callback(fakePrisma),
+  $transaction: async (input) => {
+    if (typeof input === 'function') {
+      return input(fakePrisma);
+    }
+    if (Array.isArray(input)) {
+      return Promise.all(input);
+    }
+    return input;
+  },
   role: {
     findMany: async () => mockState.roles,
   },
   user: {
+    count: async () => mockState.listedUsers.length,
     findUnique: async ({ where }) => {
       if (where?.Email) {
         return mockState.existingUser;

@@ -495,6 +495,7 @@ async function updateUserRoles(req, res, next) {
 
             const willBeStudent = appRoles.includes('student');
             const hasStudentAccount = Boolean(targetUser.StudentAccount);
+            let finalStudentNumber = studentNumber;
 
             if (willBeStudent && !hasStudentAccount) {
                 if (!(birthDate instanceof Date && !Number.isNaN(birthDate.getTime()))) {
@@ -503,7 +504,6 @@ async function updateUserRoles(req, res, next) {
                     throw error;
                 }
 
-                let finalStudentNumber = studentNumber;
                 if (!finalStudentNumber) {
                     finalStudentNumber = `ST-${Math.floor(100000 + Math.random() * 900000)}`;
                 }

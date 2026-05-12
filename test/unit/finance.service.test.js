@@ -7,6 +7,11 @@
 const test = require('node:test');
 const assert = require('node:assert/strict');
 const { createFinanceService } = require('../../src/services/finance.service');
+const prisma = require('../../src/config/prisma');
+
+test.after(async () => {
+  await prisma.$disconnect();
+});
 
 const FAKE_ENTRY_TYPE = { EntryTypeID: 1, TypeName: 'session_revenue' };
 const FAKE_USER = { UserID: 5, FirstName: 'Ana', LastName: 'Silva', AuthUID: 'ST-0001' };

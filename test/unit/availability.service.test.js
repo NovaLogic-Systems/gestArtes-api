@@ -252,8 +252,8 @@ test('submits recurring availability and summarizes slots', async () => {
     mode: 'weekly',
     notes: 'After class hours',
     dayOfWeek: 1,
-    startTime: '09:00',
-    endTime: '11:00',
+    startTime: '19:00',
+    endTime: '21:00',
     academicYearId: 1,
     isActive: true,
   });
@@ -270,17 +270,17 @@ test('updates punctual availability in place', async () => {
 
   await availabilityService.submitAvailability(42, {
     mode: 'semester',
-    startDateTime: '2026-05-01T10:00:00.000Z',
-    endDateTime: '2026-05-01T12:00:00.000Z',
+    startDateTime: '2026-05-01T19:00:00.000Z',
+    endDateTime: '2026-05-01T21:00:00.000Z',
   });
 
   const updated = await availabilityService.updateAvailability(42, 1, {
-    startDateTime: '2026-05-01T10:30:00.000Z',
-    endDateTime: '2026-05-01T12:30:00.000Z',
+    startDateTime: '2026-05-01T19:30:00.000Z',
+    endDateTime: '2026-05-01T21:30:00.000Z',
   });
 
   assert.equal(updated.mode, 'semester');
-  assert.equal(updated.slot.startDateTime.toISOString(), '2026-05-01T10:30:00.000Z');
+  assert.equal(updated.slot.startDateTime.toISOString(), '2026-05-01T19:30:00.000Z');
 });
 
 test('creates and lists pending exceptions', async () => {
@@ -360,15 +360,15 @@ test('submits semester availability and summarizes slots', async () => {
 
   const result = await availabilityService.submitAvailability(42, {
     mode: 'semester',
-    startDateTime: '2026-09-01T08:00:00.000Z',
-    endDateTime: '2026-09-01T10:00:00.000Z',
+    startDateTime: '2026-09-01T19:00:00.000Z',
+    endDateTime: '2026-09-01T21:00:00.000Z',
   });
 
   assert.equal(result.summary.totalSlots, 1);
   assert.equal(result.summary.weeklySlots, 0);
   assert.equal(result.summary.semesterSlots, 1);
   assert.equal(result.availability[0].mode, 'semester');
-  assert.equal(result.availability[0].slot.startDateTime.toISOString(), '2026-09-01T08:00:00.000Z');
+  assert.equal(result.availability[0].slot.startDateTime.toISOString(), '2026-09-01T19:00:00.000Z');
 });
 
 test('submits multiple slots in a single request', async () => {
@@ -376,8 +376,8 @@ test('submits multiple slots in a single request', async () => {
 
   const result = await availabilityService.submitAvailability(42, {
     slots: [
-      { mode: 'weekly', dayOfWeek: 1, startTime: '09:00', endTime: '11:00', academicYearId: 1 },
-      { mode: 'weekly', dayOfWeek: 3, startTime: '14:00', endTime: '16:00', academicYearId: 1 },
+      { mode: 'weekly', dayOfWeek: 1, startTime: '19:00', endTime: '21:00', academicYearId: 1 },
+      { mode: 'weekly', dayOfWeek: 3, startTime: '19:00', endTime: '21:00', academicYearId: 1 },
     ],
   });
 
@@ -391,8 +391,8 @@ test('getAvailability returns all slots for a teacher', async () => {
   await availabilityService.submitAvailability(42, {
     mode: 'weekly',
     dayOfWeek: 2,
-    startTime: '10:00',
-    endTime: '12:00',
+    startTime: '19:00',
+    endTime: '21:00',
     academicYearId: 1,
   });
 
@@ -409,19 +409,19 @@ test('updates recurring availability in place', async () => {
   await availabilityService.submitAvailability(42, {
     mode: 'weekly',
     dayOfWeek: 1,
-    startTime: '09:00',
-    endTime: '11:00',
+    startTime: '19:00',
+    endTime: '21:00',
     academicYearId: 1,
   });
 
   const updated = await availabilityService.updateAvailability(42, 1, {
-    startTime: '10:00',
-    endTime: '12:00',
+    startTime: '20:00',
+    endTime: '21:30',
   });
 
   assert.equal(updated.mode, 'weekly');
-  assert.equal(updated.slot.startTime, '10:00:00');
-  assert.equal(updated.slot.endTime, '12:00:00');
+  assert.equal(updated.slot.startTime, '20:00:00');
+  assert.equal(updated.slot.endTime, '21:30:00');
 });
 
 test('rejects update when requested mode differs from existing mode', async () => {
@@ -430,16 +430,16 @@ test('rejects update when requested mode differs from existing mode', async () =
   await availabilityService.submitAvailability(42, {
     mode: 'weekly',
     dayOfWeek: 1,
-    startTime: '09:00',
-    endTime: '11:00',
+    startTime: '19:00',
+    endTime: '21:00',
     academicYearId: 1,
   });
 
   await assert.rejects(
     () => availabilityService.updateAvailability(42, 1, {
       mode: 'semester',
-      startDateTime: '2026-09-01T08:00:00.000Z',
-      endDateTime: '2026-09-01T10:00:00.000Z',
+      startDateTime: '2026-09-01T19:00:00.000Z',
+      endDateTime: '2026-09-01T21:00:00.000Z',
     }),
     (error) => {
       assert.equal(error.status, 400);

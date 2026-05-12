@@ -7,6 +7,11 @@
 const test = require('node:test');
 const assert = require('node:assert/strict');
 const { createPricingService } = require('../../src/services/pricing.service');
+const prisma = require('../../src/config/prisma');
+
+test.after(async () => {
+  await prisma.$disconnect();
+});
 
 const FAKE_SUMMARY = { FinancialSummaryID: 1 };
 const FAKE_YEAR = { AcademicYearID: 1 };

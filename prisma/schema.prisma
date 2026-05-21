@@ -276,11 +276,12 @@ model AuditLog {
 }
 
 model Modality {
-  ModalityID      Int               @id(map: "PK__Modality__C179441B1ADC4F85") @default(autoincrement())
-  ModalityName    String            @unique(map: "UQ__Modality__2C2AEFDF50A354AF") @db.VarChar(50)
-  CoachingSession CoachingSession[]
-  StudioModality  StudioModality[]
-  TeacherModality TeacherModality[]
+  ModalityID             Int                      @id(map: "PK__Modality__C179441B1ADC4F85") @default(autoincrement())
+  ModalityName           String                   @unique(map: "UQ__Modality__2C2AEFDF50A354AF") @db.VarChar(50)
+  CoachingSession        CoachingSession[]
+  StudioModality         StudioModality[]
+  TeacherModality        TeacherModality[]
+  StudentAllowedModality StudentAllowedModality[]
 }
 
 model Notification {
@@ -425,14 +426,25 @@ model SessionValidation {
 }
 
 model StudentAccount {
-  StudentAccountID    Int                   @id(map: "PK__StudentA__7A8F0FA2F5D02547") @default(autoincrement())
-  UserID              Int                   @unique(map: "UQ__StudentA__1788CCAD78A4799C")
-  BirthDate           DateTime              @db.Date
-  GuardianName        String?               @db.VarChar(150)
-  GuardianPhone       String?               @db.VarChar(20)
-  CoachingJoinRequest CoachingJoinRequest[]
-  SessionStudent      SessionStudent[]
-  User                User                  @relation(fields: [UserID], references: [UserID], onUpdate: NoAction, map: "FKStudentAcc231273")
+  StudentAccountID       Int                      @id(map: "PK__StudentA__7A8F0FA2F5D02547") @default(autoincrement())
+  UserID                 Int                      @unique(map: "UQ__StudentA__1788CCAD78A4799C")
+  BirthDate              DateTime                 @db.Date
+  GuardianName           String?                  @db.VarChar(150)
+  GuardianPhone          String?                  @db.VarChar(20)
+  IsModalityLocked       Boolean                  @default(false)
+  CoachingJoinRequest    CoachingJoinRequest[]
+  SessionStudent         SessionStudent[]
+  User                   User                     @relation(fields: [UserID], references: [UserID], onUpdate: NoAction, map: "FKStudentAcc231273")
+  StudentAllowedModality StudentAllowedModality[]
+}
+
+model StudentAllowedModality {
+  StudentAccountID Int
+  ModalityID       Int
+  Modality         Modality       @relation(fields: [ModalityID], references: [ModalityID], onUpdate: NoAction, onDelete: Cascade)
+  StudentAccount   StudentAccount @relation(fields: [StudentAccountID], references: [StudentAccountID], onUpdate: NoAction, onDelete: Cascade)
+
+  @@id([StudentAccountID, ModalityID])
 }
 
 model Studio {

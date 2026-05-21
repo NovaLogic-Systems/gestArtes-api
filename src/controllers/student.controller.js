@@ -86,6 +86,8 @@ function serializeStudentProfile(profileRow, studentAccountId) {
     birthDate: profileRow.birthDate,
     guardianName: profileRow.guardianName,
     guardianPhone: profileRow.guardianPhone,
+    isModalityLocked: profileRow.isModalityLocked,
+    allowedModalities: profileRow.allowedModalities,
     accountCreatedAt: profileRow.accountCreatedAt,
     accountUpdatedAt: profileRow.accountUpdatedAt,
   };
@@ -143,6 +145,12 @@ async function loadStudentProfile(userId) {
           BirthDate: true,
           GuardianName: true,
           GuardianPhone: true,
+          IsModalityLocked: true,
+          StudentAllowedModality: {
+            select: {
+              ModalityID: true
+            }
+          }
         },
       },
     },
@@ -165,6 +173,8 @@ async function loadStudentProfile(userId) {
       birthDate: user.StudentAccount.BirthDate,
       guardianName: user.StudentAccount.GuardianName,
       guardianPhone: user.StudentAccount.GuardianPhone,
+      isModalityLocked: user.StudentAccount.IsModalityLocked,
+      allowedModalities: user.StudentAccount.StudentAllowedModality.map(m => m.ModalityID)
     },
     studentAccountId: user.StudentAccount.StudentAccountID,
   };

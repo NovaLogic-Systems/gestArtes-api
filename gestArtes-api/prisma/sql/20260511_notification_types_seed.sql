@@ -27,3 +27,13 @@ IF NOT EXISTS (SELECT 1 FROM dbo.NotificationType WHERE TypeName = 'join_request
 BEGIN
     INSERT INTO dbo.NotificationType (TypeName) VALUES ('join_request');
 END;
+
+IF NOT EXISTS (SELECT 1 FROM dbo.NotificationType WHERE TypeName = 'inventory')
+BEGIN
+    INSERT INTO dbo.NotificationType (TypeName) VALUES ('inventory');
+END;
+
+IF NOT EXISTS (SELECT 1 FROM dbo.NotificationType WHERE TypeName = 'account')
+BEGIN
+    INSERT INTO dbo.NotificationType (TypeName) VALUES ('account');
+END;

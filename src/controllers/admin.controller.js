@@ -59,6 +59,8 @@ function serializeAdminUser(user) {
         birthDate: user.StudentAccount?.BirthDate || null,
         guardianName: user.StudentAccount?.GuardianName || null,
         guardianPhone: user.StudentAccount?.GuardianPhone || null,
+        isModalityLocked: isStudent ? Boolean(user.StudentAccount?.IsModalityLocked) : undefined,
+        allowedModalities: isStudent && user.StudentAccount?.StudentAllowedModality ? user.StudentAccount.StudentAllowedModality.map(m => m.ModalityID) : undefined,
     };
 }
 
@@ -202,7 +204,11 @@ async function getManagedUser(tx, targetUserId) {
                     Role: true,
                 },
             },
-            StudentAccount: true,
+            StudentAccount: {
+                include: {
+                    StudentAllowedModality: true,
+                },
+            },
         },
     });
 }
@@ -227,7 +233,11 @@ async function listUsers(req, res, next) {
                             Role: true,
                         },
                     },
-                    StudentAccount: true,
+                    StudentAccount: {
+                        include: {
+                            StudentAllowedModality: true,
+                        },
+                    },
                 },
                 orderBy: {
                     CreatedAt: 'desc',
@@ -283,6 +293,8 @@ async function updateUser(req, res, next) {
         const birthDate = req.body?.birthDate ? new Date(req.body.birthDate) : undefined;
         const guardianName = typeof req.body?.guardianName === 'string' ? String(req.body.guardianName).trim() : undefined;
         const guardianPhone = typeof req.body?.guardianPhone === 'string' ? String(req.body.guardianPhone).trim() : undefined;
+        const isModalityLocked = typeof req.body?.isModalityLocked === 'boolean' ? req.body.isModalityLocked : undefined;
+        const allowedModalities = Array.isArray(req.body?.allowedModalities) ? req.body.allowedModalities.map(Number) : undefined;
 
         const updatedUser = await prisma.$transaction(async (tx) => {
             const targetUser = await getManagedUser(tx, targetUserId);
@@ -360,7 +372,7 @@ async function updateUser(req, res, next) {
                 data: userUpdateData,
             });
 
-            const hasStudentPayload = [birthDate, guardianName, guardianPhone]
+            const hasStudentPayload = [birthDate, guardianName, guardianPhone, isModalityLocked, allowedModalities]
                 .some((entry) => entry !== undefined);
 
             if (hasStudentPayload) {
@@ -382,6 +394,40 @@ async function updateUser(req, res, next) {
 
                 if (guardianPhone !== undefined) {
                     studentData.GuardianPhone = guardianPhone || null;
+                }
+
+                if (isModalityLocked !== undefined) {
+                    studentData.IsModalityLocked = isModalityLocked;
+                    if (isModalityLocked === false) {
+                        // If lock is removed, clear the DB mapping immediately
+                        await tx.studentAllowedModality.deleteMany({
+                            where: { StudentAccountID: targetUser.StudentAccount.StudentAccountID }
+                        });
+                    }
+                }
+
+                if (allowedModalities !== undefined && isModalityLocked !== false) {
+                    // Update allowed modalities
+                    await tx.studentAllowedModality.deleteMany({
+                        where: { StudentAccountID: targetUser.StudentAccount.StudentAccountID }
+                    });
+                    
+                    if (allowedModalities.length > 0) {
+                        // Ensure all elements are valid IDs before query
+                        const validModalities = allowedModalities.filter(id => !isNaN(id));
+                        if (validModalities.length > 0) {
+                            await tx.studentAllowedModality.createMany({
+                                data: validModalities.map(modalityId => ({
+                                    StudentAccountID: targetUser.StudentAccount.StudentAccountID,
+                                    ModalityID: modalityId
+                                }))
+                            });
+                        }
+                    } else if (isModalityLocked === true) {
+                        const error = new Error('Pelo menos uma modalidade tem de ser selecionada quando o bloqueio está ativado.');
+                        error.status = 400;
+                        throw error;
+                    }
                 }
 
                 await tx.studentAccount.update({

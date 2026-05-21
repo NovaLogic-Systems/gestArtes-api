@@ -73,7 +73,11 @@ const fakePrisma = {
 
   coachingJoinRequestStatus: {
     findFirst: async ({ where }) => {
-      return state.statusRows.find((s) => s.StatusName === where.StatusName) || null;
+      const candidate = where?.StatusName;
+      const candidates = candidate && typeof candidate === 'object' && Array.isArray(candidate.in)
+        ? candidate.in
+        : [candidate];
+      return state.statusRows.find((s) => candidates.includes(s.StatusName)) || null;
     },
     create: async ({ data }) => {
       const created = { StatusID: 99, ...data };

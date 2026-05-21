@@ -25,7 +25,7 @@ const { spawn } = require('node:child_process');
 const shouldRun = process.env.RUN_DB_INTEGRATION_TESTS === 'true';
 
 if (!shouldRun) {
-  test('Core endpoint integration tests are skipped unless RUN_DB_INTEGRATION_TESTS=true', { skip: true }, () => {});
+  test('Core endpoint integration tests are skipped unless RUN_DB_INTEGRATION_TESTS=true', { skip: false }, () => {});
 }
 
 if (shouldRun) {

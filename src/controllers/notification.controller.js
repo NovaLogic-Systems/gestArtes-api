@@ -18,6 +18,7 @@ const ALLOWED_NOTIFICATION_TYPES = new Set([
     'penalty',
     'join_request',
     'inventory',
+    'account',
 ]);
 
 const BROADCAST_ROLE_TO_APP_ROLE = Object.freeze({

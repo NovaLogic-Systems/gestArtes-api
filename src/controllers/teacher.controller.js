@@ -38,6 +38,23 @@ const TEACHER_PENDING_JOIN_REQUEST_STATUS_NAMES = [
 const TEACHER_APPROVED_STATUS = 'TEACHER_APPROVED';
 const TEACHER_REJECTED_STATUS = 'TEACHER_REJECTED';
 
+// Status names that semanticamente equivalem a "professor aprovou, aguarda gestão".
+// O primeiro nome encontrado na BD é reutilizado para evitar criar linhas duplicadas
+// que partem o filtro do admin em /admin/coaching/join-requests/pending.
+const TEACHER_APPROVED_ALIASES = [
+  'PendingAdmin',
+  'Pending_Admin',
+  'PENDING_ADMIN',
+  'TEACHER_APPROVED',
+];
+const TEACHER_REJECTED_ALIASES = [
+  'Rejected',
+  'not approved',
+  'REJECTED',
+  'TEACHER_REJECTED',
+  'ADMIN_REJECTED',
+];
+
 function toInteger(value) {
   if (typeof value === 'bigint') {
     return Number(value);
@@ -416,10 +433,24 @@ async function getAdmissionRequestForTeacher(db, teacherUserId, joinRequestId) {
   });
 }
 
+function pickStatusAliases(statusName) {
+  if (statusName === TEACHER_APPROVED_STATUS) {
+    return TEACHER_APPROVED_ALIASES;
+  }
+
+  if (statusName === TEACHER_REJECTED_STATUS) {
+    return TEACHER_REJECTED_ALIASES;
+  }
+
+  return [statusName];
+}
+
 async function ensureJoinRequestStatus(db, statusName) {
+  const candidates = pickStatusAliases(statusName);
+
   const existingStatus = await db.coachingJoinRequestStatus.findFirst({
     where: {
-      StatusName: statusName,
+      StatusName: { in: candidates },
     },
   });
 

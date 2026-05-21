@@ -54,6 +54,26 @@ async function getStatusIdByKey(db, key) {
   return statusId;
 }
 
+async function getStatusIdsByKey(db, key) {
+  const statuses = await db.coachingJoinRequestStatus.findMany({
+    select: {
+      StatusID: true,
+      StatusName: true,
+    },
+  });
+
+  const aliasSet = new Set(getStatusAliases(key).map(normalizeStatusName));
+  const ids = statuses
+    .filter((status) => aliasSet.has(normalizeStatusName(status.StatusName)))
+    .map((status) => status.StatusID);
+
+  if (!ids.length) {
+    throw createHttpError(500, `O estado de pedido de adesão '${key}' não está configurado`);
+  }
+
+  return ids;
+}
+
 async function getDefaultAttendanceStatusId(db) {
   const preferredStatuses = ['pending', 'scheduled', 'notmarked', 'unmarked'];
 
@@ -112,6 +132,7 @@ async function getStudentAccountIdByUserId(db, userId) {
     },
     include: {
       User: true,
+      StudentAllowedModality: true,
     },
   });
 
@@ -123,7 +144,7 @@ async function getStudentAccountIdByUserId(db, userId) {
     throw createHttpError(403, 'Conta de aluno inativa ou removida');
   }
 
-  return student.StudentAccountID;
+  return student;
 }
 
 async function getTeacherUserIdsBySessionId(db, sessionId) {
@@ -180,7 +201,8 @@ function mapJoinRequest(record) {
 
 async function createJoinRequest({ sessionId, requesterUserId }) {
   return prisma.$transaction(async (db) => {
-    const studentAccountId = await getStudentAccountIdByUserId(db, requesterUserId);
+    const studentInfo = await getStudentAccountIdByUserId(db, requesterUserId);
+    const studentAccountId = studentInfo.StudentAccountID;
 
     const session = await db.coachingSession.findUnique({
       where: {
@@ -189,8 +211,16 @@ async function createJoinRequest({ sessionId, requesterUserId }) {
       select: {
         SessionID: true,
         MaxParticipants: true,
+        ModalityID: true,
       },
     });
+
+    if (studentInfo.IsModalityLocked) {
+      const allowedModalities = studentInfo.StudentAllowedModality.map(m => m.ModalityID);
+      if (!session.ModalityID || !allowedModalities.includes(session.ModalityID)) {
+        throw createHttpError(403, 'A sua conta apenas permite a inscrição em modalidades específicas. Esta sessão não é permitida.');
+      }
+    }
 
     await assertSessionHasCapacity(db, session);
 
@@ -211,14 +241,15 @@ async function createJoinRequest({ sessionId, requesterUserId }) {
     }
 
     const pendingTeacherStatusId = await getStatusIdByKey(db, 'awaiting approval');
-    const pendingAdminStatusId = await getStatusIdByKey(db, 'TEACHER_APPROVED');
+    const pendingTeacherStatusIds = await getStatusIdsByKey(db, 'awaiting approval');
+    const pendingAdminStatusIds = await getStatusIdsByKey(db, 'TEACHER_APPROVED');
 
     const existingOpenRequest = await db.coachingJoinRequest.findFirst({
       where: {
         SessionID: sessionId,
         StudentAccountID: studentAccountId,
         StatusID: {
-          in: [pendingTeacherStatusId, pendingAdminStatusId],
+          in: [...pendingTeacherStatusIds, ...pendingAdminStatusIds],
         },
       },
       select: {
@@ -477,11 +508,14 @@ async function rejectByTeacher({ joinRequestId, teacherUserId }) {
 }
 
 async function listAdminPendingRequests() {
-  const pendingAdminStatusId = await getStatusIdByKey(prisma, 'TEACHER_APPROVED');
+  // Inclui qualquer linha de estado cuja semântica seja "professor aprovou,
+  // aguarda gestão", mesmo que tenha sido criada com nome alternativo
+  // (e.g. 'TEACHER_APPROVED' vs 'PendingAdmin' no seed).
+  const pendingAdminStatusIds = await getStatusIdsByKey(prisma, 'TEACHER_APPROVED');
 
   const requests = await prisma.coachingJoinRequest.findMany({
     where: {
-      StatusID: pendingAdminStatusId,
+      StatusID: { in: pendingAdminStatusIds },
     },
     include: {
       CoachingJoinRequestStatus: true,
@@ -501,7 +535,7 @@ async function listAdminPendingRequests() {
 
 async function adminApprove({ joinRequestId, adminUserId }) {
   return prisma.$transaction(async (db) => {
-    const pendingAdminStatusId = await getStatusIdByKey(db, 'TEACHER_APPROVED');
+    const pendingAdminStatusIds = await getStatusIdsByKey(db, 'TEACHER_APPROVED');
     const approvedStatusId = await getStatusIdByKey(db, 'approved');
 
     const request = await db.coachingJoinRequest.findUnique({
@@ -527,7 +561,7 @@ async function adminApprove({ joinRequestId, adminUserId }) {
       throw createHttpError(404, 'Pedido de adesão não encontrado');
     }
 
-    if (request.StatusID !== pendingAdminStatusId) {
+    if (!pendingAdminStatusIds.includes(request.StatusID)) {
       throw createHttpError(409, 'O pedido de adesão não está pendente de aprovação da gestão');
     }
 
@@ -592,7 +626,7 @@ async function approveByManagement({ joinRequestId, adminUserId }) {
 
 async function adminReject({ joinRequestId, adminUserId }) {
   return prisma.$transaction(async (db) => {
-    const pendingAdminStatusId = await getStatusIdByKey(db, 'TEACHER_APPROVED');
+    const pendingAdminStatusIds = await getStatusIdsByKey(db, 'TEACHER_APPROVED');
     const rejectedStatusId = await getStatusIdByKey(db, 'not approved');
 
     const request = await db.coachingJoinRequest.findUnique({
@@ -612,7 +646,7 @@ async function adminReject({ joinRequestId, adminUserId }) {
       throw createHttpError(404, 'Pedido de adesão não encontrado');
     }
 
-    if (request.StatusID !== pendingAdminStatusId) {
+    if (!pendingAdminStatusIds.includes(request.StatusID)) {
       throw createHttpError(409, 'O pedido de adesão não está pendente de aprovação da gestão');
     }
 
@@ -647,7 +681,8 @@ async function rejectByManagement({ joinRequestId, adminUserId }) {
 }
 
 async function listStudentRequests({ studentUserId }) {
-  const studentAccountId = await getStudentAccountIdByUserId(prisma, studentUserId);
+  const studentInfo = await getStudentAccountIdByUserId(prisma, studentUserId);
+  const studentAccountId = studentInfo.StudentAccountID;
 
   const requests = await prisma.coachingJoinRequest.findMany({
     where: {
@@ -678,7 +713,8 @@ async function listStudentRequests({ studentUserId }) {
 }
 
 async function cancelJoinRequest({ joinRequestId, studentUserId }) {
-  const studentAccountId = await getStudentAccountIdByUserId(prisma, studentUserId);
+  const studentInfo = await getStudentAccountIdByUserId(prisma, studentUserId);
+  const studentAccountId = studentInfo.StudentAccountID;
 
   const existing = await prisma.coachingJoinRequest.findUnique({
     where: { JoinRequestID: joinRequestId },

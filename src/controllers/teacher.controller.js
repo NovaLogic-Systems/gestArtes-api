@@ -35,6 +35,16 @@ const TEACHER_PENDING_JOIN_REQUEST_STATUS_NAMES = [
   'Pending_Approval',
   'PENDING_APPROVAL',
 ];
+const TEACHER_PENDING_BOOKING_STATUS_NAMES = [
+  'PendingTeacher',
+  'Pending_Teacher',
+  'PENDING_TEACHER',
+  'Teacher_Pending',
+  'Awaiting_Teacher',
+  'Awaiting Teacher',
+];
+const MANAGEMENT_PENDING_SESSION_STATUS = 'Pending_Approval';
+const TEACHER_REJECTED_SESSION_STATUS = 'Cancelled_Rejected';
 const TEACHER_APPROVED_STATUS = 'TEACHER_APPROVED';
 const TEACHER_REJECTED_STATUS = 'TEACHER_REJECTED';
 
@@ -140,7 +150,9 @@ function mapTodayScheduleRow(row) {
 
 function mapAdmissionRequestRow(row) {
   return {
+    requestType: row.requestType || 'join_request',
     joinRequestId: toInteger(row.joinRequestId),
+    requestCode: row.requestCode || null,
     sessionId: toInteger(row.sessionId),
     studentAccountId: toInteger(row.studentAccountId),
     studentUserId: toInteger(row.studentUserId),
@@ -241,6 +253,15 @@ function buildTeacherPendingAdmissionWhere(teacherUserId) {
     CoachingSession: {
       SessionTeacher: { some: { TeacherID: teacherUserId } },
     },
+  };
+}
+
+function buildTeacherPendingBookingWhere(teacherUserId) {
+  return {
+    SessionStatus: {
+      OR: buildStatusNameOrFilter(TEACHER_PENDING_BOOKING_STATUS_NAMES),
+    },
+    SessionTeacher: { some: { TeacherID: teacherUserId } },
   };
 }
 
@@ -411,6 +432,8 @@ async function getAdmissionRequestForTeacher(db, teacherUserId, joinRequestId) {
   if (!jr) return null;
 
   return mapAdmissionRequestRow({
+    requestType: 'join_request',
+    requestCode: `JR-${String(jr.JoinRequestID).padStart(4, '0')}`,
     joinRequestId: jr.JoinRequestID,
     sessionId: jr.SessionID,
     studentAccountId: jr.StudentAccountID,
@@ -430,6 +453,65 @@ async function getAdmissionRequestForTeacher(db, teacherUserId, joinRequestId) {
     reviewedByUserId: jr.ReviewedByUserID,
     maxParticipants: jr.CoachingSession.MaxParticipants,
     enrolledCount: jr.CoachingSession._count.SessionStudent,
+  });
+}
+
+async function getBookingRequestForTeacher(db, teacherUserId, sessionId) {
+  const session = await db.coachingSession.findFirst({
+    where: {
+      SessionID: sessionId,
+      ...buildTeacherPendingBookingWhere(teacherUserId),
+    },
+    include: {
+      SessionStatus: { select: { StatusName: true } },
+      Studio: { select: { StudioName: true } },
+      Modality: { select: { ModalityName: true } },
+      User_CoachingSession_RequestedByUserIDToUser: {
+        select: { UserID: true, FirstName: true, LastName: true, Email: true },
+      },
+      SessionStudent: {
+        include: {
+          StudentAccount: {
+            include: {
+              User: { select: { UserID: true, FirstName: true, LastName: true, Email: true } },
+            },
+          },
+        },
+      },
+      _count: { select: { SessionStudent: true } },
+    },
+  });
+
+  if (!session) return null;
+
+  const enrolledStudent = session.SessionStudent[0]?.StudentAccount;
+  const requester = enrolledStudent?.User || session.User_CoachingSession_RequestedByUserIDToUser;
+  const studentName = requester
+    ? `${requester.FirstName || ''} ${requester.LastName || ''}`.trim()
+    : 'Aluno';
+
+  return mapAdmissionRequestRow({
+    requestType: 'booking',
+    joinRequestId: session.SessionID,
+    requestCode: `CS-${String(session.SessionID).padStart(4, '0')}`,
+    sessionId: session.SessionID,
+    studentAccountId: enrolledStudent?.StudentAccountID || 0,
+    studentUserId: requester?.UserID || 0,
+    studentName,
+    studentEmail: requester?.Email || null,
+    guardianName: enrolledStudent?.GuardianName || null,
+    sessionLabel: `Sessão #${session.SessionID}`,
+    requestedAt: toISODateTimeString(session.CreatedAt),
+    sessionDate: toUTCDateString(session.StartTime),
+    sessionStartTime: toUTCTimeString(session.StartTime),
+    sessionEndTime: toUTCTimeString(session.EndTime),
+    studioName: session.Studio.StudioName,
+    modalityName: session.Modality.ModalityName,
+    statusName: session.SessionStatus.StatusName,
+    reviewedAt: session.ReviewedAt,
+    reviewedByUserId: session.ReviewedByUserID,
+    maxParticipants: session.MaxParticipants,
+    enrolledCount: session._count.SessionStudent,
   });
 }
 
@@ -496,6 +578,57 @@ async function createDecisionNotification(db, request, decision, observations) {
   });
 }
 
+async function applyBookingDecision({ req, res, teacherUserId, sessionId, decision, observations }) {
+  const request = await getBookingRequestForTeacher(prisma, teacherUserId, sessionId);
+
+  if (!request) {
+    res.status(404).json({ error: 'Booking request not found' });
+    return;
+  }
+
+  const nextStatusName = decision === 'approve'
+    ? MANAGEMENT_PENDING_SESSION_STATUS
+    : TEACHER_REJECTED_SESSION_STATUS;
+
+  const result = await prisma.$transaction(async (transaction) => {
+    const statusId = await resolveOrCreateSessionStatusId(transaction, nextStatusName);
+
+    await transaction.coachingSession.update({
+      where: { SessionID: sessionId },
+      data: {
+        StatusID: statusId,
+        ReviewedByUserID: teacherUserId,
+        ReviewedAt: new Date(),
+        ReviewNotes: observations ? observations.slice(0, 255) : undefined,
+      },
+    });
+
+    await createDecisionNotification(transaction, request, decision, observations);
+
+    if (decision === 'approve') {
+      await createAdminNotifications(transaction, {
+        sessionId,
+        title: 'Pedido de coaching aprovado pelo professor',
+        message: `Pedido de coaching #${sessionId} aprovado pelo professor. Aguarda validação final da direção.`,
+      });
+    }
+
+    return {
+      statusName: nextStatusName,
+      reviewedAt: new Date().toISOString(),
+    };
+  });
+
+  res.json({
+    request: {
+      ...request,
+      statusName: result.statusName,
+      reviewedAt: result.reviewedAt,
+      reviewedByUserId: teacherUserId,
+    },
+  });
+}
+
 async function getPendingAdmissions(req, res, next) {
   try {
     const teacherUserId = getAuthenticatedTeacherUserId(req, res);
@@ -504,7 +637,8 @@ async function getPendingAdmissions(req, res, next) {
       return;
     }
 
-    const joinRequests = await prisma.coachingJoinRequest.findMany({
+    const [joinRequests, bookingSessions] = await Promise.all([
+      prisma.coachingJoinRequest.findMany({
       where: buildTeacherPendingAdmissionWhere(teacherUserId),
       include: {
         CoachingJoinRequestStatus: { select: { StatusName: true } },
@@ -522,11 +656,36 @@ async function getPendingAdmissions(req, res, next) {
         },
       },
       orderBy: [{ RequestedAt: 'asc' }, { JoinRequestID: 'asc' }],
-    });
+      }),
+      prisma.coachingSession.findMany({
+        where: buildTeacherPendingBookingWhere(teacherUserId),
+        include: {
+          SessionStatus: { select: { StatusName: true } },
+          Studio: { select: { StudioName: true } },
+          Modality: { select: { ModalityName: true } },
+          User_CoachingSession_RequestedByUserIDToUser: {
+            select: { UserID: true, FirstName: true, LastName: true, Email: true },
+          },
+          SessionStudent: {
+            include: {
+              StudentAccount: {
+                include: {
+                  User: { select: { UserID: true, FirstName: true, LastName: true, Email: true } },
+                },
+              },
+            },
+          },
+          _count: { select: { SessionStudent: true } },
+        },
+        orderBy: [{ CreatedAt: 'asc' }, { SessionID: 'asc' }],
+      }),
+    ]);
 
-    const requests = joinRequests.map((jr) =>
+    const joinRequestRows = joinRequests.map((jr) =>
       mapAdmissionRequestRow({
+        requestType: 'join_request',
         joinRequestId: jr.JoinRequestID,
+        requestCode: `JR-${String(jr.JoinRequestID).padStart(4, '0')}`,
         sessionId: jr.SessionID,
         studentAccountId: jr.StudentAccountID,
         studentUserId: jr.StudentAccount.User.UserID,
@@ -547,6 +706,44 @@ async function getPendingAdmissions(req, res, next) {
         enrolledCount: jr.CoachingSession._count.SessionStudent,
       }),
     );
+
+    const bookingRows = bookingSessions.map((session) => {
+      const enrolledStudent = session.SessionStudent[0]?.StudentAccount;
+      const requester = enrolledStudent?.User || session.User_CoachingSession_RequestedByUserIDToUser;
+      const studentName = requester
+        ? `${requester.FirstName || ''} ${requester.LastName || ''}`.trim()
+        : 'Aluno';
+
+      return mapAdmissionRequestRow({
+        requestType: 'booking',
+        joinRequestId: session.SessionID,
+        requestCode: `CS-${String(session.SessionID).padStart(4, '0')}`,
+        sessionId: session.SessionID,
+        studentAccountId: enrolledStudent?.StudentAccountID || 0,
+        studentUserId: requester?.UserID || 0,
+        studentName,
+        studentEmail: requester?.Email || null,
+        guardianName: enrolledStudent?.GuardianName || null,
+        sessionLabel: `Sessão #${session.SessionID}`,
+        requestedAt: toISODateTimeString(session.CreatedAt),
+        sessionDate: toUTCDateString(session.StartTime),
+        sessionStartTime: toUTCTimeString(session.StartTime),
+        sessionEndTime: toUTCTimeString(session.EndTime),
+        studioName: session.Studio.StudioName,
+        modalityName: session.Modality.ModalityName,
+        statusName: session.SessionStatus.StatusName,
+        reviewedAt: session.ReviewedAt,
+        reviewedByUserId: session.ReviewedByUserID,
+        maxParticipants: session.MaxParticipants,
+        enrolledCount: session._count.SessionStudent,
+      });
+    });
+
+    const requests = [...joinRequestRows, ...bookingRows].sort((a, b) => {
+      const at = new Date(a.requestedAt || 0).getTime();
+      const bt = new Date(b.requestedAt || 0).getTime();
+      return at !== bt ? at - bt : a.sessionId - b.sessionId;
+    });
 
     res.json({
       summary: {
@@ -588,9 +785,37 @@ async function applyAdmissionDecision(req, res, next, forcedDecision = null) {
       return;
     }
 
+    const requestType = String(req.body?.requestType || '').trim().toLowerCase();
+
+    if (requestType === 'booking') {
+      await applyBookingDecision({
+        req,
+        res,
+        teacherUserId,
+        sessionId: joinRequestId,
+        decision,
+        observations,
+      });
+      return;
+    }
+
     const request = await getAdmissionRequestForTeacher(prisma, teacherUserId, joinRequestId);
 
     if (!request) {
+      const bookingRequest = await getBookingRequestForTeacher(prisma, teacherUserId, joinRequestId);
+
+      if (bookingRequest) {
+        await applyBookingDecision({
+          req,
+          res,
+          teacherUserId,
+          sessionId: joinRequestId,
+          decision,
+          observations,
+        });
+        return;
+      }
+
       res.status(404).json({ error: 'Join request not found' });
       return;
     }
@@ -1008,6 +1233,73 @@ async function getActiveSessions(req, res, next) {
   }
 }
 
+async function inviteStudentToSession(req, res, next) {
+  try {
+    const teacherUserId = getAuthenticatedTeacherUserId(req, res);
+    if (!teacherUserId) return;
+
+    const sessionId = parseSessionIdParam(req.params);
+    const studentUserId = Number(req.body?.studentUserId);
+
+    if (!sessionId) {
+      return res.status(400).json({ error: 'ID de sessão inválido' });
+    }
+
+    if (!Number.isInteger(studentUserId) || studentUserId <= 0) {
+      return res.status(400).json({ error: 'studentUserId inválido' });
+    }
+
+    const session = await prisma.coachingSession.findFirst({
+      where: {
+        SessionID: sessionId,
+        SessionTeacher: { some: { TeacherID: teacherUserId } },
+      },
+      include: {
+        Studio: { select: { StudioName: true } },
+        Modality: { select: { ModalityName: true } },
+      },
+    });
+
+    if (!session) {
+      return res.status(404).json({ error: 'Sessão não encontrada' });
+    }
+
+    const student = await prisma.studentAccount.findUnique({
+      where: { UserID: studentUserId },
+      include: { User: { select: { UserID: true, IsActive: true, DeletedAt: true } } },
+    });
+
+    if (!student || !student.User.IsActive || student.User.DeletedAt) {
+      return res.status(404).json({ error: 'Aluno não encontrado ou inativo' });
+    }
+
+    const message = `Convite para coaching #${sessionId}: ${session.Modality.ModalityName} em ${session.Studio.StudioName}.`;
+    const notification = await prisma.notification.create({
+      data: {
+        UserID: studentUserId,
+        Message: message.slice(0, 255),
+        TypeID: DEFAULT_NOTIFICATION_TYPE_ID,
+        IsRead: false,
+        CreatedAt: new Date(),
+        Title: 'Convite para coaching',
+        SessionID: sessionId,
+      },
+      select: { NotificationID: true, CreatedAt: true },
+    });
+
+    return res.status(201).json({
+      invitation: {
+        notificationId: notification.NotificationID,
+        sessionId,
+        studentUserId,
+        createdAt: notification.CreatedAt,
+      },
+    });
+  } catch (error) {
+    return next(error);
+  }
+}
+
 async function confirmCompletion(req, res, next) {
   try {
     const teacherUserId = getAuthenticatedTeacherUserId(req, res);
@@ -1395,6 +1687,7 @@ module.exports = {
   getPendingSessions,
   getProfile,
   getTodaySchedule,
+  inviteStudentToSession,
   recordNoShow,
   registerNoShow,
   rejectJoinRequest,

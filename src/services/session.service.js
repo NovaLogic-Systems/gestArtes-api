@@ -375,6 +375,7 @@ async function cancelPendingBookingsForTeacherAbsence(tx, teacherId, startTime, 
 }
 
 async function createSessionWithBusinessRules(input, requestedByUserId) {
+  const skipTeacherAvailability = Boolean(input?.skipTeacherAvailability);
   const teacherIds = normalizeTeacherIds(input.teacherIds);
   const hasAssignmentRoleId = input.assignmentRoleId !== undefined && input.assignmentRoleId !== null;
   const parsedAssignmentRoleId = Number(input.assignmentRoleId);
@@ -419,7 +420,9 @@ async function createSessionWithBusinessRules(input, requestedByUserId) {
 
     for (const teacherId of teacherIds) {
       await ensureTeacherNotAbsent(tx, teacherId, startTime, endTime);
-      await ensureTeacherHasAvailability(tx, teacherId, startTime, endTime);
+      if (!skipTeacherAvailability) {
+        await ensureTeacherHasAvailability(tx, teacherId, startTime, endTime);
+      }
     }
 
     const created = await tx.coachingSession.create({

@@ -16,6 +16,9 @@ const router = express.Router();
 
 // Available to any authenticated user for the grid/slot picker
 router.get('/coaching/slots', requireAuth, coachingController.getAvailableSlots);
+router.get('/coaching/modalities', requireAuth, coachingController.listModalities);
+router.get('/coaching/teachers', requireAuth, coachingController.listTeachersByModality);
+router.get('/coaching/teacher-availability', requireAuth, coachingController.getTeacherWeeklyAvailability);
 
 // BR-17 (2.3): Coaching map view — occupancy and unavailability data for visual coaching grid
 router.get('/coaching/weekly-map', requireAuth, coachingController.getWeeklyMap);
@@ -51,6 +54,62 @@ router.post(
   coachingController.createBooking
 );
 
+router.post(
+  '/coaching/requests',
+  requireAuth,
+  requireRole(['STUDENT']),
+  coachingController.createRequest
+);
+
+router.get(
+  '/coaching/requests/my',
+  requireAuth,
+  requireRole(['STUDENT']),
+  coachingController.listMyRequests
+);
+
+router.get(
+  '/coaching/requests/teacher',
+  requireAuth,
+  requireRole(['TEACHER']),
+  coachingController.listTeacherRequests
+);
+
+router.get(
+  '/coaching/requests/admin',
+  requireAuth,
+  requireRole(['ADMIN']),
+  coachingController.listAdminRequests
+);
+
+router.get(
+  '/coaching/requests/:id',
+  requireAuth,
+  requireRole(['STUDENT', 'TEACHER', 'ADMIN']),
+  coachingController.getRequestById
+);
+
+router.patch(
+  '/coaching/requests/:id/teacher-review',
+  requireAuth,
+  requireRole(['TEACHER']),
+  coachingController.reviewRequestAsTeacher
+);
+
+router.patch(
+  '/coaching/requests/:id/student-review',
+  requireAuth,
+  requireRole(['STUDENT']),
+  coachingController.respondToTeacherSuggestion
+);
+
+router.patch(
+  '/coaching/requests/:id/admin-review',
+  requireAuth,
+  requireRole(['ADMIN']),
+  coachingController.reviewRequestAsAdmin
+);
+
 // BR-17: cancel a booking — justification required
 router.patch(
   '/coaching/bookings/:id',
@@ -75,4 +134,3 @@ router.patch(
 );
 
 module.exports = router;
-

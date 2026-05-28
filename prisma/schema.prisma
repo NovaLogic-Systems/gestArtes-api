@@ -64,9 +64,9 @@ model CoachingRequest {
   StudioID                                           Int?
   ConfirmedSessionID                                 Int?
   PreferredStartTime                                 DateTime               @db.DateTime
-  PreferredEndTime                                   DateTime               @db.DateTime
+  PreferredEndTime                                   DateTime?              @db.DateTime
   CurrentStartTime                                   DateTime               @db.DateTime
-  CurrentEndTime                                     DateTime               @db.DateTime
+  CurrentEndTime                                     DateTime?              @db.DateTime
   SuggestedStartTime                                 DateTime?              @db.DateTime
   SuggestedEndTime                                   DateTime?              @db.DateTime
   Status                                             String                 @db.VarChar(50)

@@ -619,13 +619,18 @@ async function createCoachingRequest({ studentUserId, payload }) {
   const teacherUserId = toPositiveInt(payload.teacherId);
   const modalityId = toPositiveInt(payload.modalityId);
   const startTime = new Date(payload.startTime);
-  const endTime = new Date(payload.endTime);
+  const hasEndTime = payload.endTime != null && String(payload.endTime).trim() !== '';
+  const endTime = hasEndTime ? new Date(payload.endTime) : null;
 
   if (!teacherUserId || !modalityId) {
     throw createHttpError(400, 'teacherId e modalityId são obrigatórios');
   }
 
-  if (Number.isNaN(startTime.getTime()) || Number.isNaN(endTime.getTime()) || endTime <= startTime) {
+  if (Number.isNaN(startTime.getTime())) {
+    throw createHttpError(400, 'Intervalo temporal inválido');
+  }
+
+  if (hasEndTime && (Number.isNaN(endTime.getTime()) || endTime <= startTime)) {
     throw createHttpError(400, 'Intervalo temporal inválido');
   }
 
@@ -642,29 +647,49 @@ async function createCoachingRequest({ studentUserId, payload }) {
     throw createHttpError(503, 'Nenhum ano letivo ativo encontrado');
   }
 
-  await assertSchoolScheduleSlotAvailable({
-    startTime,
-    endTime,
-    academicYearId: activeYear.AcademicYearID,
-  });
-
   return prisma.$transaction(async (tx) => {
     await ensureStudentCanRequest(tx, studentUserId, modalityId);
     await ensureTeacherMatchesModality(tx, teacherUserId, modalityId);
 
-    const duplicate = await tx.coachingRequest.findFirst({
-      where: {
-        StudentUserID: studentUserId,
-        TeacherUserID: teacherUserId,
-        Status: { in: [...ACTIVE_REQUEST_STATUSES] },
-        CurrentStartTime: { lt: endTime },
-        CurrentEndTime: { gt: startTime },
-      },
-      select: { RequestID: true },
-    });
+    const duplicate = await tx.coachingRequest.findFirst(
+      hasEndTime
+        ? {
+            where: {
+              StudentUserID: studentUserId,
+              TeacherUserID: teacherUserId,
+              Status: { in: [...ACTIVE_REQUEST_STATUSES] },
+              CurrentStartTime: { lt: endTime },
+              CurrentEndTime: { gt: startTime },
+            },
+            select: { RequestID: true },
+          }
+        : {
+            where: {
+              StudentUserID: studentUserId,
+              TeacherUserID: teacherUserId,
+              Status: { in: [...ACTIVE_REQUEST_STATUSES] },
+              CurrentStartTime: startTime,
+            },
+            select: { RequestID: true },
+          }
+    );
 
     if (duplicate) {
       throw createHttpError(409, 'Já existe um pedido de coaching ativo para este horário');
+    }
+
+    let preferredEndTime = endTime;
+    let currentEndTime = endTime;
+
+    if (hasEndTime) {
+      await assertSchoolScheduleSlotAvailable({
+        startTime,
+        endTime,
+        academicYearId: activeYear.AcademicYearID,
+      });
+    } else {
+      preferredEndTime = null;
+      currentEndTime = null;
     }
 
     const now = new Date();
@@ -675,9 +700,9 @@ async function createCoachingRequest({ studentUserId, payload }) {
         RequestedByUserID: studentUserId,
         ModalityID: modalityId,
         PreferredStartTime: startTime,
-        PreferredEndTime: endTime,
+        PreferredEndTime: preferredEndTime,
         CurrentStartTime: startTime,
-        CurrentEndTime: endTime,
+        CurrentEndTime: currentEndTime,
         Status: REQUEST_STATUS.PENDING_TEACHER_REVIEW,
         RequestNotes: trimNullable(payload.notes),
         RequestedAt: now,
@@ -698,7 +723,7 @@ async function createCoachingRequest({ studentUserId, payload }) {
       nextStatus: REQUEST_STATUS.PENDING_TEACHER_REVIEW,
       message: payload.notes,
       proposedStartTime: startTime,
-      proposedEndTime: endTime,
+      proposedEndTime: currentEndTime,
     });
 
     return mapRequest({
@@ -803,6 +828,8 @@ async function reviewRequestAsTeacher({ requestId, teacherUserId, payload }) {
     let suggestedStartTime = null;
     let suggestedEndTime = null;
     let actionType = 'TEACHER_APPROVED';
+    let currentStartTime = request.CurrentStartTime;
+    let currentEndTime = request.CurrentEndTime;
 
     if (decision === 'suggest') {
       suggestedStartTime = new Date(payload.suggestedStartTime);
@@ -835,6 +862,41 @@ async function reviewRequestAsTeacher({ requestId, teacherUserId, payload }) {
       actionType = 'TEACHER_SUGGESTED_TIME';
     }
 
+    if (decision === 'approve' && (!currentEndTime || !currentStartTime)) {
+      const approvedStartValue = payload.approvedStartTime ?? payload.suggestedStartTime ?? payload.startTime;
+      const approvedEndValue = payload.approvedEndTime ?? payload.suggestedEndTime ?? payload.endTime;
+      const approvedStartTime = approvedStartValue ? new Date(approvedStartValue) : null;
+      const approvedEndTime = approvedEndValue ? new Date(approvedEndValue) : null;
+
+      if (
+        !approvedStartTime ||
+        !approvedEndTime ||
+        Number.isNaN(approvedStartTime.getTime()) ||
+        Number.isNaN(approvedEndTime.getTime()) ||
+        approvedEndTime <= approvedStartTime
+      ) {
+        throw createHttpError(400, 'O professor tem de definir um horário completo antes de aprovar este pedido');
+      }
+
+      const activeYear = await tx.academicYear.findFirst({
+        where: { IsActive: true },
+        select: { AcademicYearID: true },
+      });
+
+      if (!activeYear) {
+        throw createHttpError(503, 'Nenhum ano letivo ativo encontrado');
+      }
+
+      await assertSchoolScheduleSlotAvailable({
+        startTime: approvedStartTime,
+        endTime: approvedEndTime,
+        academicYearId: activeYear.AcademicYearID,
+      });
+
+      currentStartTime = approvedStartTime;
+      currentEndTime = approvedEndTime;
+    }
+
     if (decision === 'reject') {
       nextStatus = REQUEST_STATUS.REJECTED;
       actionType = 'TEACHER_REJECTED';
@@ -844,6 +906,8 @@ async function reviewRequestAsTeacher({ requestId, teacherUserId, payload }) {
       where: { RequestID: requestId },
       data: {
         Status: nextStatus,
+        CurrentStartTime: currentStartTime,
+        CurrentEndTime: currentEndTime,
         SuggestedStartTime: suggestedStartTime,
         SuggestedEndTime: suggestedEndTime,
         TeacherResponseNotes: notes,
@@ -869,8 +933,8 @@ async function reviewRequestAsTeacher({ requestId, teacherUserId, payload }) {
       previousStatus: request.Status,
       nextStatus,
       message: notes,
-      proposedStartTime: suggestedStartTime,
-      proposedEndTime: suggestedEndTime,
+      proposedStartTime: decision === 'suggest' ? suggestedStartTime : currentStartTime,
+      proposedEndTime: decision === 'suggest' ? suggestedEndTime : currentEndTime,
     });
 
     return mapRequest(updated);
@@ -957,6 +1021,10 @@ async function reviewRequestAsAdmin({ requestId, adminUserId, payload }) {
 
   if (request.Status !== REQUEST_STATUS.PENDING_ADMIN_APPROVAL) {
     throw createHttpError(409, 'Este pedido não aguarda aprovação da direção');
+  }
+
+  if (!request.CurrentStartTime || !request.CurrentEndTime) {
+    throw createHttpError(400, 'O pedido precisa de um horário completo antes da validação final');
   }
 
   const now = new Date();

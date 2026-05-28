@@ -274,6 +274,7 @@ app.use('/teacher/inventory', inventoryRoutes);
 app.use('/notifications', pollingRateLimiter, notificationRoutes);
 app.use('/', joinRequestRoutes);
 app.use('/', coachingRoutes);
+app.use('/', require('./routes/timetable.routes'));
 app.use('/', financeRoutes);
 app.use('/', auditRoutes);
 app.use('/admin', adminRoutes);

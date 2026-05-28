@@ -15,7 +15,11 @@
     "prisma:generate": "prisma generate",
     "prisma:migrate:dev": "prisma migrate dev",
     "prisma:migrate:deploy": "prisma migrate deploy",
-    "prisma:migrate:status": "prisma migrate status"
+    "prisma:migrate:status": "prisma migrate status",
+    "prisma:seed:timetables": "node prisma/seed-timetables.js"
+  },
+  "prisma": {
+    "seed": "node prisma/seed-timetables.js"
   },
   "repository": {
     "type": "git",
@@ -39,6 +43,7 @@
     "morgan": "^1.10.1",
     "mssql": "^12.3.1",
     "multer": "^2.1.1",
+    "tesseract.js": "^4.1.1",
     "node-cron": "^4.2.1",
     "socket.io": "^4.8.3",
     "swagger-jsdoc": "^6.2.8",

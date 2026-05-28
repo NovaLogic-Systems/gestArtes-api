@@ -396,6 +396,40 @@ model Modality {
   StudentAllowedModality StudentAllowedModality[]
 }
 
+/// Timetables: editable maps of schedules managed by admin
+model Timetable {
+  TimetableID Int             @id @default(autoincrement())
+  Label       String          @db.VarChar(150)
+  IsActive    Boolean         @default(false)
+  CreatedBy   Int?
+  CreatedAt   DateTime        @db.DateTime @default(now())
+  Slots       TimetableSlot[]
+
+  User        User?           @relation("Timetable_CreatedByUser", fields: [CreatedBy], references: [UserID], onDelete: NoAction, onUpdate: NoAction, map: "FK_Timetable_CreatedBy")
+
+  @@index([IsActive], map: "IX_Timetable_IsActive")
+}
+
+model TimetableSlot {
+  SlotID       Int      @id @default(autoincrement())
+  TimetableID  Int
+  DayOfWeek    Int      // 1=Monday .. 7=Sunday
+  StartMinutes Int      // minutes from 00:00
+  EndMinutes   Int
+  Title        String   @db.VarChar(200)
+  TeacherUserID Int?
+  StudioID     Int?
+  Color        String?  @db.VarChar(20)
+  Notes        String?  @db.VarChar(255)
+
+  Timetable    Timetable @relation(fields: [TimetableID], references: [TimetableID], onDelete: Cascade, onUpdate: NoAction, map: "FK_TimetableSlot_Timetable")
+  Teacher      User?     @relation("TimetableSlot_TeacherUser", fields: [TeacherUserID], references: [UserID], onDelete: NoAction, onUpdate: NoAction, map: "FK_TimetableSlot_Teacher")
+  Studio       Studio?   @relation("TimetableSlot_Studio", fields: [StudioID], references: [StudioID], onUpdate: NoAction, map: "FK_TimetableSlot_Studio")
+
+  @@index([TimetableID], map: "IX_TimetableSlot_TimetableID")
+  @@index([DayOfWeek, StartMinutes, EndMinutes], map: "IX_TimetableSlot_DayStartEnd")
+}
+
 model Notification {
   NotificationID   Int              @id(map: "PK__Notifica__20CF2E32CFAA27B9") @default(autoincrement())
   UserID           Int
@@ -571,6 +605,8 @@ model Studio {
   StudioBlock           StudioBlock[]
   StudioModality        StudioModality[]
   StudioStatusOverride  StudioStatusOverride[]
+  TimetableSlot         TimetableSlot[]   @relation("TimetableSlot_Studio")
+
 }
 
 model StudioBlock {
@@ -741,6 +777,8 @@ model User {
   TeacherAbsence_TeacherAbsence_TeacherIDToUser                  TeacherAbsence[]         @relation("TeacherAbsence_TeacherIDToUser")
   TeacherAvailability_TeacherAvailability_ReviewedByUserIDToUser TeacherAvailability[]    @relation("TeacherAvailability_ReviewedByUserIDToUser")
   TeacherAvailability_TeacherAvailability_TeacherIDToUser        TeacherAvailability[]    @relation("TeacherAvailability_TeacherIDToUser")
+  Timetable_CreatedByUser                                        Timetable[]              @relation("Timetable_CreatedByUser")
+  TimetableSlot_TeacherUser                                      TimetableSlot[]          @relation("TimetableSlot_TeacherUser")
   AuditLog                                                       AuditLog[]
   RefreshToken                                                   RefreshToken[]
   TeacherModality                                                TeacherModality[]

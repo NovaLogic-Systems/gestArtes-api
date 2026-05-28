@@ -93,6 +93,59 @@ router.post('/options', ...adminAccess, async (req, res, next) => {
   }
 });
 
+router.delete('/options/:id', ...adminAccess, async (req, res, next) => {
+  try {
+    const type = String(req.query?.type || '').trim().toLowerCase();
+    const id = Number(req.params.id);
+
+    if (!Number.isInteger(id) || id <= 0) {
+      res.status(400).json({ error: 'ID inválido' });
+      return;
+    }
+
+    if (type !== 'modalities') {
+      res.status(400).json({ error: 'Tipo de opção inválido. Apenas "modalities" é suportado.' });
+      return;
+    }
+
+    const existing = await prisma.modality.findUnique({
+      where: { ModalityID: id },
+      select: {
+        ModalityID: true,
+        ModalityName: true,
+        _count: {
+          select: {
+            StudioModality: true,
+            TeacherModality: true,
+            CoachingSession: true,
+            StudentAllowedModality: true,
+            CoachingRequest: true,
+          },
+        },
+      },
+    });
+
+    if (!existing) {
+      res.status(404).json({ error: 'Modalidade não encontrada' });
+      return;
+    }
+
+    const usageCount = Object.values(existing._count).reduce((sum, n) => sum + n, 0);
+    if (usageCount > 0) {
+      res.status(409).json({
+        error: 'Não é possível apagar a modalidade porque está em uso.',
+        details: existing._count,
+      });
+      return;
+    }
+
+    await prisma.modality.delete({ where: { ModalityID: id } });
+    res.status(200).json({ success: true, modalityId: id });
+  } catch (error) {
+    next(error);
+  }
+});
+
 router.get('/:id', ...adminAccess, studioController.getStudioById);
 router.patch('/:id', ...adminAccess, studioController.updateStudio);
 router.delete('/:id', ...adminAccess, studioController.deleteStudio);

@@ -11,6 +11,7 @@ const validateRequest = require('../middlewares/validate.middleware');
 const { createTeacherSessionSchema } = require('../middlewares/schemas/coaching.schema');
 const { bookingSchema } = require('../middlewares/schemas/booking.schema');
 const coachingController = require('../controllers/coaching.controller');
+const groupController = require('../controllers/groupCoachingProposal.controller');
 
 const router = express.Router();
 
@@ -110,6 +111,13 @@ router.patch(
   coachingController.reviewRequestAsAdmin
 );
 
+router.get(
+  '/coaching/requests/:id/compatible-studios',
+  requireAuth,
+  requireRole(['ADMIN']),
+  coachingController.getCompatibleStudiosForRequest
+);
+
 // BR-17: cancel a booking — justification required
 router.patch(
   '/coaching/bookings/:id',
@@ -131,6 +139,49 @@ router.patch(
   requireAuth,
   requireRole(['STUDENT']),
   coachingController.confirmCompletion
+);
+
+// --- Group coaching proposals ---
+router.get(
+  '/coaching/students/search',
+  requireAuth,
+  requireRole(['TEACHER']),
+  groupController.searchStudents
+);
+
+router.post(
+  '/coaching/group-proposals',
+  requireAuth,
+  requireRole(['TEACHER']),
+  groupController.createProposal
+);
+
+router.get(
+  '/coaching/group-proposals/teacher',
+  requireAuth,
+  requireRole(['TEACHER']),
+  groupController.listTeacherProposals
+);
+
+router.get(
+  '/coaching/group-proposals/admin',
+  requireAuth,
+  requireRole(['ADMIN']),
+  groupController.listAdminProposals
+);
+
+router.get(
+  '/coaching/group-proposals/:id/compatible-studios',
+  requireAuth,
+  requireRole(['ADMIN']),
+  groupController.getCompatibleStudios
+);
+
+router.patch(
+  '/coaching/group-proposals/:id/admin-review',
+  requireAuth,
+  requireRole(['ADMIN']),
+  groupController.reviewProposal
 );
 
 module.exports = router;

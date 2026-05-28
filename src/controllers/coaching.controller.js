@@ -328,6 +328,20 @@ async function listAdminRequests(req, res, next) {
   }
 }
 
+async function getCompatibleStudiosForRequest(req, res, next) {
+  try {
+    const adminUserId = toPositiveInt(req.auth?.userId);
+    if (!adminUserId) return res.status(401).json({ error: 'Não autenticado' });
+    const requestId = toPositiveInt(req.params.id);
+    if (!requestId) return res.status(400).json({ error: 'ID de pedido inválido' });
+
+    const studios = await coachingRequestService.getCompatibleStudiosForRequest(requestId, adminUserId);
+    return res.json({ studios });
+  } catch (error) {
+    return next(error);
+  }
+}
+
 async function reviewRequestAsAdmin(req, res, next) {
   try {
     const adminUserId = toPositiveInt(req.auth?.userId);
@@ -364,6 +378,7 @@ module.exports = {
   createSession,
   getAvailableSlots,
   getCompatibleStudios,
+  getCompatibleStudiosForRequest,
   getRequestById,
   getSessionHistory,
   getTeacherWeeklyAvailability,

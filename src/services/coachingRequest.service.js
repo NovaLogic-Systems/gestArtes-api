@@ -53,6 +53,10 @@ function extractClock(dateValue) {
   return new Date(dateValue).toISOString().slice(11, 16);
 }
 
+function formatTimeRange(startValue, endValue) {
+  return `${extractClock(startValue)}-${extractClock(endValue)}`;
+}
+
 function parseIsoDate(value, message) {
   const date = new Date(`${value}T00:00:00.000Z`);
   if (Number.isNaN(date.getTime())) {
@@ -104,13 +108,59 @@ function mergeSegments(segments) {
 }
 
 function getDefaultSchoolSegments(dayOfWeek) {
-  if (dayOfWeek >= 1 && dayOfWeek <= 5) {
-    return [{ startTime: '18:00', endTime: '21:30' }];
-  }
-  if (dayOfWeek === 6) {
-    return [{ startTime: '09:00', endTime: '12:30' }];
+  if (dayOfWeek >= 1 && dayOfWeek <= 6) {
+    return [{ startTime: '09:00', endTime: '23:00' }];
   }
   return [];
+}
+
+async function findTeacherUnavailability({ tx = prisma, teacherId, startTime, endTime }) {
+  const queryEndTime = endTime || new Date(startTime.getTime() + 1);
+  return tx.teacherAbsence.findMany({
+    where: {
+      TeacherID: teacherId,
+      StartDate: { lt: queryEndTime },
+      EndDate: { gt: startTime },
+      NOT: {
+        OR: [
+          { TeacherAbsenceStatus: { StatusName: { contains: 'rejected' } } },
+          { TeacherAbsenceStatus: { StatusName: { contains: 'rejeitado' } } },
+        ],
+      },
+    },
+    include: {
+      TeacherAbsenceStatus: { select: { StatusName: true } },
+    },
+    orderBy: [{ StartDate: 'asc' }, { AbsenceID: 'asc' }],
+  });
+}
+
+async function ensureTeacherAvailableForRequest(tx, teacherId, startTime, endTime) {
+  const conflicts = await findTeacherUnavailability({ tx, teacherId, startTime, endTime });
+
+  if (conflicts.length > 0) {
+    throw createHttpError(409, 'O professor não está disponível nessa hora', {
+      teacherId,
+      absences: conflicts.map((absence) => ({
+        absenceId: absence.AbsenceID,
+        startDate: absence.StartDate,
+        endDate: absence.EndDate,
+        reason: absence.Reason,
+        status: absence.TeacherAbsenceStatus?.StatusName || null,
+      })),
+    });
+  }
+}
+
+function mapUnavailability(absence) {
+  return {
+    absenceId: absence.AbsenceID,
+    startDate: absence.StartDate,
+    endDate: absence.EndDate,
+    reason: absence.Reason,
+    status: absence.TeacherAbsenceStatus?.StatusName || null,
+    label: `Indisponível ${formatTimeRange(absence.StartDate, absence.EndDate)}${absence.Reason ? ` · ${absence.Reason}` : ''}`,
+  };
 }
 
 async function buildSchoolScheduleDays({ weekStart, academicYearId }) {
@@ -271,8 +321,8 @@ function mapRequest(record) {
 async function createRequestAction(tx, payload) {
   return tx.coachingRequestAction.create({
     data: {
-      RequestID: payload.requestId,
-      ActorUserID: payload.actorUserId,
+      CoachingRequest: { connect: { RequestID: payload.requestId } },
+      User: { connect: { UserID: payload.actorUserId } },
       ActionType: payload.actionType,
       PreviousStatus: payload.previousStatus || null,
       NextStatus: payload.nextStatus || null,
@@ -448,6 +498,70 @@ async function findCompatibleStudio(tx, modalityId, startTime, endTime) {
   throw createHttpError(409, 'Nenhum estúdio compatível está disponível para este horário');
 }
 
+async function getCompatibleStudiosForRequest(requestId, adminUserId) {
+  const request = await loadRequestForActor({ requestId, actorUserId: adminUserId, actorRole: 'admin' });
+
+  if (!request.CurrentStartTime || !request.CurrentEndTime) {
+    throw createHttpError(400, 'O pedido precisa de um horário completo antes de selecionar estúdio');
+  }
+
+  const startTime = new Date(request.CurrentStartTime);
+  const endTime = new Date(request.CurrentEndTime);
+
+  const dayStart = new Date(startTime);
+  dayStart.setUTCHours(0, 0, 0, 0);
+  const dayEnd = new Date(dayStart);
+  dayEnd.setUTCDate(dayEnd.getUTCDate() + 1);
+
+  // Window for "nearby" context: 2 hours before and after
+  const contextStart = new Date(startTime.getTime() - 2 * 60 * 60 * 1000);
+  const contextEnd = new Date(endTime.getTime() + 2 * 60 * 60 * 1000);
+
+  const studios = await prisma.studio.findMany({
+    where: { StudioModality: { some: { ModalityID: request.ModalityID } } },
+    select: { StudioID: true, StudioName: true, Capacity: true },
+    orderBy: [{ Capacity: 'asc' }, { StudioName: 'asc' }],
+  });
+
+  const result = await Promise.all(studios.map(async (studio) => {
+    const [conflictCount, dailyCount, nearbyCount] = await Promise.all([
+      prisma.coachingSession.count({
+        where: {
+          StudioID: studio.StudioID,
+          StartTime: { lt: endTime },
+          EndTime: { gt: startTime },
+        },
+      }),
+      prisma.coachingSession.count({
+        where: {
+          StudioID: studio.StudioID,
+          StartTime: { lt: dayEnd },
+          EndTime: { gt: dayStart },
+        },
+      }),
+      prisma.coachingSession.count({
+        where: {
+          StudioID: studio.StudioID,
+          StartTime: { lt: contextEnd },
+          EndTime: { gt: contextStart },
+        },
+      }),
+    ]);
+
+    return {
+      studioId: studio.StudioID,
+      studioName: studio.StudioName,
+      capacity: studio.Capacity,
+      isAvailable: conflictCount === 0,
+      conflictCount,
+      dailySessionCount: dailyCount,
+      nearbySessionCount: nearbyCount,
+    };
+  }));
+
+  return result;
+}
+
 function buildRequestAccessWhere({ requestId, actorUserId, actorRole }) {
   const role = normalizeRole(actorRole);
 
@@ -603,6 +717,31 @@ async function getTeacherWeeklyAvailability({ teacherId, modalityId, weekStart, 
     academicYearId: activeYear.AcademicYearID,
   });
 
+  const rangeStart = new Date(`${schedule.weekStart}T00:00:00.000Z`);
+  const rangeEnd = new Date(`${schedule.weekEnd}T00:00:00.000Z`);
+
+  const [absences, bookedSessions] = await Promise.all([
+    findTeacherUnavailability({
+      teacherId: parsedTeacherId,
+      startTime: rangeStart,
+      endTime: rangeEnd,
+    }),
+    prisma.coachingSession.findMany({
+      where: {
+        StartTime: { lt: rangeEnd },
+        EndTime: { gt: rangeStart },
+        SessionTeacher: { some: { TeacherID: parsedTeacherId } },
+      },
+      select: {
+        SessionID: true,
+        StartTime: true,
+        EndTime: true,
+        SessionStatus: { select: { StatusName: true } },
+      },
+      orderBy: { StartTime: 'asc' },
+    }),
+  ]);
+
   return {
     weekStart: schedule.weekStart,
     weekEnd: schedule.weekEnd,
@@ -611,7 +750,29 @@ async function getTeacherWeeklyAvailability({ teacherId, modalityId, weekStart, 
       name: [teacher.FirstName, teacher.LastName].filter(Boolean).join(' '),
       modalityIds: teacher.TeacherModality.map((item) => item.ModalityID),
     },
-    days: schedule.days,
+    days: schedule.days.map((day) => {
+      const dayStart = new Date(`${day.date}T00:00:00.000Z`);
+      const dayEnd = new Date(dayStart);
+      dayEnd.setUTCDate(dayEnd.getUTCDate() + 1);
+
+      const daySessions = bookedSessions
+        .filter((s) => s.StartTime < dayEnd && s.EndTime > dayStart)
+        .map((s) => ({
+          sessionId: s.SessionID,
+          startTime: s.StartTime,
+          endTime: s.EndTime,
+          status: s.SessionStatus?.StatusName || null,
+          label: `Aula marcada ${formatTimeRange(s.StartTime, s.EndTime)}`,
+        }));
+
+      return {
+        ...day,
+        unavailabilities: absences
+          .filter((absence) => absence.StartDate < dayEnd && absence.EndDate > dayStart)
+          .map(mapUnavailability),
+        bookedSessions: daySessions,
+      };
+    }),
   };
 }
 
@@ -692,13 +853,15 @@ async function createCoachingRequest({ studentUserId, payload }) {
       currentEndTime = null;
     }
 
+    await ensureTeacherAvailableForRequest(tx, teacherUserId, startTime, currentEndTime);
+
     const now = new Date();
     const request = await tx.coachingRequest.create({
       data: {
-        StudentUserID: studentUserId,
-        TeacherUserID: teacherUserId,
-        RequestedByUserID: studentUserId,
-        ModalityID: modalityId,
+        StudentUser: { connect: { UserID: studentUserId } },
+        TeacherUser: { connect: { UserID: teacherUserId } },
+        RequestedByUser: { connect: { UserID: studentUserId } },
+        Modality: { connect: { ModalityID: modalityId } },
         PreferredStartTime: startTime,
         PreferredEndTime: preferredEndTime,
         CurrentStartTime: startTime,
@@ -1033,17 +1196,32 @@ async function reviewRequestAsAdmin({ requestId, adminUserId, payload }) {
   let nextStatus = REQUEST_STATUS.REJECTED;
 
   if (decision === 'approve') {
+    const requestedStudioId = toPositiveInt(payload.studioId);
+
+    let studioPromise;
+    if (requestedStudioId) {
+      studioPromise = prisma.studio.findUnique({
+        where: { StudioID: requestedStudioId },
+        select: { StudioID: true, StudioName: true, Capacity: true },
+      }).then((s) => {
+        if (!s) throw createHttpError(404, 'Estúdio não encontrado');
+        return s;
+      });
+    } else {
+      studioPromise = findCompatibleStudio(
+        prisma,
+        request.ModalityID,
+        request.CurrentStartTime,
+        request.CurrentEndTime
+      );
+    }
+
     const [studentAccount, studio, scheduledStatusId, pricingRateId, attendanceStatusId] = await Promise.all([
       prisma.studentAccount.findUnique({
         where: { UserID: request.StudentUserID },
         select: { StudentAccountID: true },
       }),
-      findCompatibleStudio(
-        prisma,
-        request.ModalityID,
-        request.CurrentStartTime,
-        request.CurrentEndTime
-      ),
+      studioPromise,
       resolveScheduledStatusId(prisma),
       resolveDefaultPricingRateId(prisma),
       resolveDefaultAttendanceStatusId(prisma),
@@ -1125,6 +1303,7 @@ async function reviewRequestAsAdmin({ requestId, adminUserId, payload }) {
 module.exports = {
   REQUEST_STATUS,
   createCoachingRequest,
+  getCompatibleStudiosForRequest,
   getRequestById,
   getTeacherWeeklyAvailability,
   listModalities,

@@ -357,7 +357,7 @@ test('rejects payload when end time is not after start time', async () => {
     ),
     (error) => {
       assert.equal(error.status, 400);
-      assert.equal(error.message, 'Intervalo temporal invalido');
+      assert.equal(error.message, 'Intervalo temporal inválido');
       return true;
     }
   );

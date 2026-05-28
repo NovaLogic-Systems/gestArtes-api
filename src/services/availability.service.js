@@ -136,7 +136,7 @@ function normalizeAvailabilitySlot(slot, defaultMode) {
     const endDateTime = toDate(slot.endDateTime ?? slot.endDate, 'Data de fim invalida');
 
     if (endDateTime <= startDateTime) {
-      throw createHttpError(400, 'Intervalo temporal invalido');
+      throw createHttpError(400, 'Intervalo temporal inválido');
     }
 
     return {
@@ -187,7 +187,11 @@ function normalizeExceptionPayload(body) {
   const endDate = toDate(body?.endDate ?? body?.endDateTime, 'Data de fim invalida');
 
   if (endDate <= startDate) {
-    throw createHttpError(400, 'Intervalo temporal invalido');
+    throw createHttpError(400, 'Intervalo temporal inválido');
+  }
+
+  if (endDate <= new Date()) {
+    throw createHttpError(400, 'Não é possível marcar indisponibilidade no passado');
   }
 
   return {
@@ -553,7 +557,7 @@ async function updateAvailability(teacherId, availabilityId, body) {
       }
 
       if ((data.StartDateTime ?? currentSlot.StartDateTime) >= (data.EndDateTime ?? currentSlot.EndDateTime)) {
-        throw createHttpError(400, 'Intervalo temporal invalido');
+        throw createHttpError(400, 'Intervalo temporal inválido');
       }
 
       if (Object.keys(data).length > 0) {

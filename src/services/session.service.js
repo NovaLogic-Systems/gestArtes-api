@@ -392,7 +392,7 @@ async function createSessionWithBusinessRules(input, requestedByUserId) {
   const startTime = new Date(input.startTime);
   const endTime = new Date(input.endTime);
   if (Number.isNaN(startTime.getTime()) || Number.isNaN(endTime.getTime()) || endTime <= startTime) {
-    throw createHttpError(400, 'Intervalo temporal invalido');
+    throw createHttpError(400, 'Intervalo temporal inválido');
   }
 
   return prisma.$transaction(async (tx) => {

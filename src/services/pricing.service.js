@@ -100,7 +100,7 @@ function createPricingService(prismaClient) {
       targetType: 'FinancialEntry',
       targetId: entry.EntryID,
       result: AUDIT_RESULTS.SUCCESS,
-      detail: `Penalty ${finalPrice}€ for session ${sessionId}`,
+      detail: `Penalização de ${finalPrice}€ para a sessão ${sessionId}`,
     });
 
     return entry;

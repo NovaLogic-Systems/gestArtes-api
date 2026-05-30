@@ -1,10 +1,16 @@
 const prisma = require('../config/prisma');
-const timetableService = require('../services/timetable.service');
-const ocrService = require('../services/timetableOcr.service');
+
+const SLOT_INCLUDE = {
+  Slots: {
+    include: {
+      Modality: { select: { ModalityID: true, ModalityName: true } },
+    },
+  },
+};
 
 async function listTimetables(req, res, next) {
   try {
-    const items = await prisma.Timetable.findMany({ include: { Slots: true } });
+    const items = await prisma.Timetable.findMany({ include: SLOT_INCLUDE });
     res.json(items);
   } catch (err) { next(err) }
 }
@@ -12,7 +18,7 @@ async function listTimetables(req, res, next) {
 async function getTimetable(req, res, next) {
   try {
     const id = Number(req.params.id);
-    const item = await prisma.Timetable.findUnique({ where: { TimetableID: id }, include: { Slots: true } });
+    const item = await prisma.Timetable.findUnique({ where: { TimetableID: id }, include: SLOT_INCLUDE });
     if (!item) return res.status(404).json({ message: 'Not found' });
     res.json(item);
   } catch (err) { next(err) }
@@ -48,7 +54,7 @@ async function createSlot(req, res, next) {
   try {
     const timetableId = Number(req.params.id);
     const data = req.body;
-    const created = await prisma.TimetableSlot.create({ data: { TimetableID: timetableId, DayOfWeek: data.dayOfWeek, StartMinutes: data.startMinutes, EndMinutes: data.endMinutes, Title: data.title || '', TeacherUserID: data.teacherUserId || null, StudioID: data.studioId || null, Color: data.color || null, Notes: data.notes || null } });
+    const created = await prisma.TimetableSlot.create({ data: { TimetableID: timetableId, DayOfWeek: data.dayOfWeek, StartMinutes: data.startMinutes, EndMinutes: data.endMinutes, Title: data.title || '', TeacherUserID: data.teacherUserId || null, StudioID: data.studioId || null, ModalityID: data.modalityId ? Number(data.modalityId) : null, Color: data.color || null, Notes: data.notes || null } });
     res.status(201).json(created);
   } catch (err) { next(err) }
 }
@@ -57,7 +63,7 @@ async function updateSlot(req, res, next) {
   try {
     const slotId = Number(req.params.slotId);
     const data = req.body;
-    const updated = await prisma.TimetableSlot.update({ where: { SlotID: slotId }, data: { DayOfWeek: data.dayOfWeek, StartMinutes: data.startMinutes, EndMinutes: data.endMinutes, Title: data.title, TeacherUserID: data.teacherUserId || null, StudioID: data.studioId || null, Color: data.color || null, Notes: data.notes || null } });
+    const updated = await prisma.TimetableSlot.update({ where: { SlotID: slotId }, data: { DayOfWeek: data.dayOfWeek, StartMinutes: data.startMinutes, EndMinutes: data.endMinutes, Title: data.title, TeacherUserID: data.teacherUserId || null, StudioID: data.studioId || null, ModalityID: data.modalityId ? Number(data.modalityId) : null, Color: data.color || null, Notes: data.notes || null } });
     res.json(updated);
   } catch (err) { next(err) }
 }
@@ -70,33 +76,6 @@ async function deleteSlot(req, res, next) {
   } catch (err) { next(err) }
 }
 
-// OCR import preview
-async function importOcrPreview(req, res, next) {
-  try {
-    // Expect files in multipart/form-data under 'files'
-    const files = req.files || [];
-    if (!files.length) return res.status(400).json({ message: 'No files uploaded' });
-    const previews = [];
-    for (const f of files) {
-      const buf = f.buffer || (f.path ? require('fs').readFileSync(f.path) : null);
-      if (!buf) continue;
-      const text = await ocrService.ocrBuffer(buf);
-      const parsed = timetableService.parseOcrTextToSlots(text);
-      previews.push({ filename: f.originalname || f.name, text, parsed });
-    }
-    res.json({ previews });
-  } catch (err) { next(err) }
-}
-
-async function importConfirm(req, res, next) {
-  try {
-    const { label, slots } = req.body; // slots: array of parsed slot objects
-    if (!Array.isArray(slots) || slots.length === 0) return res.status(400).json({ message: 'No slots provided' });
-    const created = await prisma.Timetable.create({ data: { Label: label || 'Imported timetable', IsActive: false, CreatedBy: req.user?.userId, Slots: { create: slots.map((s) => ({ DayOfWeek: s.dayOfWeek, StartMinutes: s.startMinutes, EndMinutes: s.endMinutes, Title: s.title || '', TeacherUserID: s.teacherUserId || null, StudioID: s.studioId || null, Color: s.color || null, Notes: s.notes || null })) } }, include: { Slots: true } });
-    res.status(201).json(created);
-  } catch (err) { next(err) }
-}
-
 module.exports = {
   listTimetables,
   getTimetable,
@@ -106,6 +85,4 @@ module.exports = {
   createSlot,
   updateSlot,
   deleteSlot,
-  importOcrPreview,
-  importConfirm,
 };

@@ -394,6 +394,7 @@ model Modality {
   StudioModality         StudioModality[]
   TeacherModality        TeacherModality[]
   StudentAllowedModality StudentAllowedModality[]
+  TimetableSlot          TimetableSlot[]          @relation("TimetableSlot_Modality")
 }
 
 /// Timetables: editable maps of schedules managed by admin
@@ -419,15 +420,18 @@ model TimetableSlot {
   Title        String   @db.VarChar(200)
   TeacherUserID Int?
   StudioID     Int?
+  ModalityID   Int?
   Color        String?  @db.VarChar(20)
   Notes        String?  @db.VarChar(255)
 
   Timetable    Timetable @relation(fields: [TimetableID], references: [TimetableID], onDelete: Cascade, onUpdate: NoAction, map: "FK_TimetableSlot_Timetable")
   Teacher      User?     @relation("TimetableSlot_TeacherUser", fields: [TeacherUserID], references: [UserID], onDelete: NoAction, onUpdate: NoAction, map: "FK_TimetableSlot_Teacher")
   Studio       Studio?   @relation("TimetableSlot_Studio", fields: [StudioID], references: [StudioID], onUpdate: NoAction, map: "FK_TimetableSlot_Studio")
+  Modality     Modality? @relation("TimetableSlot_Modality", fields: [ModalityID], references: [ModalityID], onDelete: NoAction, onUpdate: NoAction, map: "FK_TimetableSlot_Modality")
 
   @@index([TimetableID], map: "IX_TimetableSlot_TimetableID")
   @@index([DayOfWeek, StartMinutes, EndMinutes], map: "IX_TimetableSlot_DayStartEnd")
+  @@index([ModalityID], map: "IX_TimetableSlot_ModalityID")
 }
 
 model Notification {

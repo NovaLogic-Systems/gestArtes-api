@@ -276,6 +276,8 @@ async function getProfile(req, res, next) {
 
     const now = new Date();
 
+    const allowedModalityIds = Array.isArray(profileRow.allowedModalities) ? profileRow.allowedModalities : [];
+
     const [
       totalSessionsEnrolled,
       upcomingSessions,
@@ -286,6 +288,7 @@ async function getProfile(req, res, next) {
       totalJoinRequests,
       totalInventoryRentals,
       totalMarketplacePurchases,
+      allowedModalityRecords,
     ] = await Promise.all([
       prisma.sessionStudent.count({ where: { StudentAccountID: studentAccountId } }),
       prisma.sessionStudent.count({
@@ -341,6 +344,13 @@ async function getProfile(req, res, next) {
       prisma.marketplaceTransaction.count({
         where: { BuyerID: userId },
       }),
+      allowedModalityIds.length > 0
+        ? prisma.modality.findMany({
+            where: { ModalityID: { in: allowedModalityIds } },
+            select: { ModalityID: true, ModalityName: true },
+            orderBy: { ModalityName: 'asc' },
+          })
+        : Promise.resolve([]),
     ]);
 
     const statusCounts = new Map();
@@ -380,6 +390,11 @@ async function getProfile(req, res, next) {
         name: modalityDistribution[0]?.modalityName || null,
         modalityDistribution,
         nextSessions,
+        isModalityLocked: Boolean(profileRow.isModalityLocked),
+        allowedModalities: allowedModalityRecords.map((m) => ({
+          modalityId: m.ModalityID,
+          modalityName: m.ModalityName,
+        })),
       },
       statistics: {
         totalSessionsEnrolled,

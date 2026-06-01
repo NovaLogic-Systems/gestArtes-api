@@ -10,12 +10,15 @@ const Module = require('node:module');
 
 function createState() {
   return {
-    pendingStatus: { StatusID: 10 },
+    sessionStatuses: [{ StatusID: 10, StatusName: 'Pending_Approval' }],
     pricingRateById: new Map([[77, { PricingRateID: 77 }]]),
     defaultPricingRate: { PricingRateID: 5 },
+    studentAccount: { StudentAccountID: 33 },
+    attendanceStatus: { AttendanceStatusID: 4 },
     adminRows: [],
     shouldThrowOnDefaultPricingRate: false,
     createSessionCalls: [],
+    sessionStudentCreates: [],
     findFirstOrThrowCalls: 0,
   };
 }
@@ -24,10 +27,25 @@ let state = createState();
 
 const fakePrisma = {
   sessionStatus: {
-    findFirst: async () => state.pendingStatus,
+    findMany: async () => state.sessionStatuses,
+    findFirst: async ({ where } = {}) => {
+      if (!where?.StatusName) return state.sessionStatuses[0] || null;
+
+      if (typeof where.StatusName === 'string') {
+        return state.sessionStatuses.find((status) => status.StatusName === where.StatusName) || null;
+      }
+
+      if (where.StatusName?.contains) {
+        const needle = String(where.StatusName.contains).toLowerCase();
+        return state.sessionStatuses.find((status) => status.StatusName.toLowerCase().includes(needle)) || null;
+      }
+
+      return state.sessionStatuses[0] || null;
+    },
   },
   sessionPricingRate: {
     findUnique: async ({ where }) => state.pricingRateById.get(where.PricingRateID) || null,
+    findFirst: async () => state.defaultPricingRate,
     findFirstOrThrow: async () => {
       state.findFirstOrThrowCalls += 1;
 
@@ -40,6 +58,18 @@ const fakePrisma = {
   },
   userRole: {
     findMany: async () => state.adminRows,
+  },
+  studentAccount: {
+    findUnique: async () => state.studentAccount,
+  },
+  attendanceStatus: {
+    findFirst: async () => state.attendanceStatus,
+  },
+  sessionStudent: {
+    create: async ({ data }) => {
+      state.sessionStudentCreates.push(data);
+      return data;
+    },
   },
 };
 
@@ -96,6 +126,18 @@ function validPayload(overrides = {}) {
   };
 }
 
+function validBookingPayload(overrides = {}) {
+  return {
+    teacherId: 12,
+    studioId: 2,
+    modalityId: 3,
+    startTime: '2099-12-01T10:00:00.000Z',
+    endTime: '2099-12-01T11:00:00.000Z',
+    notes: 'Preferencia da aluna',
+    ...overrides,
+  };
+}
+
 test('createSessionInitiative uses provided pricingRateId', async () => {
   resetState({
     pricingRateById: new Map([[77, { PricingRateID: 77 }]]),
@@ -123,7 +165,7 @@ test('createSessionInitiative uses default pricing rate when pricingRateId is om
 
 test('createSessionInitiative returns 500 when pending status is not configured', async () => {
   resetState({
-    pendingStatus: null,
+    sessionStatuses: [],
   });
 
   await assert.rejects(
@@ -134,6 +176,29 @@ test('createSessionInitiative returns 500 when pending status is not configured'
       return true;
     }
   );
+});
+
+test('createBooking uses pending approval status instead of completion confirmation pending status', async () => {
+  resetState({
+    sessionStatuses: [
+      { StatusID: 91, StatusName: 'Completion_Confirmation_Pending' },
+      { StatusID: 10, StatusName: 'Pending_Approval' },
+    ],
+  });
+
+  const session = await coachingService.createBooking(validBookingPayload(), 700);
+
+  assert.equal(session.StatusID, 10);
+  assert.equal(state.createSessionCalls.length, 1);
+  assert.equal(state.createSessionCalls[0].payload.statusId, 10);
+  assert.equal(state.createSessionCalls[0].userId, 700);
+  assert.deepEqual(state.sessionStudentCreates[0], {
+    SessionID: 901,
+    StudentAccountID: 33,
+    EnrolledAt: state.sessionStudentCreates[0].EnrolledAt,
+    AttendanceStatusID: 4,
+  });
+  assert.ok(state.sessionStudentCreates[0].EnrolledAt instanceof Date);
 });
 
 test('createSessionInitiative returns 500 when no default pricing rate exists', async () => {

@@ -118,6 +118,9 @@ test('getListings applies q/category/location/price filters and returns serializ
   ];
 
   const req = {
+    auth: {
+      userId: 99,
+    },
     query: {
       q: 'sapatilhas',
       category: '3',
@@ -138,6 +141,7 @@ test('getListings applies q/category/location/price filters and returns serializ
   assert.equal(mockState.lastFindManyArgs.where.Price.gte, 10);
   assert.equal(mockState.lastFindManyArgs.where.Price.lte, 100);
   assert.equal(mockState.lastFindManyArgs.where.Location.contains, 'Braga');
+  assert.equal(mockState.lastFindManyArgs.where.SellerID.not, 99);
   assert.equal(Array.isArray(mockState.lastFindManyArgs.where.OR), true);
   assert.deepEqual(mockState.lastFindManyArgs.where.OR, [
     { Title: { contains: 'sapatilhas' } },
@@ -153,6 +157,9 @@ test('getListings still supports legacy search parameter when q is absent', asyn
   resetMockState();
 
   const req = {
+    auth: {
+      userId: 15,
+    },
     query: {
       search: 'fato',
     },
@@ -167,5 +174,6 @@ test('getListings still supports legacy search parameter when q is absent', asyn
     { Title: { contains: 'fato' } },
     { Description: { contains: 'fato' } },
   ]);
+  assert.equal(mockState.lastFindManyArgs.where.SellerID.not, 15);
   assert.deepEqual(res.payload, { listings: [] });
 });

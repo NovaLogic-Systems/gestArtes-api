@@ -7,9 +7,11 @@
 
 const prisma = require('../config/prisma');
 const {
+  cancelAvailability,
   createException,
   getAvailability,
   getPendingExceptions,
+  listPendingAbsencesForAdmin,
   listPendingAvailabilityForAdmin,
   reviewAvailability,
   submitAvailability,
@@ -22,6 +24,24 @@ const logger = require('../utils/logger');
 
 const availabilityService = require('../services/availability.service');
 const availabilityUseCases = createAvailabilityUseCases({ availabilityService });
+const notificationService = require('../services/notification.service');
+
+function formatDateTime(value) {
+  if (!value) {
+    return '—';
+  }
+
+  const parsed = new Date(value);
+
+  if (Number.isNaN(parsed.getTime())) {
+    return '—';
+  }
+
+  return parsed.toLocaleString('pt-PT', {
+    dateStyle: 'short',
+    timeStyle: 'short',
+  });
+}
 
 function getAuthenticatedTeacherUserId(req, res) {
   const userId = Number(req.auth?.userId);
@@ -59,6 +79,36 @@ async function submitTeacherAvailability(req, res, next) {
       payload: req.body,
     });
     await emitAvailabilitySummary(req, teacherUserId);
+    // Notify all admins about the new availability submission
+    try {
+      const teacher = await prisma.user.findUnique({ where: { UserID: teacherUserId }, select: { FirstName: true, LastName: true, Email: true } });
+      const teacherName = teacher ? `${teacher.FirstName || ''} ${teacher.LastName || ''}`.trim() || teacher.Email : `Professor #${teacherUserId}`;
+      const title = 'Novo pedido de disponibilidade'
+      const message = `${teacherName} submeteu um pedido de disponibilidade (${summary?.totalSlots ?? 0} slots).`;
+
+      const admins = await prisma.user.findMany({
+        where: {
+          IsActive: true,
+          UserRole: { some: { Role: { RoleName: 'admin' } } },
+        },
+        select: { UserID: true },
+      });
+
+      const io = req.app.get('io');
+
+      await Promise.all(admins.map(async (a) => {
+        try {
+          const notif = await notificationService.create(a.UserID, message, title);
+          if (io) {
+            io.to(`user:${a.UserID}`).emit('notification', notif);
+          }
+        } catch (err) {
+          logger.warn('[Availability] failed to notify admin', { adminId: a.UserID, err: err?.message });
+        }
+      }));
+    } catch (err) {
+      logger.warn('[Availability] admin notification failed', { err: err?.message });
+    }
     res.status(201).json({ summary, availability });
   } catch (error) {
     next(error);
@@ -103,6 +153,29 @@ async function updateTeacherAvailability(req, res, next) {
   }
 }
 
+async function cancelTeacherAvailability(req, res, next) {
+  try {
+    const teacherUserId = getAuthenticatedTeacherUserId(req, res);
+
+    if (!teacherUserId) {
+      return;
+    }
+
+    const availabilityId = parseAvailabilityId(req.params?.availabilityId);
+
+    if (!availabilityId) {
+      res.status(400).json({ error: 'Invalid availabilityId' });
+      return;
+    }
+
+    await cancelAvailability(teacherUserId, availabilityId);
+    await emitAvailabilitySummary(req, teacherUserId);
+    res.json({ success: true });
+  } catch (error) {
+    next(error);
+  }
+}
+
 async function createTeacherException(req, res, next) {
   try {
     const teacherUserId = getAuthenticatedTeacherUserId(req, res);
@@ -113,6 +186,43 @@ async function createTeacherException(req, res, next) {
 
     const result = await createException(teacherUserId, req.body);
     await emitAvailabilitySummary(req, teacherUserId);
+
+    try {
+      const teacher = await prisma.user.findUnique({
+        where: { UserID: teacherUserId },
+        select: { FirstName: true, LastName: true, Email: true },
+      });
+
+      const teacherName = teacher
+        ? `${teacher.FirstName || ''} ${teacher.LastName || ''}`.trim() || teacher.Email
+        : `Professor #${teacherUserId}`;
+      const title = 'Nova ausência submetida';
+      const message = `${teacherName} reportou uma ausência (${formatDateTime(result?.startDate)} - ${formatDateTime(result?.endDate)}).`;
+
+      const admins = await prisma.user.findMany({
+        where: {
+          IsActive: true,
+          UserRole: { some: { Role: { RoleName: 'admin' } } },
+        },
+        select: { UserID: true },
+      });
+
+      const io = req.app.get('io');
+
+      await Promise.all(admins.map(async (admin) => {
+        try {
+          const notification = await notificationService.create(admin.UserID, message, title, 'schedule');
+          if (io) {
+            io.to(`user:${admin.UserID}`).emit('notification', notification);
+          }
+        } catch (err) {
+          logger.warn('[Availability] failed to notify admin about absence', { adminId: admin.UserID, err: err?.message });
+        }
+      }));
+    } catch (err) {
+      logger.warn('[Availability] absence admin notification failed', { err: err?.message });
+    }
+
     res.status(201).json({ exception: result });
   } catch (error) {
     next(error);
@@ -172,6 +282,21 @@ async function listAdminPendingAvailability(req, res, next) {
 
     const availability = await listPendingAvailabilityForAdmin();
     res.json({ availability });
+  } catch (error) {
+    next(error);
+  }
+}
+
+async function listAdminPendingAbsences(req, res, next) {
+  try {
+    const adminUserId = getAuthenticatedAdminUserId(req, res);
+
+    if (!adminUserId) {
+      return;
+    }
+
+    const absences = await listPendingAbsencesForAdmin();
+    res.json({ absences });
   } catch (error) {
     next(error);
   }
@@ -279,11 +404,13 @@ async function getTeacherCalendar(req, res, next) {
             const endHour = new Date(slot.EndTime).getHours();
 
             for (let hour = startHour; hour < endHour && hour < 21; hour++) {
-              slots.push({
-                day: dayOfWeek,
-                hour,
-                status: statusName
-              });
+                slots.push({
+                  day: dayOfWeek,
+                  hour,
+                  status: statusName,
+                  availabilityId: record.AvailabilityID,
+                  reason: record.Reason
+                });
             }
           }
         }
@@ -315,10 +442,12 @@ function generateEmptySlots() {
 }
 
 module.exports = {
+  cancelTeacherAvailability,
   approveAvailability,
   createTeacherException,
   getTeacherCalendar,
   listAdminPendingAvailability,
+  listAdminPendingAbsences,
   listPendingTeacherExceptions,
   listTeacherAvailability,
   rejectAvailability,

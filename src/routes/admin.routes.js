@@ -11,6 +11,7 @@ const { requireAuth, requireAdminRole, requireRole } = require('../middlewares/a
 const {
     createUserSchema,
     deleteUserSchema,
+    listUsersQuerySchema,
     resetUserPasswordSchema,
     updateUserRolesSchema,
     updateUserSchema,
@@ -18,6 +19,7 @@ const {
 const adminController = require('../controllers/admin.controller');
 const joinRequestController = require('../controllers/joinRequest.controller');
 const notificationController = require('../controllers/notification.controller');
+const availabilityController = require('../controllers/availability.controller');
 const { createSessionSchema } = require('../middlewares/schemas/session.schema');
 
 const router = express.Router();
@@ -38,6 +40,8 @@ router.get(
 router.get(
     '/users',
     ...adminAccess,
+    ...listUsersQuerySchema,
+    validateRequest,
     adminController.listUsers
 );
 
@@ -110,15 +114,57 @@ router.get(
 );
 
 router.get(
+    '/coaching/join-requests/pending',
+    ...adminAccess,
+    joinRequestController.getAdminPending
+);
+
+router.get(
     '/coachingjoin-requests/pending',
     ...adminAccess,
     joinRequestController.getAdminPending
+);
+
+router.get(
+    '/validations/availability',
+    ...adminAccess,
+    availabilityController.listAdminPendingAvailability
+);
+
+router.get(
+    '/validations/absences',
+    ...adminAccess,
+    availabilityController.listAdminPendingAbsences
+);
+
+router.patch(
+    '/validations/availability/:availabilityId/approve',
+    ...adminAccess,
+    availabilityController.approveAvailability
+);
+
+router.patch(
+    '/validations/availability/:availabilityId/reject',
+    ...adminAccess,
+    availabilityController.rejectAvailability
+);
+
+router.patch(
+    '/coaching/join-requests/:id/approve',
+    ...adminAccess,
+    joinRequestController.adminApprove
 );
 
 router.patch(
     '/coachingjoin-requests/:id/approve',
     ...adminAccess,
     joinRequestController.adminApprove
+);
+
+router.patch(
+    '/coaching/join-requests/:id/reject',
+    ...adminAccess,
+    joinRequestController.adminReject
 );
 
 router.patch(

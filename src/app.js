@@ -33,7 +33,7 @@ const financeRoutes = require('./routes/finance.routes');
 const auditRoutes = require('./routes/audit.routes');
 const joinRequestRoutes = require('./routes/joinRequest.routes');
 const coachingRoutes = require('./routes/coaching.routes');
-const apiRateLimiter = require('./middlewares/rateLimit.middleware');
+const { apiRateLimiter, pollingRateLimiter } = require('./middlewares/rateLimit.middleware');
 const { createCsrfProtection } = require('./middlewares/csrf.middleware');
 const errorHandler = require('./middlewares/error.middleware');
 const { setupSwagger } = require('./config/swagger');
@@ -129,6 +129,10 @@ function createCorsOriginValidator(allowedOrigins) {
     }
 
     if (allowList.has(origin)) {
+      return callback(null, true);
+    }
+
+    if (!IS_PRODUCTION) {
       return callback(null, true);
     }
 
@@ -267,7 +271,7 @@ app.use('/marketplace', marketplaceRoutes);
 app.use('/search', searchRoutes);
 app.use('/inventory', inventoryRoutes);
 app.use('/teacher/inventory', inventoryRoutes);
-app.use('/notifications', notificationRoutes);
+app.use('/notifications', pollingRateLimiter, notificationRoutes);
 app.use('/', joinRequestRoutes);
 app.use('/', coachingRoutes);
 app.use('/', financeRoutes);

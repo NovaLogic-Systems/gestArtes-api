@@ -266,6 +266,30 @@ async function getStudentRequests(req, res, next) {
   }
 }
 
+async function cancelJoinRequest(req, res, next) {
+  try {
+    const joinRequestId = toPositiveInt(req.params.id);
+    const studentUserId = toPositiveInt(req.auth?.userId);
+
+    if (!joinRequestId) {
+      return res.status(400).json({ error: 'ID de pedido de adesão inválido' });
+    }
+
+    if (!studentUserId) {
+      return res.status(401).json({ error: 'Não autenticado' });
+    }
+
+    await joinRequestService.cancelJoinRequest({
+      joinRequestId,
+      studentUserId,
+    });
+
+    return res.status(204).send();
+  } catch (error) {
+    return next(error);
+  }
+}
+
 module.exports = {
   createJoinRequest,
   listBySession,
@@ -276,6 +300,7 @@ module.exports = {
   adminApprove,
   adminReject,
   getStudentRequests,
+  cancelJoinRequest,
 };
 
 

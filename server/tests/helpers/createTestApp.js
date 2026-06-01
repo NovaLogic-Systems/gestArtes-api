@@ -36,7 +36,7 @@ function createTestApp({
   jest.doMock('connect-mssql-v2', () => {
     const { InMemorySessionStore } = require('./inMemorySessionStore');
     return InMemorySessionStore;
-  });
+  }, { virtual: true });
 
   jest.doMock('../../../src/middlewares/csrf.middleware', () => ({
     createCsrfProtection: jest.fn(() => (_req, _res, next) => next()),

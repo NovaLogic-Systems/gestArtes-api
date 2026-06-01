@@ -25,6 +25,13 @@ const NOT_ATTENDED_STATUS_KEYWORDS = [
   'nao compareceu',
   'no show',
 ];
+const OPEN_JOIN_REQUEST_STATUS_KEYS = new Set([
+  'awaitingapproval',
+  'pendingteacher',
+  'pendingapproval',
+  'teacherapproved',
+  'pendingadmin',
+]);
 
 function toInteger(value) {
   if (typeof value === 'bigint') {
@@ -41,6 +48,10 @@ function normalizeStatusName(value) {
     .toLowerCase()
     .normalize('NFD')
     .replace(/[\u0300-\u036f]/g, '');
+}
+
+function normalizeWorkflowStatusKey(value) {
+  return normalizeStatusName(value).replace(/[^a-z0-9]/g, '');
 }
 
 function isAttendedStatus(statusName) {
@@ -75,6 +86,8 @@ function serializeStudentProfile(profileRow, studentAccountId) {
     birthDate: profileRow.birthDate,
     guardianName: profileRow.guardianName,
     guardianPhone: profileRow.guardianPhone,
+    isModalityLocked: profileRow.isModalityLocked,
+    allowedModalities: profileRow.allowedModalities,
     accountCreatedAt: profileRow.accountCreatedAt,
     accountUpdatedAt: profileRow.accountUpdatedAt,
   };
@@ -132,6 +145,12 @@ async function loadStudentProfile(userId) {
           BirthDate: true,
           GuardianName: true,
           GuardianPhone: true,
+          IsModalityLocked: true,
+          StudentAllowedModality: {
+            select: {
+              ModalityID: true
+            }
+          }
         },
       },
     },
@@ -154,9 +173,24 @@ async function loadStudentProfile(userId) {
       birthDate: user.StudentAccount.BirthDate,
       guardianName: user.StudentAccount.GuardianName,
       guardianPhone: user.StudentAccount.GuardianPhone,
+      isModalityLocked: user.StudentAccount.IsModalityLocked,
+      allowedModalities: user.StudentAccount.StudentAllowedModality.map(m => m.ModalityID)
     },
     studentAccountId: user.StudentAccount.StudentAccountID,
   };
+}
+
+async function listOpenJoinRequestStatusIds() {
+  const statuses = await prisma.coachingJoinRequestStatus.findMany({
+    select: {
+      StatusID: true,
+      StatusName: true,
+    },
+  });
+
+  return statuses
+    .filter((status) => OPEN_JOIN_REQUEST_STATUS_KEYS.has(normalizeWorkflowStatusKey(status.StatusName)))
+    .map((status) => status.StatusID);
 }
 
 function mapNotificationRow(row) {
@@ -492,6 +526,7 @@ async function getDashboard(req, res, next) {
     const { studentAccountId } = student;
 
     const now = new Date();
+    const openJoinRequestStatusIds = await listOpenJoinRequestStatusIds();
 
     const [
       upcomingSessions,
@@ -522,7 +557,7 @@ async function getDashboard(req, res, next) {
       prisma.coachingJoinRequest.count({
         where: {
           StudentAccountID: studentAccountId,
-          CoachingJoinRequestStatus: { StatusName: { contains: 'pend' } },
+          StatusID: { in: openJoinRequestStatusIds },
         },
       }),
       prisma.coachingSession.count({
@@ -607,4 +642,3 @@ module.exports = {
   getDashboard,
   getUpcomingSchedule,
 };
-

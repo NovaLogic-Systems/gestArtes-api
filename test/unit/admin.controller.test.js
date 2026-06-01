@@ -6,7 +6,7 @@
 
 const test = require('node:test');
 const assert = require('node:assert/strict');
-const Module = require('node:module');
+const { withPatchedModules } = require('./helpers/moduleLoader');
 
 const mockState = {
   existingUser: null,
@@ -39,11 +39,20 @@ const fakeBcrypt = {
 };
 
 const fakePrisma = {
-  $transaction: async (callback) => callback(fakePrisma),
+  $transaction: async (input) => {
+    if (typeof input === 'function') {
+      return input(fakePrisma);
+    }
+    if (Array.isArray(input)) {
+      return Promise.all(input);
+    }
+    return input;
+  },
   role: {
     findMany: async () => mockState.roles,
   },
   user: {
+    count: async () => mockState.listedUsers.length,
     findUnique: async ({ where }) => {
       if (where?.Email) {
         return mockState.existingUser;
@@ -78,7 +87,16 @@ const fakePrisma = {
       }
 
       if (where?.UserID && mockState.userById[where.UserID]) {
-        return mockState.userById[where.UserID];
+        const user = mockState.userById[where.UserID];
+        return {
+          ...user,
+          UserRole: Array.isArray(user.UserRole) ? user.UserRole : [],
+          StudentAccount: user.StudentAccount
+            ? {
+                ...user.StudentAccount,
+              }
+            : null,
+        };
       }
 
       return null;
@@ -149,11 +167,32 @@ const fakePrisma = {
     },
   },
   studentAccount: {
+    findFirst: async ({ orderBy } = {}) => {
+      const studentAccounts = Object.values(mockState.userById)
+        .map((user) => user?.StudentAccount)
+        .filter(Boolean)
+        .filter((account) => account.StudentAccountID != null);
+
+      if (!studentAccounts.length) {
+        return null;
+      }
+
+      const sorted = [...studentAccounts].sort((left, right) => {
+        const leftId = Number(left.StudentAccountID);
+        const rightId = Number(right.StudentAccountID);
+        return (orderBy?.StudentAccountID === 'desc' ? rightId - leftId : leftId - rightId);
+      });
+
+      return {
+        StudentAccountID: sorted[0].StudentAccountID,
+      };
+    },
     create: async ({ data }) => {
       mockState.studentAccountCreateData = data;
       const current = mockState.userById[data.UserID];
       if (current) {
         current.StudentAccount = {
+          StudentAccountID: data.StudentAccountID,
           BirthDate: data.BirthDate,
           GuardianName: data.GuardianName,
           GuardianPhone: data.GuardianPhone,
@@ -177,48 +216,26 @@ const fakeAdminService = {
   getStudioOccupancy: async () => ({ studios: [] }),
 };
 
-const originalLoad = Module._load;
-Module._load = function patchedLoad(request, parent, isMain) {
-  if (request === 'bcrypt') {
-    return fakeBcrypt;
-  }
-
-  if (request === '../config/prisma') {
-    return fakePrisma;
-  }
-
-  if (request === '../services/admin.service') {
-    return fakeAdminService;
-  }
-
-  if (request === '../services/adminValidation.service') {
-    return { listPostSessionValidations: async () => [], finalizeSessionValidation: async () => ({}) };
-  }
-
-  return originalLoad.call(this, request, parent, isMain);
-};
-
-let createUser;
-let deleteUser;
-let finalizeSessionValidation;
-let getPostSessionValidations;
-let listUsers;
-let updateUser;
-let updateUserRoles;
-
-try {
-  ({
-    createUser,
-    deleteUser,
-    finalizeSessionValidation,
-    getPostSessionValidations,
-    listUsers,
-    updateUser,
-    updateUserRoles,
-  } = require('../../src/controllers/admin.controller'));
-} finally {
-  Module._load = originalLoad;
-}
+const {
+  createUser,
+  deleteUser,
+  finalizeSessionValidation,
+  getPostSessionValidations,
+  listUsers,
+  updateUser,
+  updateUserRoles,
+} = withPatchedModules(
+  {
+    bcrypt: fakeBcrypt,
+    '../config/prisma': fakePrisma,
+    '../services/admin.service': fakeAdminService,
+    '../services/adminValidation.service': {
+      listPostSessionValidations: async () => [],
+      finalizeSessionValidation: async () => ({}),
+    },
+  },
+  () => require('../../src/controllers/admin.controller')
+);
 
 function createResponse() {
   return {
@@ -309,27 +326,26 @@ test('createUser maps Direction to admin and creates a role assignment', async (
 });
 
 /**
- * TEST: Validação obrigatória de número de aluno para utilizadores estudante
+ * TEST: Criação de utilizador estudante com número automático
  * ──────────────────────────────────────────────────────────────────────────
  * O QUE É TESTADO:
- *   Confirma que a criação de um aluno falha com erro 400 se o campo
- *   'studentNumber' não for fornecido, prevenindo registos incompletos.
+ *   Confirma que a criação de um aluno continua a funcionar quando o campo
+ *   'studentNumber' não é enviado, gerando um número automático.
  *
  * COMO FUNCIONA:
- *   1. Tenta criar um utilizador 'student' SEM o campo studentNumber
- *   2. Valida que a resposta HTTP é 400 Bad Request
- *   3. Valida que a mensagem de erro é específica e útil
+ *   1. Tenta criar um utilizador 'student' sem studentNumber
+ *   2. Valida que a resposta HTTP é 201 Created
+ *   3. Valida que o perfil de aluno foi criado e que o número é gerado
  *
  * POR QUE É IMPORTANTE:
- *   O número de aluno é um identificador único obrigatório na escola.
- *   Alunos sem número não podem ser autenticados, localizados ou
- *   processados em operações de turma. É uma invariante crítica.
+ *   O front-end atual não precisa de forçar o número de aluno no formulário,
+ *   e o backend já garante um identificador válido quando ele não é enviado.
  *
  * ASSERTIONS EXPLICADAS:
- *   - statusCode 400: Requisição inválida, dado obrigatório em falta
- *   - error message específica: Identifica exatamente qual campo falta
+ *   - statusCode 201: Utilizador foi criado com sucesso
+ *   - studentNumber gerado: A resposta contém um número de aluno válido
  */
-test('createUser requires student number when creating a student user', async () => {
+test('createUser creates a student user with an auto-generated student number', async () => {
   resetMockState();
 
   const req = {
@@ -347,8 +363,11 @@ test('createUser requires student number when creating a student user', async ()
     throw error;
   });
 
-  assert.equal(res.statusCode, 400);
-  assert.deepEqual(res.payload, { error: 'Student number is required for student users' });
+  assert.equal(res.statusCode, 201);
+  assert.equal(mockState.studentAccountCreateData.BirthDate instanceof Date, true);
+  assert.equal(res.payload.user.role, 'student');
+  assert.equal(typeof res.payload.user.studentNumber, 'string');
+  assert.equal(res.payload.user.studentNumber.startsWith('ST-'), true);
 });
 
 /**

@@ -165,6 +165,9 @@ model InventoryTransaction {
   ReturnConditionStatus String?   @db.VarChar(50)
   ReturnConditionNotes  String?   @db.VarChar(255)
   ReturnVerifiedAt      DateTime? @db.DateTime
+  ApprovalStatus        String?   @db.VarChar(20)
+  ApprovedAt            DateTime? @db.DateTime
+  ApprovalNotes         String?   @db.VarChar(255)
   User             User          @relation(fields: [RenterID], references: [UserID], onUpdate: NoAction, map: "FKInventoryT279068")
   InventoryItem    InventoryItem @relation(fields: [InventoryItemID], references: [InventoryItemID], onUpdate: NoAction, map: "FKInventoryT392770")
   PaymentMethod    PaymentMethod @relation(fields: [PaymentMethodID], references: [PaymentMethodID], onUpdate: NoAction, map: "FKInventoryT529044")
@@ -188,6 +191,7 @@ model LostAndFoundItem {
   LostItemID         Int      @id(map: "PK__LostAndF__3B3BF432FD1879C6") @default(autoincrement())
   Title              String   @db.VarChar(255)
   Description        String?  @db.VarChar(255)
+  Location           String?  @db.VarChar(100)
   FoundDate          DateTime @db.DateTime
   ClaimedStatus      Boolean
   PhotoURL           String?  @db.VarChar(255)
@@ -272,11 +276,12 @@ model AuditLog {
 }
 
 model Modality {
-  ModalityID      Int               @id(map: "PK__Modality__C179441B1ADC4F85") @default(autoincrement())
-  ModalityName    String            @unique(map: "UQ__Modality__2C2AEFDF50A354AF") @db.VarChar(50)
-  CoachingSession CoachingSession[]
-  StudioModality  StudioModality[]
-  TeacherModality TeacherModality[]
+  ModalityID             Int                      @id(map: "PK__Modality__C179441B1ADC4F85") @default(autoincrement())
+  ModalityName           String                   @unique(map: "UQ__Modality__2C2AEFDF50A354AF") @db.VarChar(50)
+  CoachingSession        CoachingSession[]
+  StudioModality         StudioModality[]
+  TeacherModality        TeacherModality[]
+  StudentAllowedModality StudentAllowedModality[]
 }
 
 model Notification {
@@ -421,14 +426,25 @@ model SessionValidation {
 }
 
 model StudentAccount {
-  StudentAccountID    Int                   @id(map: "PK__StudentA__7A8F0FA2F5D02547") @default(autoincrement())
-  UserID              Int                   @unique(map: "UQ__StudentA__1788CCAD78A4799C")
-  BirthDate           DateTime              @db.Date
-  GuardianName        String?               @db.VarChar(150)
-  GuardianPhone       String?               @db.VarChar(20)
-  CoachingJoinRequest CoachingJoinRequest[]
-  SessionStudent      SessionStudent[]
-  User                User                  @relation(fields: [UserID], references: [UserID], onUpdate: NoAction, map: "FKStudentAcc231273")
+  StudentAccountID       Int                      @id(map: "PK__StudentA__7A8F0FA2F5D02547") @default(autoincrement())
+  UserID                 Int                      @unique(map: "UQ__StudentA__1788CCAD78A4799C")
+  BirthDate              DateTime                 @db.Date
+  GuardianName           String?                  @db.VarChar(150)
+  GuardianPhone          String?                  @db.VarChar(20)
+  IsModalityLocked       Boolean                  @default(false)
+  CoachingJoinRequest    CoachingJoinRequest[]
+  SessionStudent         SessionStudent[]
+  User                   User                     @relation(fields: [UserID], references: [UserID], onUpdate: NoAction, map: "FKStudentAcc231273")
+  StudentAllowedModality StudentAllowedModality[]
+}
+
+model StudentAllowedModality {
+  StudentAccountID Int
+  ModalityID       Int
+  Modality         Modality       @relation(fields: [ModalityID], references: [ModalityID], onUpdate: NoAction, onDelete: Cascade)
+  StudentAccount   StudentAccount @relation(fields: [StudentAccountID], references: [StudentAccountID], onUpdate: NoAction, onDelete: Cascade)
+
+  @@id([StudentAccountID, ModalityID])
 }
 
 model Studio {

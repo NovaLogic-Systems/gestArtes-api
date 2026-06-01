@@ -109,15 +109,8 @@ function createAdminCreateUserUseCase({ prisma, passwordHashRounds = 12 }) {
           throw error;
         }
 
-        const maxUser = await tx.user.findFirst({
-          orderBy: { UserID: 'desc' },
-          select: { UserID: true }
-        });
-        const nextId = maxUser ? maxUser.UserID + 1 : 1;
-
         const user = await tx.user.create({
           data: {
-            UserID: nextId,
             FirstName: firstName,
             LastName: lastName,
             Email: email,
@@ -138,15 +131,8 @@ function createAdminCreateUserUseCase({ prisma, passwordHashRounds = 12 }) {
         });
 
         if (appRole === 'student') {
-          const maxStudent = await tx.studentAccount.findFirst({
-            orderBy: { StudentAccountID: 'desc' },
-            select: { StudentAccountID: true }
-          });
-          const nextStudentId = maxStudent ? maxStudent.StudentAccountID + 1 : 1;
-
           await tx.studentAccount.create({
             data: {
-              StudentAccountID: nextStudentId,
               UserID: user.UserID,
               BirthDate: birthDate,
               GuardianName: guardianName,

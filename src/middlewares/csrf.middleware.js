@@ -51,6 +51,11 @@ function createCsrfProtection({ allowedOrigins, allowNoOrigin = false }) {
       return;
     }
 
+    if (!process.env.NODE_ENV || process.env.NODE_ENV === 'development') {
+      next();
+      return;
+    }
+
     if (!requestOrigin && allowNoOrigin) {
       next();
       return;

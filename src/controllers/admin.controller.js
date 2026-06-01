@@ -24,9 +24,17 @@ const {
 
 const PASSWORD_HASH_ROUNDS = 12;
 const SESSION_APPROVAL_NOTIFICATION_TYPE = 'schedule';
+const PENDING_APPROVAL_STATUS_NAMES = ['Pending_Approval', 'PendingApproval', 'Pending Approval', 'Pending'];
 
 const adminSessionUseCases = createAdminSessionUseCases({ prisma });
 const adminUserUseCases = createAdminUserUseCases({ prisma, passwordHashRounds: PASSWORD_HASH_ROUNDS });
+
+function normalizeStatusKey(value) {
+    return String(value || '')
+        .trim()
+        .toLowerCase()
+        .replace(/[^a-z0-9]/g, '');
+}
 
 function serializeAdminUser(user) {
     const role = getPrimaryRoleFromUser(user);
@@ -51,6 +59,8 @@ function serializeAdminUser(user) {
         birthDate: user.StudentAccount?.BirthDate || null,
         guardianName: user.StudentAccount?.GuardianName || null,
         guardianPhone: user.StudentAccount?.GuardianPhone || null,
+        isModalityLocked: isStudent ? Boolean(user.StudentAccount?.IsModalityLocked) : undefined,
+        allowedModalities: isStudent && user.StudentAccount?.StudentAllowedModality ? user.StudentAccount.StudentAllowedModality.map(m => m.ModalityID) : undefined,
     };
 }
 
@@ -109,6 +119,80 @@ function parseTargetUserId(value) {
     return Number.isInteger(parsed) && parsed > 0 ? parsed : null;
 }
 
+function toPositiveLimit(value, fallback = 25, max = 100) {
+    const parsed = Number(value);
+
+    if (!Number.isInteger(parsed) || parsed <= 0) {
+        return fallback;
+    }
+
+    return Math.min(parsed, max);
+}
+
+function buildUserSearchWhere(search) {
+    const tokens = String(search || '')
+        .trim()
+        .split(/\s+/)
+        .filter(Boolean);
+
+    if (!tokens.length) {
+        return {};
+    }
+
+    return {
+        AND: tokens.map((token) => ({
+            OR: [
+                { FirstName: { contains: token } },
+                { LastName: { contains: token } },
+                { Email: { contains: token } },
+                { AuthUID: { contains: token } },
+            ],
+        })),
+    };
+}
+
+async function buildUsersWhere(tx, { search, role, status } = {}) {
+    const where = {
+        DeletedAt: null,
+        ...buildUserSearchWhere(search),
+    };
+
+    if (status === 'active') {
+        where.IsActive = true;
+    } else if (status === 'suspended') {
+        where.IsActive = false;
+    }
+
+    const appRole = toAppRole(role);
+    if (appRole) {
+        const roleRecords = await tx.role.findMany({
+            select: {
+                RoleID: true,
+                RoleName: true,
+            },
+            orderBy: {
+                RoleID: 'asc',
+            },
+        });
+
+        const matchingRoleIds = roleRecords
+            .filter((entry) => toAppRole(entry.RoleName) === appRole)
+            .map((entry) => entry.RoleID);
+
+        where.UserRole = matchingRoleIds.length
+            ? {
+                some: {
+                    RoleID: { in: matchingRoleIds },
+                },
+            }
+            : {
+                some: { RoleID: -1 },
+            };
+    }
+
+    return where;
+}
+
 async function getManagedUser(tx, targetUserId) {
     return tx.user.findUnique({
         where: {
@@ -120,32 +204,54 @@ async function getManagedUser(tx, targetUserId) {
                     Role: true,
                 },
             },
-            StudentAccount: true,
+            StudentAccount: {
+                include: {
+                    StudentAllowedModality: true,
+                },
+            },
         },
     });
 }
 
 async function listUsers(req, res, next) {
     try {
-        const users = await prisma.user.findMany({
-            where: {
-                DeletedAt: null,
-            },
-            include: {
-                UserRole: {
-                    include: {
-                        Role: true,
+        const limit = toPositiveLimit(req.query?.limit, 25, 100);
+        const offset = Number.isInteger(Number(req.query?.offset)) ? Math.max(0, Number(req.query.offset)) : 0;
+        const search = String(req.query?.search || '').trim();
+        const role = String(req.query?.role || '').trim();
+        const status = String(req.query?.status || '').trim();
+
+        const where = await buildUsersWhere(prisma, { search, role, status });
+
+        const [total, users] = await prisma.$transaction([
+            prisma.user.count({ where }),
+            prisma.user.findMany({
+                where,
+                include: {
+                    UserRole: {
+                        include: {
+                            Role: true,
+                        },
+                    },
+                    StudentAccount: {
+                        include: {
+                            StudentAllowedModality: true,
+                        },
                     },
                 },
-                StudentAccount: true,
-            },
-            orderBy: {
-                CreatedAt: 'desc',
-            },
-        });
+                orderBy: {
+                    CreatedAt: 'desc',
+                },
+                skip: offset,
+                take: limit,
+            }),
+        ]);
 
         return res.json({
             users: users.map(serializeAdminUser),
+            total,
+            limit,
+            offset,
         });
     } catch (error) {
         return next(error);
@@ -187,6 +293,8 @@ async function updateUser(req, res, next) {
         const birthDate = req.body?.birthDate ? new Date(req.body.birthDate) : undefined;
         const guardianName = typeof req.body?.guardianName === 'string' ? String(req.body.guardianName).trim() : undefined;
         const guardianPhone = typeof req.body?.guardianPhone === 'string' ? String(req.body.guardianPhone).trim() : undefined;
+        const isModalityLocked = typeof req.body?.isModalityLocked === 'boolean' ? req.body.isModalityLocked : undefined;
+        const allowedModalities = Array.isArray(req.body?.allowedModalities) ? req.body.allowedModalities.map(Number) : undefined;
 
         const updatedUser = await prisma.$transaction(async (tx) => {
             const targetUser = await getManagedUser(tx, targetUserId);
@@ -264,7 +372,7 @@ async function updateUser(req, res, next) {
                 data: userUpdateData,
             });
 
-            const hasStudentPayload = [birthDate, guardianName, guardianPhone]
+            const hasStudentPayload = [birthDate, guardianName, guardianPhone, isModalityLocked, allowedModalities]
                 .some((entry) => entry !== undefined);
 
             if (hasStudentPayload) {
@@ -286,6 +394,40 @@ async function updateUser(req, res, next) {
 
                 if (guardianPhone !== undefined) {
                     studentData.GuardianPhone = guardianPhone || null;
+                }
+
+                if (isModalityLocked !== undefined) {
+                    studentData.IsModalityLocked = isModalityLocked;
+                    if (isModalityLocked === false) {
+                        // If lock is removed, clear the DB mapping immediately
+                        await tx.studentAllowedModality.deleteMany({
+                            where: { StudentAccountID: targetUser.StudentAccount.StudentAccountID }
+                        });
+                    }
+                }
+
+                if (allowedModalities !== undefined && isModalityLocked !== false) {
+                    // Update allowed modalities
+                    await tx.studentAllowedModality.deleteMany({
+                        where: { StudentAccountID: targetUser.StudentAccount.StudentAccountID }
+                    });
+                    
+                    if (allowedModalities.length > 0) {
+                        // Ensure all elements are valid IDs before query
+                        const validModalities = allowedModalities.filter(id => !isNaN(id));
+                        if (validModalities.length > 0) {
+                            await tx.studentAllowedModality.createMany({
+                                data: validModalities.map(modalityId => ({
+                                    StudentAccountID: targetUser.StudentAccount.StudentAccountID,
+                                    ModalityID: modalityId
+                                }))
+                            });
+                        }
+                    } else if (isModalityLocked === true) {
+                        const error = new Error('Pelo menos uma modalidade tem de ser selecionada quando o bloqueio está ativado.');
+                        error.status = 400;
+                        throw error;
+                    }
                 }
 
                 await tx.studentAccount.update({
@@ -399,6 +541,7 @@ async function updateUserRoles(req, res, next) {
 
             const willBeStudent = appRoles.includes('student');
             const hasStudentAccount = Boolean(targetUser.StudentAccount);
+            let finalStudentNumber = studentNumber;
 
             if (willBeStudent && !hasStudentAccount) {
                 if (!(birthDate instanceof Date && !Number.isNaN(birthDate.getTime()))) {
@@ -407,7 +550,6 @@ async function updateUserRoles(req, res, next) {
                     throw error;
                 }
 
-                let finalStudentNumber = studentNumber;
                 if (!finalStudentNumber) {
                     finalStudentNumber = `ST-${Math.floor(100000 + Math.random() * 900000)}`;
                 }
@@ -693,21 +835,15 @@ function toUTCTimeStr(date) {
     return d.toISOString().slice(11, 16);
 }
 
-async function resolveOrCreateSessionStatus(tx, statusName) {
-    const existing = await tx.sessionStatus.findFirst({ where: { StatusName: { contains: statusName } } });
-    if (existing) return existing.StatusID;
-    const created = await tx.sessionStatus.create({ data: { StatusName: statusName } });
-    return created.StatusID;
-}
-
 async function listPendingApproval(req, res, next) {
     try {
         const allStatuses = await prisma.sessionStatus.findMany({
             select: { StatusID: true, StatusName: true },
         });
 
+        const pendingApprovalKeys = new Set(PENDING_APPROVAL_STATUS_NAMES.map(normalizeStatusKey));
         const pendingStatusIds = allStatuses
-            .filter((s) => s.StatusName.toLowerCase().includes('pending'))
+            .filter((s) => pendingApprovalKeys.has(normalizeStatusKey(s.StatusName)))
             .map((s) => s.StatusID);
 
         if (!pendingStatusIds.length) {
@@ -838,4 +974,3 @@ module.exports = {
     getDashboard,
     getOperationalSummary,
 };
-

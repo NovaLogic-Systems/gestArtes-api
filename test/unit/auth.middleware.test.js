@@ -49,9 +49,8 @@ function createResponse() {
   };
 }
 
-test('requireRole returns 401 when the request is not authenticated', () => {
-  const middleware = requireRole(['STUDENT']);
-  const req = {};
+function runMiddleware(middleware, auth) {
+  const req = auth ? { auth } : {};
   const res = createResponse();
   let nextCalled = false;
 
@@ -59,50 +58,47 @@ test('requireRole returns 401 when the request is not authenticated', () => {
     nextCalled = true;
   });
 
-  assert.equal(res.statusCode, 401);
-  assert.deepEqual(res.payload, { error: 'Unauthorized' });
-  assert.equal(nextCalled, false);
-});
+  return { res, nextCalled };
+}
 
-test('requireRole returns 403 when authenticated role is missing', () => {
-  const middleware = requireRole(['STUDENT']);
-  const req = {
-    auth: {
-      userId: 44,
-      role: null,
-    },
-  };
-  const res = createResponse();
-  let nextCalled = false;
+function expectMiddlewareResult(result, statusCode, payload, nextCalled) {
+  assert.equal(result.res.statusCode, statusCode);
+  assert.deepEqual(result.res.payload, payload);
+  assert.equal(result.nextCalled, nextCalled);
+}
 
-  middleware(req, res, () => {
-    nextCalled = true;
+const roleCases = [
+  {
+    name: 'requireRole returns 401 when the request is not authenticated',
+    middleware: () => requireRole(['STUDENT']),
+    auth: null,
+    statusCode: 401,
+    payload: { error: 'Unauthorized' },
+    nextCalled: false,
+  },
+  {
+    name: 'requireRole returns 403 when authenticated role is missing',
+    middleware: () => requireRole(['STUDENT']),
+    auth: { userId: 44, role: null },
+    statusCode: 403,
+    payload: { error: 'Forbidden' },
+    nextCalled: false,
+  },
+  {
+    name: 'requireRole allows requests whose authenticated role is explicitly permitted',
+    middleware: () => requireRole(['TEACHER', 'ADMIN']),
+    auth: { userId: 55, role: 'teacher' },
+    statusCode: null,
+    payload: null,
+    nextCalled: true,
+  },
+];
+
+for (const testCase of roleCases) {
+  test(testCase.name, () => {
+    expectMiddlewareResult(runMiddleware(testCase.middleware(), testCase.auth), testCase.statusCode, testCase.payload, testCase.nextCalled);
   });
-
-  assert.equal(res.statusCode, 403);
-  assert.deepEqual(res.payload, { error: 'Forbidden' });
-  assert.equal(nextCalled, false);
-});
-
-test('requireRole allows requests whose authenticated role is explicitly permitted', () => {
-  const middleware = requireRole(['TEACHER', 'ADMIN']);
-  const req = {
-    auth: {
-      userId: 55,
-      role: 'teacher',
-    },
-  };
-  const res = createResponse();
-  let nextCalled = false;
-
-  middleware(req, res, () => {
-    nextCalled = true;
-  });
-
-  assert.equal(res.statusCode, null);
-  assert.equal(res.payload, null);
-  assert.equal(nextCalled, true);
-});
+}
 
 test('getPermissionsForActor maps functional management role names to admin permissions', () => {
   const permissions = getPermissionsForActor({
@@ -114,142 +110,90 @@ test('getPermissionsForActor maps functional management role names to admin perm
   assert.equal(permissions.includes(APP_PERMISSIONS.TEACHER_PORTAL_ACCESS), false);
 });
 
-test('requirePermission returns 401 when the request is not authenticated', () => {
-  const middleware = requirePermission(APP_PERMISSIONS.MARKETPLACE_ACCESS);
-  const req = {};
-  const res = createResponse();
-  let nextCalled = false;
+const permissionCases = [
+  {
+    name: 'requirePermission returns 401 when the request is not authenticated',
+    middleware: () => requirePermission(APP_PERMISSIONS.MARKETPLACE_ACCESS),
+    auth: null,
+    statusCode: 401,
+    payload: { error: 'Unauthorized' },
+    nextCalled: false,
+  },
+  {
+    name: 'requirePermission returns 403 when role permissions do not include the required permission',
+    middleware: () => requirePermission(APP_PERMISSIONS.ADMIN_PORTAL_ACCESS),
+    auth: { userId: 77, role: 'student' },
+    statusCode: 403,
+    payload: { error: 'Forbidden' },
+    nextCalled: false,
+  },
+  {
+    name: 'requirePermission allows requests when role has the expected permission',
+    middleware: () => requirePermission(APP_PERMISSIONS.ADMIN_PORTAL_ACCESS),
+    auth: { userId: 78, role: 'Direção' },
+    statusCode: null,
+    payload: null,
+    nextCalled: true,
+  },
+];
 
-  middleware(req, res, () => {
-    nextCalled = true;
+for (const testCase of permissionCases) {
+  test(testCase.name, () => {
+    expectMiddlewareResult(runMiddleware(testCase.middleware(), testCase.auth), testCase.statusCode, testCase.payload, testCase.nextCalled);
   });
+}
 
-  assert.equal(res.statusCode, 401);
-  assert.deepEqual(res.payload, { error: 'Unauthorized' });
-  assert.equal(nextCalled, false);
-});
+const allPermissionCases = [
+  {
+    name: 'requireAllPermissions returns 403 when at least one permission is missing',
+    middleware: () => requireAllPermissions(
+      APP_PERMISSIONS.AUTHENTICATED_ACCESS,
+      APP_PERMISSIONS.ADMIN_PORTAL_ACCESS
+    ),
+    auth: { userId: 79, role: 'teacher' },
+    statusCode: 403,
+    payload: { error: 'Forbidden' },
+    nextCalled: false,
+  },
+  {
+    name: 'requireAllPermissions allows requests only when all permissions are present',
+    middleware: () => requireAllPermissions(
+      APP_PERMISSIONS.AUTHENTICATED_ACCESS,
+      APP_PERMISSIONS.STUDENT_PORTAL_ACCESS,
+      APP_PERMISSIONS.INVENTORY_ACCESS
+    ),
+    auth: { userId: 80, role: 'student' },
+    statusCode: null,
+    payload: null,
+    nextCalled: true,
+  },
+];
 
-test('requirePermission returns 403 when role permissions do not include the required permission', () => {
-  const middleware = requirePermission(APP_PERMISSIONS.ADMIN_PORTAL_ACCESS);
-  const req = {
-    auth: {
-      userId: 77,
-      role: 'student',
-    },
-  };
-  const res = createResponse();
-  let nextCalled = false;
-
-  middleware(req, res, () => {
-    nextCalled = true;
+for (const testCase of allPermissionCases) {
+  test(testCase.name, () => {
+    expectMiddlewareResult(runMiddleware(testCase.middleware(), testCase.auth), testCase.statusCode, testCase.payload, testCase.nextCalled);
   });
+}
 
-  assert.equal(res.statusCode, 403);
-  assert.deepEqual(res.payload, { error: 'Forbidden' });
-  assert.equal(nextCalled, false);
-});
+const adminRoleCases = [
+  {
+    name: 'requireAdminRole accepts functional management labels mapped to admin',
+    auth: { userId: 81, role: 'Direction' },
+    statusCode: null,
+    payload: null,
+    nextCalled: true,
+  },
+  {
+    name: 'requireAdminRole rejects non-admin roles',
+    auth: { userId: 82, role: 'teacher' },
+    statusCode: 403,
+    payload: { error: 'Forbidden' },
+    nextCalled: false,
+  },
+];
 
-test('requirePermission allows requests when role has the expected permission', () => {
-  const middleware = requirePermission(APP_PERMISSIONS.ADMIN_PORTAL_ACCESS);
-  const req = {
-    auth: {
-      userId: 78,
-      role: 'Direção',
-    },
-  };
-  const res = createResponse();
-  let nextCalled = false;
-
-  middleware(req, res, () => {
-    nextCalled = true;
+for (const testCase of adminRoleCases) {
+  test(testCase.name, () => {
+    expectMiddlewareResult(runMiddleware(requireAdminRole, testCase.auth), testCase.statusCode, testCase.payload, testCase.nextCalled);
   });
-
-  assert.equal(res.statusCode, null);
-  assert.equal(res.payload, null);
-  assert.equal(nextCalled, true);
-});
-
-test('requireAllPermissions returns 403 when at least one permission is missing', () => {
-  const middleware = requireAllPermissions(
-    APP_PERMISSIONS.AUTHENTICATED_ACCESS,
-    APP_PERMISSIONS.ADMIN_PORTAL_ACCESS
-  );
-  const req = {
-    auth: {
-      userId: 79,
-      role: 'teacher',
-    },
-  };
-  const res = createResponse();
-  let nextCalled = false;
-
-  middleware(req, res, () => {
-    nextCalled = true;
-  });
-
-  assert.equal(res.statusCode, 403);
-  assert.deepEqual(res.payload, { error: 'Forbidden' });
-  assert.equal(nextCalled, false);
-});
-
-test('requireAllPermissions allows requests only when all permissions are present', () => {
-  const middleware = requireAllPermissions(
-    APP_PERMISSIONS.AUTHENTICATED_ACCESS,
-    APP_PERMISSIONS.STUDENT_PORTAL_ACCESS,
-    APP_PERMISSIONS.INVENTORY_ACCESS
-  );
-  const req = {
-    auth: {
-      userId: 80,
-      role: 'student',
-    },
-  };
-  const res = createResponse();
-  let nextCalled = false;
-
-  middleware(req, res, () => {
-    nextCalled = true;
-  });
-
-  assert.equal(res.statusCode, null);
-  assert.equal(res.payload, null);
-  assert.equal(nextCalled, true);
-});
-
-test('requireAdminRole accepts functional management labels mapped to admin', () => {
-  const req = {
-    auth: {
-      userId: 81,
-      role: 'Direction',
-    },
-  };
-  const res = createResponse();
-  let nextCalled = false;
-
-  requireAdminRole(req, res, () => {
-    nextCalled = true;
-  });
-
-  assert.equal(res.statusCode, null);
-  assert.equal(res.payload, null);
-  assert.equal(nextCalled, true);
-});
-
-test('requireAdminRole rejects non-admin roles', () => {
-  const req = {
-    auth: {
-      userId: 82,
-      role: 'teacher',
-    },
-  };
-  const res = createResponse();
-  let nextCalled = false;
-
-  requireAdminRole(req, res, () => {
-    nextCalled = true;
-  });
-
-  assert.equal(res.statusCode, 403);
-  assert.deepEqual(res.payload, { error: 'Forbidden' });
-  assert.equal(nextCalled, false);
-});
+}

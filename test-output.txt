@@ -1,0 +1,136 @@
+
+> gestartes-api@1.0.0 test:node
+> node --test test/unit/*.test.js test/integration/*.test.js
+
+✔ GET /admin/dashboard returns dashboard KPIs, occupancy heatmap and notices (57.1262ms)
+✔ POST /admin/sessions returns 201 for valid payload (127.5898ms)
+✔ POST /admin/sessions returns 409 for studio schedule conflict (28.2163ms)
+✔ POST /admin/sessions returns 409 for teacher double booking (15.2651ms)
+✔ POST /admin/sessions returns 409 when teacher is absent (15.6253ms)
+﹣ Coaching availability integration tests are skipped unless RUN_DB_INTEGRATION_TESTS=true (6.4464ms) # SKIP
+﹣ Core endpoint integration tests are skipped unless RUN_DB_INTEGRATION_TESTS=true (4.9868ms) # SKIP
+◇ injected env (27) from .env // tip: ⌘ suppress logs { quiet: true }
+✔ inventory endpoints require authentication (49.8449ms)
+✔ teacher can list and filter inventory items (36.8249ms)
+✔ teacher can filter inventory items by status (4.7766ms)
+✔ teacher can filter inventory items by category and price range (5.4423ms)
+✔ teacher inventory alias reuses the shared inventory router (4.3383ms)
+✔ teacher can read inventory item detail (4.0901ms)
+[32minfo[39m: [Inventory] Rental created {"endDate":"2026-04-24T10:00:00.000Z","inventoryItemId":1,"rentalId":900,"renterId":212,"service":"gestArtes-api","startDate":"2026-04-21T10:00:00.000Z","timestamp":"2026-05-11T22:49:52.452Z"}
+✔ teacher can create a symbolic checkout rental (34.5644ms)
+✔ teacher can list their own rental history (3.848ms)
+[32minfo[39m: [Inventory] Rental created {"inventoryItemId":1,"rentalId":900,"renterId":215,"service":"gestArtes-api","startDate":"2026-04-21T10:00:00.000Z","timestamp":"2026-05-11T22:49:52.468Z"}
+[31merror[39m: Unhandled request error Artigo sem stock disponível para aluguer {"method":"POST","path":"/inventory/rentals","service":"gestArtes-api","stack":"Error: Artigo sem stock disponível para aluguer\n    at createHttpError (C:\\Users\\pedro\\OneDrive\\Documentos\\IPCA\\Programação\\gestArtes\\gestArtes-api\\src\\utils\\http-error.js:9:17)\n    at ensureItemCanBeRented (C:\\Users\\pedro\\OneDrive\\Documentos\\IPCA\\Programação\\gestArtes\\gestArtes-api\\src\\services\\inventory.service.js:534:11)\n    at runNextTicks (node:internal/process/task_queues:65:5)\n    at process.processImmediate (node:internal/timers:472:9)\n    at async prisma.$transaction.isolationLevel (C:\\Users\\pedro\\OneDrive\\Documentos\\IPCA\\Programação\\gestArtes\\gestArtes-api\\src\\services\\inventory.service.js:549:5)","timestamp":"2026-05-11T22:49:52.471Z"}
+✔ symbolic checkout serializes concurrent reservations for the same item (12.0429ms)
+[31merror[39m: Unhandled request error Artigo sem stock disponível para aluguer {"method":"POST","path":"/inventory/rentals","service":"gestArtes-api","stack":"Error: Artigo sem stock disponível para aluguer\n    at createHttpError (C:\\Users\\pedro\\OneDrive\\Documentos\\IPCA\\Programação\\gestArtes\\gestArtes-api\\src\\utils\\http-error.js:9:17)\n    at ensureItemCanBeRented (C:\\Users\\pedro\\OneDrive\\Documentos\\IPCA\\Programação\\gestArtes\\gestArtes-api\\src\\services\\inventory.service.js:534:11)\n    at process.processTicksAndRejections (node:internal/process/task_queues:104:5)\n    at async prisma.$transaction.isolationLevel (C:\\Users\\pedro\\OneDrive\\Documentos\\IPCA\\Programação\\gestArtes\\gestArtes-api\\src\\services\\inventory.service.js:549:5)","timestamp":"2026-05-11T22:49:52.478Z"}
+✔ symbolic checkout rejects unavailable inventory (6.37ms)
+[31merror[39m: Unhandled request error Método de pagamento inválido {"method":"POST","path":"/inventory/rentals","service":"gestArtes-api","stack":"Error: Método de pagamento inválido\n    at createHttpError (C:\\Users\\pedro\\OneDrive\\Documentos\\IPCA\\Programação\\gestArtes\\gestArtes-api\\src\\utils\\http-error.js:9:17)\n    at ensureActivePaymentMethod (C:\\Users\\pedro\\OneDrive\\Documentos\\IPCA\\Programação\\gestArtes\\gestArtes-api\\src\\services\\inventory.service.js:486:11)\n    at process.processTicksAndRejections (node:internal/process/task_queues:104:5)\n    at async prisma.$transaction.isolationLevel (C:\\Users\\pedro\\OneDrive\\Documentos\\IPCA\\Programação\\gestArtes\\gestArtes-api\\src\\services\\inventory.service.js:548:27)","timestamp":"2026-05-11T22:49:52.484Z"}
+✔ symbolic checkout rejects inactive payment methods (5.7614ms)
+✔ inventory endpoints forbid roles outside student and teacher (3.3748ms)
+﹣ Inventory integration tests are skipped unless RUN_DB_INTEGRATION_TESTS=true (0.2195ms) # SKIP
+◇ injected env (27) from .env // tip: ⌘ enable debugging { debug: true }
+﹣ Testes de integração de Perdidos e Achados ignorados salvo RUN_DB_INTEGRATION_TESTS=true (0.8176ms) # SKIP
+◇ injected env (27) from .env // tip: ◈ secrets for agents [www.dotenvx.com]
+﹣ Marketplace integration tests are skipped unless RUN_DB_INTEGRATION_TESTS=true (0.8804ms) # SKIP
+◇ injected env (27) from .env // tip: ◈ secrets for agents [www.dotenvx.com]
+﹣ Notification integration tests are skipped unless RUN_DB_INTEGRATION_TESTS=true (0.6402ms) # SKIP
+◇ injected env (20) from .env // tip: ⌘ suppress logs { quiet: true }
+◇ injected env (0) from .env // tip: ⌘ override existing { override: true }
+[0mGET /health [32m200[0m 3.602 ms - 15[0m
+✔ health endpoint exposes security headers and allows the configured origin (65.2794ms)
+[0mGET /health [32m200[0m 0.400 ms - 15[0m
+✔ health endpoint allows unlisted origins in test mode (6.6732ms)
+[0mGET /docs [36m308[0m 1.345 ms - 41[0m
+[0mGET /docs/ [32m200[0m 3.197 ms - 3350[0m
+✔ docs redirects to trailing slash and serves nonce-hardened HTML (14.2166ms)
+✔ swagger helper rewrites every hidden svg placeholder (0.4028ms)
+[0mGET /student/profile [33m401[0m 0.962 ms - 29[0m
+✔ student profile endpoint requires authentication (6.032ms)
+[0mPUT /student/profile [33m401[0m 0.995 ms - 29[0m
+[0mPATCH /student/profile [33m401[0m 0.493 ms - 29[0m
+✔ student profile write attempts still require authentication (7.7975ms)
+[33mwarn[39m: CSRF validation failed {"category":"security","event":"csrf_validation_failed","ip":"::ffff:127.0.0.1","method":"POST","origin":"http://evil.example","path":"/auth/logout","referer":null,"service":"gestArtes-api","timestamp":"2026-05-11T22:49:53.814Z","userAgent":"node"}
+✔ csrf protection blocks state-changing requests from untrusted origins (7.0901ms)
+[32minfo[39m: Authentication logout completed {"category":"security","event":"auth_logout","ip":"::ffff:127.0.0.1","service":"gestArtes-api","timestamp":"2026-05-11T22:49:53.821Z","userAgent":"node","userId":null}
+[0mPOST /auth/logout [32m204[0m 1.569 ms - -[0m
+✔ csrf protection allows state-changing requests from configured origins (4.9807ms)
+✔ socket handshake allows configured origin in CORS headers (6.7002ms)
+✔ socket handshake omits CORS allow-origin for unlisted origin (2.7913ms)
+◇ injected env (27) from .env // tip: ◈ secrets for agents [www.dotenvx.com]
+﹣ Teacher admission integration tests are skipped unless RUN_DB_INTEGRATION_TESTS=true (0.7018ms) # SKIP
+✔ createUser maps Direction to admin and creates a role assignment (3.7797ms)
+✔ createUser creates a student user with an auto-generated student number (0.5834ms)
+✔ createUser requires birth date when creating a student user (1.0525ms)
+✔ listUsers normalizes stored business roles to app roles (0.3409ms)
+✔ updateUser updates student number for student users (0.8485ms)
+✖ updateUserRoles replaces role assignments and creates student profile when needed (1.3129ms)
+✔ deleteUser performs a soft delete (0.367ms)
+✔ getPostSessionValidations returns the validation queue payload (0.2236ms)
+✔ finalizeValidation validates the session id and forwards the admin user id (0.3808ms)
+✔ getListings returns serialized marketplace listings for admin moderation (4.5338ms)
+✔ approveListing sets listing as active and clears rejection reason (0.7683ms)
+✔ rejectListing stores rejection reason and deactivates listing (0.447ms)
+✔ deleteListing returns 204 and deactivates listing (0.447ms)
+✔ approveListing yields 404 when listing does not exist (0.702ms)
+✔ finalizeSessionValidation accepts one actor confirmation plus admin final validation (2.4715ms)
+✔ finalizeSessionValidation does not treat unrelated teacher validations as completion confirmation (0.7173ms)
+✔ finalizeSessionValidation rejects sessions already finalized by admin (0.2859ms)
+✔ approveSession moves Pending_Approval sessions to Scheduled (3.096ms)
+✔ approveSession does not treat completion-confirmation pending as management approval (0.7121ms)
+✔ rejectSession moves Pending_Approval sessions to Cancelled_Rejected (1.4453ms)
+✔ listPostSessionValidations: returns empty array when query returns no rows (1.7212ms)
+✔ listPostSessionValidations: maps raw rows to expected shape (0.4106ms)
+✔ listPostSessionValidations: falls back to em dash when teacherName is blank (0.2179ms)
+✔ finalizeSessionValidation: throws 404 when session does not exist (0.8657ms)
+✔ finalizeSessionValidation: throws 409 when session has no teacher confirmation (0.4602ms)
+✔ finalizeSessionValidation: throws 409 when session has no student confirmation (0.259ms)
+✔ finalizeSessionValidation: throws 409 when session is already finalized (0.2862ms)
+✔ finalizeSessionValidation: throws 500 when finalization step is not configured (0.3423ms)
+✔ finalizeSessionValidation: succeeds and returns session + financialEntry (0.457ms)
+◇ injected env (27) from .env // tip: ⌘ custom filepath { path: '/custom/path/.env' }
+✔ requireRole returns 401 when the request is not authenticated (1.7955ms)
+✔ requireRole returns 403 when authenticated role is missing (0.2483ms)
+✔ requireRole allows requests whose authenticated role is explicitly permitted (0.1684ms)
+✔ getPermissionsForActor maps functional management role names to admin permissions (0.2663ms)
+✔ requirePermission returns 401 when the request is not authenticated (0.2768ms)
+✔ requirePermission returns 403 when role permissions do not include the required permission (0.2099ms)
+✔ requirePermission allows requests when role has the expected permission (0.233ms)
+✔ requireAllPermissions returns 403 when at least one permission is missing (0.2703ms)
+✔ requireAllPermissions allows requests only when all permissions are present (0.2509ms)
+✔ requireAdminRole accepts functional management labels mapped to admin (0.2783ms)
+✔ requireAdminRole rejects non-admin roles (0.1271ms)
+✖ submits recurring availability and summarizes slots (2.7322ms)
+✖ updates punctual availability in place (0.2842ms)
+✔ creates and lists pending exceptions (1.0768ms)
+✔ creates exception and auto-cancels overlapping pending sessions with notifications (1.4224ms)
+✔ fails when pending availability status is not configured (0.6225ms)
+✖ submits semester availability and summarizes slots (0.2519ms)
+✖ submits multiple slots in a single request (0.3002ms)
+✖ getAvailability returns all slots for a teacher (0.2453ms)
+✖ updates recurring availability in place (1.7187ms)
+✖ rejects update when requested mode differs from existing mode (0.4279ms)
+✔ rejects update for non-existent availability id (0.7932ms)
+✔ rejects weekly slot with end time not after start time (0.4028ms)
+✔ rejects slot with conflicting semester and weekly fields and no explicit mode (0.394ms)
+✔ getPendingExceptions returns empty list when no pending exceptions exist (0.1796ms)
+✔ notifications use human-readable dates in absence cancellation messages (0.5107ms)
+✓ All coaching availability search tests passed
+✔ Date range validation - rejects invalid start date (2.522ms)
+✔ Date range validation - rejects end date before start date (0.2866ms)
+✔ Date range - returns correct range bounds in response (0.4831ms)
+✔ Teacher filter - filters by teacher ID (1.4196ms)
+✔ Teacher filter - invalid teacher ID returns error (0.2257ms)
+✔ Modality filter - filters by modality ID (0.4052ms)
+✔ Modality filter - invalid modality ID returns error (0.2191ms)
+✔ Combined filters - teacher AND modality (0.2996ms)
+✔ Compatibilidade retroativa - o parâmetro weekStart continua a funcionar (0.3433ms)
+✔ Compatibilidade retroativa - o intervalo de datas tem precedência sobre weekStart (0.3317ms)
+✔ Empty results - no teachers found returns empty array (0.2626ms)
+✔ No active academic year returns error (0.1775ms)
+✔ Estrutura da resposta - inclui todos os campos esperados (0.5648ms)
+✔ createSessionInitiative uses provided pricingRateId (3.2585ms)
+✔ createSessionInitiative uses default pricing rate when pricingRateId is omitted (1.3152ms)
+✔ createSessionInitiative returns 500 when pending status is not configured (1.165ms)
+✔ createBooking uses pending approval status instead of completion confirmation pending status (4.2859ms)
+✔ createSessionInitiative returns 500 when no default pricing rate exists (0.5717ms)
+✔ listAdminUserIds deduplicates and filters invalid IDs (0.381ms)

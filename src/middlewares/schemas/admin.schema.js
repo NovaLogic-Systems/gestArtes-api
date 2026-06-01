@@ -5,8 +5,30 @@
  * @project GestArtes - Projeto 50+10 para Entartes
  */
 
-const { body, param } = require('express-validator');
+const { body, param, query } = require('express-validator');
 const { toAppRole } = require('../../utils/roles');
+
+const listUsersQuerySchema = [
+    query('search')
+        .optional()
+        .trim()
+        .isLength({ max: 200 }).withMessage('Pesquisa inválida'),
+    query('role')
+        .optional()
+        .trim()
+        .custom((value) => Boolean(toAppRole(value))).withMessage('Role inválida'),
+    query('status')
+        .optional()
+        .isIn(['active', 'suspended']).withMessage('Estado inválido'),
+    query('limit')
+        .optional()
+        .isInt({ min: 1, max: 100 }).withMessage('limit deve estar entre 1 e 100')
+        .toInt(),
+    query('offset')
+        .optional()
+        .isInt({ min: 0 }).withMessage('offset inválido')
+        .toInt(),
+];
 
 const createUserSchema = [
     body('firstName')
@@ -40,11 +62,26 @@ const createUserSchema = [
         .optional({ values: 'falsy' })
         .isLength({ min: 2, max: 100 }).withMessage('Número de aluno inválido')
         .trim()
-        .escape(),
+        .escape()
+        .custom((value, { req }) => {
+            const role = toAppRole(req.body?.role);
+            const studentNumber = String(value || '').trim();
+            if (role !== 'student' && studentNumber) {
+                throw new Error('Número de aluno só é aplicável a utilizadores aluno');
+            }
+            return true;
+        }),
     body('birthDate')
         .optional({ values: 'falsy' })
         .isISO8601().withMessage('Data de nascimento inválida')
-        .toDate(),
+        .toDate()
+        .custom((value, { req }) => {
+            const role = toAppRole(req.body?.role);
+            if (role === 'student' && !value) {
+                throw new Error('Data de nascimento é obrigatória para alunos');
+            }
+            return true;
+        }),
     body('guardianName')
         .optional({ values: 'falsy' })
         .isLength({ min: 2, max: 150 }).withMessage('Nome do encarregado inválido')
@@ -55,17 +92,6 @@ const createUserSchema = [
         .isLength({ min: 3, max: 20 }).withMessage('Telefone do encarregado inválido')
         .trim()
         .escape(),
-    body()
-        .custom((value) => {
-            const role = toAppRole(value?.role);
-            const studentNumber = String(value?.studentNumber || '').trim();
-
-            if (role !== 'student' && studentNumber) {
-                throw new Error('Número de aluno só é aplicável a utilizadores aluno');
-            }
-
-            return true;
-        }),
 ];
 
 const userIdParam = param('id')
@@ -202,6 +228,7 @@ const resetUserPasswordSchema = [
 module.exports = {
     createUserSchema,
     deleteUserSchema,
+    listUsersQuerySchema,
     resetUserPasswordSchema,
     updateUserRolesSchema,
     updateUserSchema,

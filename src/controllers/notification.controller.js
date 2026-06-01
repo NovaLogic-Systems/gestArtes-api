@@ -12,10 +12,13 @@ const { getAuthenticatedUserId } = require('../utils/auth-context');
 
 const ALLOWED_NOTIFICATION_TYPES = new Set([
     'coaching',
+    'marketplace',
     'schedule',
     'system',
     'penalty',
     'join_request',
+    'inventory',
+    'account',
 ]);
 
 const BROADCAST_ROLE_TO_APP_ROLE = Object.freeze({
@@ -58,7 +61,7 @@ const sendNotification = async (req, { userId, type, message, title }) => {
     }
 
     const normalizedTitle = typeof title === 'string' ? title.trim() : undefined;
-    const notification = await notificationService.create(parsedUserId, message.trim(), normalizedTitle);
+    const notification = await notificationService.create(parsedUserId, message.trim(), normalizedTitle, normalizedType);
 
     const io = req.app.get('io');
     if (io) {
@@ -99,7 +102,7 @@ const getBroadcastRecipients = async (normalizedRole) => {
 
 const broadcastNotification = async (req, res) => {
     try {
-        const { message, targetRole, title } = req.body;
+        const { message, targetRole, title, type } = req.body;
 
         if (typeof message !== 'string' || !message.trim()) {
             return res.status(400).json({ error: 'Invalid message' });
@@ -112,16 +115,22 @@ const broadcastNotification = async (req, res) => {
             return res.status(400).json({ error: 'Invalid targetRole' });
         }
 
+        const normalizedType = String(type || 'system').trim().toLowerCase();
+        if (!ALLOWED_NOTIFICATION_TYPES.has(normalizedType)) {
+            return res.status(400).json({ error: 'Invalid type' });
+        }
+
         const notification = {
             title: typeof title === 'string' && title.trim() ? title.trim() : undefined,
             message: message.trim(),
+            type: normalizedType,
             targetRole: normalizedRole,
             createdAt: new Date().toISOString(),
         };
 
         const recipients = await getBroadcastRecipients(normalizedRole);
         const createdNotifications = await Promise.all(
-            recipients.map((recipient) => notificationService.create(recipient.UserID, message.trim(), notification.title))
+            recipients.map((recipient) => notificationService.create(recipient.UserID, message.trim(), notification.title, normalizedType))
         );
 
         const io = req.app.get('io');

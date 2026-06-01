@@ -41,8 +41,9 @@ async function getSummary(req, res, next) {
 
 async function getRevenue(req, res, next) {
   try {
-    const { year, studentAccountId, studentNumber } = req.query;
-    const result = await financeService.getRevenue({ year, studentAccountId, studentNumber });
+    const { year, periodStart, periodEnd, studentAccountId, studentNumber } = req.query;
+    const targetYear = year || (periodStart ? new Date(periodStart).getFullYear() : new Date().getFullYear());
+    const result = await financeService.getRevenue({ year: targetYear, studentAccountId, studentNumber });
     res.json(result);
   } catch (err) {
     next(err);

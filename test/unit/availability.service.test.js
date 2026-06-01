@@ -6,7 +6,7 @@
 
 const test = require('node:test');
 const assert = require('node:assert/strict');
-const Module = require('node:module');
+const { withPatchedModules } = require('./helpers/moduleLoader');
 
 function createState() {
   return {
@@ -87,9 +87,31 @@ const fakePrisma = {
 
       return found ? buildAvailabilityRow(found) : null;
     },
-    findMany: async ({ where }) => state.availabilityRows
-      .filter((row) => row.TeacherID === where.TeacherID)
-      .map(buildAvailabilityRow),
+    findMany: async ({ where = {}, orderBy } = {}) => {
+      const rows = state.availabilityRows
+        .filter((row) => where.TeacherID == null || row.TeacherID === where.TeacherID)
+        .map(buildAvailabilityRow);
+
+      if (!Array.isArray(orderBy) || orderBy.length === 0) {
+        return rows;
+      }
+
+      return [...rows].sort((left, right) => {
+        for (const clause of orderBy) {
+          const [field, direction] = Object.entries(clause)[0] || [];
+          if (!field) continue;
+
+          const leftValue = left[field];
+          const rightValue = right[field];
+          if (leftValue === rightValue) continue;
+
+          const comparison = leftValue > rightValue ? 1 : -1;
+          return direction === 'desc' ? -comparison : comparison;
+        }
+
+        return 0;
+      });
+    },
     update: async ({ where, data }) => {
       const row = state.availabilityRows.find((item) => item.AvailabilityID === where.AvailabilityID);
       Object.assign(row, data);
@@ -121,6 +143,31 @@ const fakePrisma = {
         IsActive: data.IsActive,
         AcademicYear: state.academicYearById.get(data.AcademicYearID) || null,
       });
+    },
+    findMany: async ({ where = {}, select } = {}) => {
+      const teacherId = where.TeacherAvailability?.TeacherID;
+
+      const rows = [...state.recurringRows.values()]
+        .filter((row) => teacherId === undefined || teacherId === null || state.availabilityRows.some((availability) => availability.AvailabilityID === row.AvailabilityID && availability.TeacherID === teacherId))
+        .filter((row) => where.DayOfWeek === undefined || row.DayOfWeek === where.DayOfWeek)
+        .filter((row) => where.IsActive === undefined || row.IsActive === where.IsActive)
+        .map((row) => ({
+          AvailabilityID: row.AvailabilityID,
+          DayOfWeek: row.DayOfWeek,
+          StartTime: row.StartTime,
+          EndTime: row.EndTime,
+          AcademicYearID: row.AcademicYearID,
+          IsActive: row.IsActive,
+          AcademicYear: row.AcademicYear,
+        }));
+
+      if (!select) {
+        return rows;
+      }
+
+      return rows.map((row) => Object.fromEntries(
+        Object.keys(select).filter((key) => select[key]).map((key) => [key, row[key]])
+      ));
     },
     update: async ({ where, data }) => {
       const row = state.recurringRows.get(where.AvailabilityID);
@@ -189,22 +236,10 @@ const fakePrisma = {
   },
 };
 
-const originalLoad = Module._load;
-Module._load = function patchedLoad(request, parent, isMain) {
-  if (request === '../config/prisma') {
-    return fakePrisma;
-  }
-
-  return originalLoad.call(this, request, parent, isMain);
-};
-
-let availabilityService;
-
-try {
-  availabilityService = require('../../src/services/availability.service');
-} finally {
-  Module._load = originalLoad;
-}
+const availabilityService = withPatchedModules(
+  { '../config/prisma': fakePrisma },
+  () => require('../../src/services/availability.service')
+);
 
 function resetState() {
   state = createState();
@@ -217,8 +252,8 @@ test('submits recurring availability and summarizes slots', async () => {
     mode: 'weekly',
     notes: 'After class hours',
     dayOfWeek: 1,
-    startTime: '09:00',
-    endTime: '11:00',
+    startTime: '19:00',
+    endTime: '21:00',
     academicYearId: 1,
     isActive: true,
   });
@@ -235,17 +270,17 @@ test('updates punctual availability in place', async () => {
 
   await availabilityService.submitAvailability(42, {
     mode: 'semester',
-    startDateTime: '2026-05-01T10:00:00.000Z',
-    endDateTime: '2026-05-01T12:00:00.000Z',
+    startDateTime: '2026-05-01T19:00:00.000Z',
+    endDateTime: '2026-05-01T21:00:00.000Z',
   });
 
   const updated = await availabilityService.updateAvailability(42, 1, {
-    startDateTime: '2026-05-01T10:30:00.000Z',
-    endDateTime: '2026-05-01T12:30:00.000Z',
+    startDateTime: '2026-05-01T19:30:00.000Z',
+    endDateTime: '2026-05-01T21:30:00.000Z',
   });
 
   assert.equal(updated.mode, 'semester');
-  assert.equal(updated.slot.startDateTime.toISOString(), '2026-05-01T10:30:00.000Z');
+  assert.equal(updated.slot.startDateTime.toISOString(), '2026-05-01T19:30:00.000Z');
 });
 
 test('creates and lists pending exceptions', async () => {
@@ -325,15 +360,15 @@ test('submits semester availability and summarizes slots', async () => {
 
   const result = await availabilityService.submitAvailability(42, {
     mode: 'semester',
-    startDateTime: '2026-09-01T08:00:00.000Z',
-    endDateTime: '2026-09-01T10:00:00.000Z',
+    startDateTime: '2026-09-01T19:00:00.000Z',
+    endDateTime: '2026-09-01T21:00:00.000Z',
   });
 
   assert.equal(result.summary.totalSlots, 1);
   assert.equal(result.summary.weeklySlots, 0);
   assert.equal(result.summary.semesterSlots, 1);
   assert.equal(result.availability[0].mode, 'semester');
-  assert.equal(result.availability[0].slot.startDateTime.toISOString(), '2026-09-01T08:00:00.000Z');
+  assert.equal(result.availability[0].slot.startDateTime.toISOString(), '2026-09-01T19:00:00.000Z');
 });
 
 test('submits multiple slots in a single request', async () => {
@@ -341,8 +376,8 @@ test('submits multiple slots in a single request', async () => {
 
   const result = await availabilityService.submitAvailability(42, {
     slots: [
-      { mode: 'weekly', dayOfWeek: 1, startTime: '09:00', endTime: '11:00', academicYearId: 1 },
-      { mode: 'weekly', dayOfWeek: 3, startTime: '14:00', endTime: '16:00', academicYearId: 1 },
+      { mode: 'weekly', dayOfWeek: 1, startTime: '19:00', endTime: '21:00', academicYearId: 1 },
+      { mode: 'weekly', dayOfWeek: 3, startTime: '19:00', endTime: '21:00', academicYearId: 1 },
     ],
   });
 
@@ -356,8 +391,8 @@ test('getAvailability returns all slots for a teacher', async () => {
   await availabilityService.submitAvailability(42, {
     mode: 'weekly',
     dayOfWeek: 2,
-    startTime: '10:00',
-    endTime: '12:00',
+    startTime: '19:00',
+    endTime: '21:00',
     academicYearId: 1,
   });
 
@@ -374,19 +409,19 @@ test('updates recurring availability in place', async () => {
   await availabilityService.submitAvailability(42, {
     mode: 'weekly',
     dayOfWeek: 1,
-    startTime: '09:00',
-    endTime: '11:00',
+    startTime: '19:00',
+    endTime: '21:00',
     academicYearId: 1,
   });
 
   const updated = await availabilityService.updateAvailability(42, 1, {
-    startTime: '10:00',
-    endTime: '12:00',
+    startTime: '20:00',
+    endTime: '21:30',
   });
 
   assert.equal(updated.mode, 'weekly');
-  assert.equal(updated.slot.startTime, '10:00:00');
-  assert.equal(updated.slot.endTime, '12:00:00');
+  assert.equal(updated.slot.startTime, '20:00:00');
+  assert.equal(updated.slot.endTime, '21:30:00');
 });
 
 test('rejects update when requested mode differs from existing mode', async () => {
@@ -395,16 +430,16 @@ test('rejects update when requested mode differs from existing mode', async () =
   await availabilityService.submitAvailability(42, {
     mode: 'weekly',
     dayOfWeek: 1,
-    startTime: '09:00',
-    endTime: '11:00',
+    startTime: '19:00',
+    endTime: '21:00',
     academicYearId: 1,
   });
 
   await assert.rejects(
     () => availabilityService.updateAvailability(42, 1, {
       mode: 'semester',
-      startDateTime: '2026-09-01T08:00:00.000Z',
-      endDateTime: '2026-09-01T10:00:00.000Z',
+      startDateTime: '2026-09-01T19:00:00.000Z',
+      endDateTime: '2026-09-01T21:00:00.000Z',
     }),
     (error) => {
       assert.equal(error.status, 400);

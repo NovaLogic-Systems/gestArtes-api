@@ -69,6 +69,8 @@ const revenueQuerySchema = [
     .optional()
     .isInt({ min: 2000, max: 2100 }).withMessage('year inválido')
     .toInt(),
+  periodStartQuery,
+  periodEndQuery,
   studentAccountIdQuery,
   studentNumberQuery,
 ];

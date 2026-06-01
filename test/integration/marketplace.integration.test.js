@@ -175,8 +175,8 @@ if (!shouldRun) {
     const listBody = await listResponse.json();
     assert.ok(Array.isArray(listBody.listings), 'Listings response should be an array');
     assert.ok(
-      listBody.listings.some((listing) => listing.listingId === createdListingId),
-      'Created listing should be returned in filtered list'
+      !listBody.listings.some((listing) => listing.listingId === createdListingId),
+      'Created listing should be hidden from the public marketplace feed'
     );
 
     const detailResponse = await request(`/marketplace/listings/${createdListingId}`);

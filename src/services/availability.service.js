@@ -12,6 +12,13 @@ const { toTimeOnlyDate, formatTimeOnly } = require('../utils/date');
 
 const PENDING_STATUS_NAME = 'Pending';
 
+function normalizeStatusKey(value) {
+  return String(value || '')
+    .trim()
+    .toLowerCase()
+    .replace(/[^a-z0-9]/g, '');
+}
+
 function isPlainObject(value) {
   return Boolean(value) && typeof value === 'object' && !Array.isArray(value);
 }
@@ -204,6 +211,10 @@ async function findStatusIdByName(tx, modelName, statusName, domainLabel) {
   return existing.StatusID;
 }
 
+function isPendingStatus(statusName) {
+  return normalizeStatusKey(statusName) === normalizeStatusKey(PENDING_STATUS_NAME);
+}
+
 async function fetchAvailabilityById(tx, teacherId, availabilityId) {
   return tx.teacherAvailability.findFirst({
     where: {
@@ -321,6 +332,51 @@ function serializeException(row) {
   };
 }
 
+async function listPendingAbsencesForAdmin() {
+  const pendingStatus = await prisma.teacherAbsenceStatus.findFirst({
+    where: { StatusName: PENDING_STATUS_NAME },
+    select: { StatusID: true },
+  });
+
+  if (!pendingStatus) {
+    throw createHttpError(500, 'Estado de ausência não configurado');
+  }
+
+  const rows = await prisma.teacherAbsence.findMany({
+    where: { StatusID: pendingStatus.StatusID },
+    include: {
+      TeacherAbsenceStatus: {
+        select: {
+          StatusID: true,
+          StatusName: true,
+        },
+      },
+      User_TeacherAbsence_TeacherIDToUser: {
+        select: {
+          UserID: true,
+          FirstName: true,
+          LastName: true,
+          Email: true,
+        },
+      },
+    },
+    orderBy: [
+      { RequestedAt: 'asc' },
+      { AbsenceID: 'asc' },
+    ],
+  });
+
+  return rows.map((row) => ({
+    ...serializeException(row),
+    teacher: {
+      userId: row.User_TeacherAbsence_TeacherIDToUser?.UserID ?? null,
+      firstName: row.User_TeacherAbsence_TeacherIDToUser?.FirstName ?? null,
+      lastName: row.User_TeacherAbsence_TeacherIDToUser?.LastName ?? null,
+      email: row.User_TeacherAbsence_TeacherIDToUser?.Email ?? null,
+    },
+  }));
+}
+
 async function submitAvailability(teacherId, body) {
   // ---- Conflict detection ----
   // Ensure no overlapping recurring slots are created for the same teacher.
@@ -362,9 +418,8 @@ async function submitAvailability(teacherId, body) {
           throw createHttpError(400, 'Slot overlaps with an existing availability');
         }
 
-        const [hourStr, minStr] = slot.startTime.split(':');
-        const h = parseInt(hourStr, 10);
-        const m = parseInt(minStr, 10);
+        const h = slot.startTime.getUTCHours();
+        const m = slot.startTime.getUTCMinutes();
         const isWeekday = slot.dayOfWeek >= 1 && slot.dayOfWeek <= 5;
         const isSaturday = slot.dayOfWeek === 6;
         const isSunday = slot.dayOfWeek === 0;
@@ -378,10 +433,10 @@ async function submitAvailability(teacherId, body) {
           throw createHttpError(400, 'Fora do horario de funcionamento permitido');
         }
       } else if (slot.mode === 'semester') {
-        const d = new Date(slot.startDateTime);
-        const h = d.getHours();
-        const m = d.getMinutes();
-        const jsDay = d.getDay();
+        const d = slot.startDateTime;
+        const h = d.getUTCHours();
+        const m = d.getUTCMinutes();
+        const jsDay = d.getUTCDay();
 
         const isWeekday = jsDay >= 1 && jsDay <= 5;
         const isSaturday = jsDay === 6;
@@ -631,7 +686,7 @@ async function getPendingExceptions(teacherId) {
 
 async function listPendingAvailabilityForAdmin() {
   const pendingStatus = await prisma.teacherAvailabilityStatus.findFirst({
-    where: { StatusName: 'Pending' },
+    where: { StatusName: PENDING_STATUS_NAME },
     select: { StatusID: true },
   });
 
@@ -694,7 +749,7 @@ async function reviewAvailability(availabilityId, adminUserId, decision, reviewN
       throw createHttpError(404, 'Disponibilidade nao encontrada');
     }
 
-    if (existing.TeacherAvailabilityStatus?.StatusName !== 'Pending') {
+    if (!isPendingStatus(existing.TeacherAvailabilityStatus?.StatusName)) {
       throw createHttpError(409, 'Disponibilidade ja foi revista');
     }
 
@@ -726,10 +781,50 @@ async function reviewAvailability(availabilityId, adminUserId, decision, reviewN
   });
 }
 
+async function cancelAvailability(teacherId, availabilityId) {
+  if (!Number.isInteger(availabilityId) || availabilityId <= 0) {
+    throw createHttpError(400, 'Availability id invalido');
+  }
+
+  return prisma.$transaction(async (tx) => {
+    const existing = await fetchAvailabilityById(tx, teacherId, availabilityId);
+
+    if (!existing) {
+      throw createHttpError(404, 'Disponibilidade nao encontrada');
+    }
+
+    if (existing.TeacherAvailabilityPunctual) {
+      const punctual = existing.TeacherAvailabilityPunctual;
+      try {
+        await cancelPendingBookingsForTeacherAbsence(
+          tx,
+          teacherId,
+          punctual.StartDateTime,
+          punctual.EndDateTime,
+        );
+      } catch {
+        // best effort - continue with delete even if cascade fails
+      }
+      await tx.teacherAvailabilityPunctual.delete({ where: { AvailabilityID: availabilityId } });
+    }
+    if (existing.TeacherAvailabilityRecurring) {
+      await tx.teacherAvailabilityRecurring.delete({ where: { AvailabilityID: availabilityId } });
+    }
+
+    await tx.teacherAvailability.delete({
+      where: { AvailabilityID: availabilityId },
+    });
+
+    return { success: true };
+  });
+}
+
 module.exports = {
+  cancelAvailability,
   createException,
   getAvailability,
   getPendingExceptions,
+  listPendingAbsencesForAdmin,
   listPendingAvailabilityForAdmin,
   reviewAvailability,
   submitAvailability,

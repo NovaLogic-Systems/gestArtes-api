@@ -6,7 +6,7 @@
 
 const test = require('node:test');
 const assert = require('node:assert/strict');
-const Module = require('node:module');
+const { withPatchedModules } = require('./helpers/moduleLoader');
 
 // ---------------------------------------------------------------------------
 // State factory
@@ -157,18 +157,10 @@ const fakePrisma = {
 // Module patching
 // ---------------------------------------------------------------------------
 
-const originalLoad = Module._load;
-Module._load = function patchedLoad(request, parent, isMain) {
-  if (request === '../config/prisma') return fakePrisma;
-  return originalLoad.call(this, request, parent, isMain);
-};
-
-let joinRequestService;
-try {
-  joinRequestService = require('../../src/services/joinRequest.service');
-} finally {
-  Module._load = originalLoad;
-}
+const joinRequestService = withPatchedModules(
+  { '../config/prisma': fakePrisma },
+  () => require('../../src/services/joinRequest.service')
+);
 
 function resetState(overrides = {}) {
   state = { ...buildState(), ...overrides };

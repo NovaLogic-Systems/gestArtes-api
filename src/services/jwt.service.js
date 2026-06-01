@@ -77,8 +77,9 @@ function parseTokenTtl(ttl) {
   return amount * (multipliers[unit] || 0);
 }
 
-function createAccessTokenPayload(user, role) {
+function createAccessTokenPayload(user, role, roles = []) {
   const normalizedRole = normalizeRoleClaim(role);
+  const normalizedRoles = roles.map(normalizeRoleClaim).filter(Boolean);
 
   return {
     sub: String(user.UserID),
@@ -88,7 +89,7 @@ function createAccessTokenPayload(user, role) {
     firstName: user.FirstName,
     lastName: user.LastName,
     role: normalizedRole,
-    roles: normalizedRole ? [normalizedRole] : [],
+    roles: normalizedRoles.length > 0 ? normalizedRoles : (normalizedRole ? [normalizedRole] : []),
     tokenType: 'access',
   };
 }
@@ -102,12 +103,11 @@ function createRefreshTokenPayload(userId, jti) {
   };
 }
 
-function signAccessToken(user, role) {
-  return jwt.sign(createAccessTokenPayload(user, role), ACCESS_TOKEN_SECRET, {
+function signAccessToken(user, role, roles = []) {
+  return jwt.sign(createAccessTokenPayload(user, role, roles), ACCESS_TOKEN_SECRET, {
     expiresIn: ACCESS_TOKEN_TTL,
     issuer: JWT_ISSUER,
     audience: JWT_AUDIENCE,
-    jwtid: crypto.randomUUID(),
   });
 }
 

@@ -149,12 +149,70 @@ function toRentalStatus(record) {
     return 'condition-checked';
   }
 
+  // If approval status missing, the rental is awaiting admin approval
+  if (record.ApprovalStatus === null || record.ApprovalStatus === undefined) {
+    return 'awaiting-approval';
+  }
+
+  if (String(record.ApprovalStatus).toLowerCase() === 'rejected') {
+    return 'rejected';
+  }
+
+  if (String(record.ApprovalStatus).toLowerCase() === 'approved') {
+    return 'approved';
+  }
+
+  // Fallback
   return 'pending';
 }
 
 function buildRentalReference(transactionId, startDate) {
   const year = new Date(startDate).getUTCFullYear();
   return `INV-R-${year}-${String(transactionId).padStart(4, '0')}`;
+}
+
+function buildRentalTransactionSelect() {
+  return {
+    TransactionID: true,
+    InventoryItemID: true,
+    RenterID: true,
+    StartDate: true,
+    EndDate: true,
+    PaymentMethodID: true,
+    IsCompleted: true,
+    ConditionChecked: true,
+    ReturnVerified: true,
+    ReturnConditionStatus: true,
+    ReturnConditionNotes: true,
+    ReturnVerifiedAt: true,
+    ApprovalStatus: true,
+    ApprovedAt: true,
+    ApprovalNotes: true,
+    InventoryItem: {
+      select: {
+        InventoryItemID: true,
+        ItemName: true,
+        PhotoURL: true,
+        SymbolicFee: true,
+        IsSchoolOwned: true,
+      },
+    },
+    PaymentMethod: {
+      select: {
+        PaymentMethodID: true,
+        MethodName: true,
+      },
+    },
+    User: {
+      select: {
+        UserID: true,
+        FirstName: true,
+        LastName: true,
+        Email: true,
+        PhoneNumber: true,
+      },
+    },
+  };
 }
 
 function serializeItem(item, activeRentalsCount) {
@@ -221,6 +279,11 @@ function serializeRental(record) {
       conditionStatus: record.ReturnConditionStatus ?? null,
       conditionNotes: record.ReturnConditionNotes ?? null,
       verifiedAt: record.ReturnVerifiedAt ?? null,
+    },
+    approval: {
+      status: record.ApprovalStatus ?? null,
+      approvedAt: record.ApprovedAt ?? null,
+      notes: record.ApprovalNotes ?? null,
     },
   };
 }
@@ -551,31 +614,7 @@ async function listRentalsByRenterId(renterId) {
     where: {
       RenterID: renterId,
     },
-    include: {
-      InventoryItem: {
-        select: {
-          InventoryItemID: true,
-          ItemName: true,
-          PhotoURL: true,
-          SymbolicFee: true,
-        },
-      },
-      PaymentMethod: {
-        select: {
-          PaymentMethodID: true,
-          MethodName: true,
-        },
-      },
-      User: {
-        select: {
-          UserID: true,
-          FirstName: true,
-          LastName: true,
-          Email: true,
-          PhoneNumber: true,
-        },
-      },
-    },
+    select: buildRentalTransactionSelect(),
     orderBy: {
       TransactionID: 'desc',
     },
@@ -589,32 +628,7 @@ async function listActiveSchoolRentals() {
     where: {
       IsCompleted: false,
     },
-    include: {
-      InventoryItem: {
-        select: {
-          InventoryItemID: true,
-          ItemName: true,
-          PhotoURL: true,
-          SymbolicFee: true,
-          IsSchoolOwned: true,
-        },
-      },
-      PaymentMethod: {
-        select: {
-          PaymentMethodID: true,
-          MethodName: true,
-        },
-      },
-      User: {
-        select: {
-          UserID: true,
-          FirstName: true,
-          LastName: true,
-          Email: true,
-          PhoneNumber: true,
-        },
-      },
-    },
+    select: buildRentalTransactionSelect(),
     orderBy: {
       TransactionID: 'desc',
     },
@@ -643,19 +657,73 @@ async function ensureActiveCategory(db, categoryId) {
   return category;
 }
 
+async function resolveCategoryId(db, data) {
+  if (data.categoryId !== undefined) {
+    await ensureActiveCategory(db, data.categoryId);
+    return data.categoryId;
+  }
+
+  const categoryName = String(data.categoryName || '').trim();
+
+  if (!categoryName) {
+    throw createHttpError(400, 'Categoria inválida');
+  }
+
+  const existing = await db.itemCategory.findFirst({
+    where: {
+      CategoryName: categoryName,
+    },
+    select: {
+      CategoryID: true,
+      IsActive: true,
+    },
+  });
+
+  if (existing?.CategoryID && existing.IsActive) {
+    return existing.CategoryID;
+  }
+
+  if (existing?.CategoryID && !existing.IsActive) {
+    const reactivated = await db.itemCategory.update({
+      where: {
+        CategoryID: existing.CategoryID,
+      },
+      data: {
+        IsActive: true,
+      },
+      select: {
+        CategoryID: true,
+      },
+    });
+
+    return reactivated.CategoryID;
+  }
+
+  const created = await db.itemCategory.create({
+    data: {
+      CategoryName: categoryName,
+      Description: `Categoria ${categoryName}`,
+      IsActive: true,
+    },
+    select: {
+      CategoryID: true,
+    },
+  });
+
+  return created.CategoryID;
+}
+
 async function getAdminInventoryItems(filters = {}) {
   return listItems(filters);
 }
 
 async function createSchoolInventoryItem(data) {
-  if (data.categoryId !== undefined) {
-    await ensureActiveCategory(prisma, data.categoryId);
-  }
+  const categoryId = await resolveCategoryId(prisma, data);
 
   const created = await prisma.inventoryItem.create({
     data: {
       ItemName: data.itemName,
-      CategoryID: data.categoryId,
+      CategoryID: categoryId,
       SymbolicFee: data.symbolicFee,
       Description: data.description ?? null,
       PhotoURL: data.photoUrl ?? null,
@@ -690,9 +758,8 @@ async function updateSchoolInventoryItem(itemId, data) {
     return null;
   }
 
-  if (data.categoryId !== undefined) {
-    await ensureActiveCategory(prisma, data.categoryId);
-  }
+  const shouldUpdateCategory = data.categoryId !== undefined || data.categoryName !== undefined;
+  const resolvedCategoryId = shouldUpdateCategory ? await resolveCategoryId(prisma, data) : undefined;
 
   const updated = await prisma.inventoryItem.update({
     where: {
@@ -700,7 +767,7 @@ async function updateSchoolInventoryItem(itemId, data) {
     },
     data: {
       ...(data.itemName !== undefined ? { ItemName: data.itemName } : {}),
-      ...(data.categoryId !== undefined ? { CategoryID: data.categoryId } : {}),
+      ...(shouldUpdateCategory ? { CategoryID: resolvedCategoryId } : {}),
       ...(data.symbolicFee !== undefined ? { SymbolicFee: data.symbolicFee } : {}),
       ...(data.description !== undefined ? { Description: data.description || null } : {}),
       ...(data.photoUrl !== undefined ? { PhotoURL: data.photoUrl || null } : {}),
@@ -808,23 +875,7 @@ async function verifyRentalReturn(rentalId, data) {
     where: {
       TransactionID: rentalId,
     },
-    include: {
-      InventoryItem: {
-        select: {
-          InventoryItemID: true,
-          ItemName: true,
-          PhotoURL: true,
-          SymbolicFee: true,
-          IsSchoolOwned: true,
-        },
-      },
-      PaymentMethod: {
-        select: {
-          PaymentMethodID: true,
-          MethodName: true,
-        },
-      },
-    },
+    select: buildRentalTransactionSelect(),
   });
 
   if (!existing) {
@@ -880,12 +931,48 @@ async function verifyRentalReturn(rentalId, data) {
   return serializeRental(updated);
 }
 
-async function completeRental(rentalId, data) {
-  return verifyRentalReturn(rentalId, data);
-}
+async function rejectRentalReturn(rentalId, data) {
+  const existing = await prisma.inventoryTransaction.findUnique({
+    where: {
+      TransactionID: rentalId,
+    },
+    select: buildRentalTransactionSelect(),
+  });
 
-async function listAllRentals() {
-  const rentals = await prisma.inventoryTransaction.findMany({
+  if (!existing) {
+    return null;
+  }
+
+  if (!isSchoolOwnedItem(existing.InventoryItem)) {
+    throw createHttpError(400, 'A verificação de devolução aplica-se apenas a artigos da escola');
+  }
+
+  if (existing.IsCompleted) {
+    throw createHttpError(409, 'Este aluguer já foi concluído');
+  }
+
+  if (existing.ConditionChecked || existing.ReturnVerified) {
+    throw createHttpError(409, 'Esta devolução já foi avaliada');
+  }
+
+  const returnDate = new Date(data.returnDate);
+
+  if (Number.isNaN(returnDate.getTime()) || returnDate < existing.StartDate) {
+    throw createHttpError(400, 'Data de devolução inválida');
+  }
+
+  const updated = await prisma.inventoryTransaction.update({
+    where: {
+      TransactionID: rentalId,
+    },
+    data: {
+      EndDate: null,
+      ConditionChecked: true,
+      ReturnVerified: false,
+      ReturnConditionStatus: data.conditionStatus,
+      ReturnConditionNotes: data.conditionNotes || null,
+      ReturnVerifiedAt: new Date(),
+    },
     include: {
       InventoryItem: {
         select: {
@@ -893,6 +980,7 @@ async function listAllRentals() {
           ItemName: true,
           PhotoURL: true,
           SymbolicFee: true,
+          IsSchoolOwned: true,
         },
       },
       PaymentMethod: {
@@ -902,12 +990,75 @@ async function listAllRentals() {
         },
       },
     },
+  });
+
+  return serializeRental(updated);
+}
+
+async function completeRental(rentalId, data) {
+  return verifyRentalReturn(rentalId, data);
+}
+
+async function listAllRentals() {
+  const rentals = await prisma.inventoryTransaction.findMany({
+    select: buildRentalTransactionSelect(),
     orderBy: {
       TransactionID: 'desc',
     },
   });
 
   return rentals.map(serializeRental);
+}
+
+async function approveRental(rentalId, data) {
+  const existing = await prisma.inventoryTransaction.findUnique({
+    where: {
+      TransactionID: rentalId,
+    },
+    select: buildRentalTransactionSelect(),
+  });
+
+  if (!existing) {
+    return null;
+  }
+
+  if (!isSchoolOwnedItem(existing.InventoryItem)) {
+    throw createHttpError(400, 'A aprovação aplica-se apenas a artigos da escola');
+  }
+
+  if (existing.ApprovalStatus === 'approved' || existing.ApprovalStatus === 'rejected') {
+    throw createHttpError(409, 'Este pedido já foi avaliado');
+  }
+
+  const updated = await prisma.inventoryTransaction.update({
+    where: {
+      TransactionID: rentalId,
+    },
+    data: {
+      ApprovalStatus: data.decision === 'approve' ? 'approved' : 'rejected',
+      ApprovedAt: new Date(),
+      ApprovalNotes: data.notes || null,
+    },
+    include: {
+      InventoryItem: {
+        select: {
+          InventoryItemID: true,
+          ItemName: true,
+          PhotoURL: true,
+          SymbolicFee: true,
+          IsSchoolOwned: true,
+        },
+      },
+      PaymentMethod: {
+        select: {
+          PaymentMethodID: true,
+          MethodName: true,
+        },
+      },
+    },
+  });
+
+  return serializeRental(updated);
 }
 
 module.exports = {
@@ -924,6 +1075,8 @@ module.exports = {
   deleteSchoolInventoryItem,
   updateSchoolInventoryAvailability,
   verifyRentalReturn,
+  rejectRentalReturn,
   completeRental,
+  approveRental,
 };
 

@@ -6,7 +6,10 @@
  */
 
 const { createHttpError } = require('../../../utils/http-error');
-const { resolveOrCreateSessionStatus } = require('./resolve-or-create-session-status');
+const {
+  isPendingApprovalStatus,
+  resolveOrCreateSessionStatus,
+} = require('./resolve-or-create-session-status');
 
 function collectNotificationUserIds(session) {
   return [
@@ -45,23 +48,23 @@ function createApproveSessionUseCase({ prisma }) {
         throw createHttpError(404, 'Session not found');
       }
 
-      if (!session.SessionStatus.StatusName.toLowerCase().includes('pending')) {
-        throw createHttpError(409, 'Session is not in a pending state');
+      if (!isPendingApprovalStatus(session.SessionStatus.StatusName)) {
+        throw createHttpError(409, 'Session is not pending management approval');
       }
 
       const statusId = await prisma.$transaction(async (tx) => {
-        const approvedStatusId = await resolveOrCreateSessionStatus(tx, 'Approved');
+        const scheduledStatusId = await resolveOrCreateSessionStatus(tx, 'Scheduled');
 
         await tx.coachingSession.update({
           where: { SessionID: sessionId },
           data: {
-            StatusID: approvedStatusId,
+            StatusID: scheduledStatusId,
             ReviewedByUserID: adminUserId,
             ReviewedAt: new Date(),
           },
         });
 
-        return approvedStatusId;
+        return scheduledStatusId;
       });
 
       return {

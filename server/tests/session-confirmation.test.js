@@ -67,7 +67,7 @@ function createContext() {
   const adminUser = buildUser({ userId: 99, email: 'admin@example.com', role: 'admin' });
 
   const usersByEmail = new Map(
-    [teacherUser, studentUser, adminUser].map((u) => [u.Email, u]),
+    [teacherUser, studentUser, adminUser].map((u) => [u.Email.toLowerCase(), u]),
   );
   const usersById = new Map(
     [teacherUser, studentUser, adminUser].map((u) => [u.UserID, u]),
@@ -131,6 +131,7 @@ function createContext() {
     },
 
     sessionStatus: {
+      findMany: jest.fn(async () => [db.sessionStatusRow]),
       findFirst: jest.fn(async ({ where } = {}) => {
         const containsValue =
           typeof where?.StatusName === 'object'
@@ -202,14 +203,23 @@ function createContext() {
     })),
   };
 
-  const { app } = createTestApp({ prismaMock, bcryptMock, notificationControllerMock, pricingServiceMock });
+  const { app } = createTestApp({
+    prismaMock,
+    bcryptMock,
+    notificationControllerMock,
+    pricingServiceMock,
+    useRealAuthMiddleware: true,
+    useRealValidationMiddleware: true,
+  });
 
   return { app, teacherUser, studentUser, db, prismaMock };
 }
 
-async function loginAs(agent, user) {
-  const res = await agent.post('/auth/login').send(buildLoginPayload(user.Email));
+async function loginAs(app, user) {
+  const res = await request(app).post('/auth/login').send(buildLoginPayload(user.Email));
   expect(res.status).toBe(200);
+    expect(res.body.accessToken).toBeTruthy();
+    return res.body.accessToken;
 }
 
 // ---------------------------------------------------------------------------
@@ -225,10 +235,11 @@ describe('GET /teacher/sessions/pending', () => {
 
   test('returns 403 for non-teacher role (student)', async () => {
     const { app, studentUser } = createContext();
-    const agent = request.agent(app);
-    await loginAs(agent, studentUser);
+    const accessToken = await loginAs(app, studentUser);
 
-    const res = await agent.get('/teacher/sessions/pending');
+    const res = await request(app)
+      .get('/teacher/sessions/pending')
+      .set('Authorization', `Bearer ${accessToken}`);
     expect(res.status).toBe(403);
   });
 
@@ -236,10 +247,11 @@ describe('GET /teacher/sessions/pending', () => {
     const { app, teacherUser, db } = createContext();
     db.sessionTeacherRows = [];
 
-    const agent = request.agent(app);
-    await loginAs(agent, teacherUser);
+    const accessToken = await loginAs(app, teacherUser);
 
-    const res = await agent.get('/teacher/sessions/pending');
+    const res = await request(app)
+      .get('/teacher/sessions/pending')
+      .set('Authorization', `Bearer ${accessToken}`);
     expect(res.status).toBe(200);
     expect(res.body.sessions).toEqual([]);
     expect(res.body.total).toBe(0);
@@ -256,10 +268,11 @@ describe('GET /teacher/sessions/pending', () => {
       },
     ];
 
-    const agent = request.agent(app);
-    await loginAs(agent, teacherUser);
+    const accessToken = await loginAs(app, teacherUser);
 
-    const res = await agent.get('/teacher/sessions/pending');
+    const res = await request(app)
+      .get('/teacher/sessions/pending')
+      .set('Authorization', `Bearer ${accessToken}`);
     expect(res.status).toBe(200);
     expect(res.body.total).toBe(1);
 
@@ -278,10 +291,11 @@ describe('GET /teacher/sessions/pending', () => {
       { CoachingSession: buildSession({ sessionId: 1, statusName: 'Cancelled' }) },
     ];
 
-    const agent = request.agent(app);
-    await loginAs(agent, teacherUser);
+    const accessToken = await loginAs(app, teacherUser);
 
-    const res = await agent.get('/teacher/sessions/pending');
+    const res = await request(app)
+      .get('/teacher/sessions/pending')
+      .set('Authorization', `Bearer ${accessToken}`);
     expect(res.status).toBe(200);
     expect(res.body.sessions).toEqual([]);
   });
@@ -302,10 +316,11 @@ describe('GET /teacher/sessions/pending', () => {
       },
     ];
 
-    const agent = request.agent(app);
-    await loginAs(agent, teacherUser);
+    const accessToken = await loginAs(app, teacherUser);
 
-    const res = await agent.get('/teacher/sessions/pending');
+    const res = await request(app)
+      .get('/teacher/sessions/pending')
+      .set('Authorization', `Bearer ${accessToken}`);
     expect(res.status).toBe(200);
     expect(res.body.sessions).toEqual([]);
   });
@@ -324,10 +339,11 @@ describe('PATCH /teacher/sessions/:sessionId/confirm-completion', () => {
 
   test('returns 403 for student role', async () => {
     const { app, studentUser } = createContext();
-    const agent = request.agent(app);
-    await loginAs(agent, studentUser);
+    const accessToken = await loginAs(app, studentUser);
 
-    const res = await agent.patch('/teacher/sessions/1/confirm-completion');
+    const res = await request(app)
+      .patch('/teacher/sessions/1/confirm-completion')
+      .set('Authorization', `Bearer ${accessToken}`);
     expect(res.status).toBe(403);
   });
 
@@ -335,9 +351,11 @@ describe('PATCH /teacher/sessions/:sessionId/confirm-completion', () => {
     const { app, teacherUser, db } = createContext();
     db.sessionRow = null;
     const agent = request.agent(app);
-    await loginAs(agent, teacherUser);
+    const accessToken = await loginAs(app, teacherUser);
 
-    const res = await agent.patch('/teacher/sessions/abc/confirm-completion');
+    const res = await request(app)
+      .patch('/teacher/sessions/abc/confirm-completion')
+      .set('Authorization', `Bearer ${accessToken}`);
     expect(res.status).toBe(400);
   });
 
@@ -345,9 +363,11 @@ describe('PATCH /teacher/sessions/:sessionId/confirm-completion', () => {
     const { app, teacherUser, db } = createContext();
     db.sessionRow = null;
     const agent = request.agent(app);
-    await loginAs(agent, teacherUser);
+    const accessToken = await loginAs(app, teacherUser);
 
-    const res = await agent.patch('/teacher/sessions/99/confirm-completion');
+    const res = await request(app)
+      .patch('/teacher/sessions/99/confirm-completion')
+      .set('Authorization', `Bearer ${accessToken}`);
     expect(res.status).toBe(404);
   });
 
@@ -355,9 +375,11 @@ describe('PATCH /teacher/sessions/:sessionId/confirm-completion', () => {
     const { app, teacherUser, db } = createContext();
     db.sessionRow = buildSession({ sessionId: 1, endTime: FUTURE_TIME });
     const agent = request.agent(app);
-    await loginAs(agent, teacherUser);
+    const accessToken = await loginAs(app, teacherUser);
 
-    const res = await agent.patch('/teacher/sessions/1/confirm-completion');
+    const res = await request(app)
+      .patch('/teacher/sessions/1/confirm-completion')
+      .set('Authorization', `Bearer ${accessToken}`);
     expect(res.status).toBe(409);
     expect(res.body.error).toMatch(/ainda não terminou/i);
   });
@@ -366,9 +388,11 @@ describe('PATCH /teacher/sessions/:sessionId/confirm-completion', () => {
     const { app, teacherUser, db } = createContext();
     db.sessionRow = buildSession({ sessionId: 1, statusName: 'cancelled', endTime: PAST_TIME });
     const agent = request.agent(app);
-    await loginAs(agent, teacherUser);
+    const accessToken = await loginAs(app, teacherUser);
 
-    const res = await agent.patch('/teacher/sessions/1/confirm-completion');
+    const res = await request(app)
+      .patch('/teacher/sessions/1/confirm-completion')
+      .set('Authorization', `Bearer ${accessToken}`);
     expect(res.status).toBe(409);
     expect(res.body.error).toMatch(/terminal/i);
   });
@@ -386,9 +410,11 @@ describe('PATCH /teacher/sessions/:sessionId/confirm-completion', () => {
       ],
     });
     const agent = request.agent(app);
-    await loginAs(agent, teacherUser);
+    const accessToken = await loginAs(app, teacherUser);
 
-    const res = await agent.patch('/teacher/sessions/1/confirm-completion');
+    const res = await request(app)
+      .patch('/teacher/sessions/1/confirm-completion')
+      .set('Authorization', `Bearer ${accessToken}`);
     expect(res.status).toBe(409);
     expect(res.body.error).toMatch(/já confirmou/i);
   });
@@ -399,9 +425,11 @@ describe('PATCH /teacher/sessions/:sessionId/confirm-completion', () => {
     db.sessionStatusRow = { StatusID: 7, StatusName: 'FINALIZATION_VALIDATION_PENDING' };
 
     const agent = request.agent(app);
-    await loginAs(agent, teacherUser);
+    const accessToken = await loginAs(app, teacherUser);
 
-    const res = await agent.patch('/teacher/sessions/1/confirm-completion');
+    const res = await request(app)
+      .patch('/teacher/sessions/1/confirm-completion')
+      .set('Authorization', `Bearer ${accessToken}`);
     expect(res.status).toBe(201);
     expect(res.body.sessionId).toBe(1);
     expect(res.body.validationId).toBeDefined();
@@ -441,9 +469,12 @@ describe('POST /teacher/sessions/:sessionId/no-show (BR-16)', () => {
   test('returns 403 for student role', async () => {
     const { app, studentUser } = createContext();
     const agent = request.agent(app);
-    await loginAs(agent, studentUser);
+    const accessToken = await loginAs(app, studentUser);
 
-    const res = await agent.post('/teacher/sessions/1/no-show').send(validBody);
+    const res = await request(app)
+      .post('/teacher/sessions/1/no-show')
+      .set('Authorization', `Bearer ${accessToken}`)
+      .send(validBody);
     expect(res.status).toBe(403);
   });
 
@@ -451,9 +482,12 @@ describe('POST /teacher/sessions/:sessionId/no-show (BR-16)', () => {
     const { app, teacherUser, db } = createContext();
     db.sessionRow = buildSession({ sessionId: 1, endTime: PAST_TIME });
     const agent = request.agent(app);
-    await loginAs(agent, teacherUser);
+    const accessToken = await loginAs(app, teacherUser);
 
-    const res = await agent.post('/teacher/sessions/1/no-show').send({ remarks: 'x' });
+    const res = await request(app)
+      .post('/teacher/sessions/1/no-show')
+      .set('Authorization', `Bearer ${accessToken}`)
+      .send({ remarks: 'x' });
     expect(res.status).toBe(400);
     expect(res.body.error).toMatch(/studentAccountId/i);
   });
@@ -462,9 +496,12 @@ describe('POST /teacher/sessions/:sessionId/no-show (BR-16)', () => {
     const { app, teacherUser, db } = createContext();
     db.sessionRow = buildSession({ sessionId: 1, endTime: PAST_TIME });
     const agent = request.agent(app);
-    await loginAs(agent, teacherUser);
+    const accessToken = await loginAs(app, teacherUser);
 
-    const res = await agent.post('/teacher/sessions/1/no-show').send({ studentAccountId: 10, remarks: '   ' });
+    const res = await request(app)
+      .post('/teacher/sessions/1/no-show')
+      .set('Authorization', `Bearer ${accessToken}`)
+      .send({ studentAccountId: 10, remarks: '   ' });
     expect(res.status).toBe(400);
     expect(res.body.error).toMatch(/observa[çc][aã]o/i);
   });
@@ -473,9 +510,12 @@ describe('POST /teacher/sessions/:sessionId/no-show (BR-16)', () => {
     const { app, teacherUser, db } = createContext();
     db.sessionRow = null;
     const agent = request.agent(app);
-    await loginAs(agent, teacherUser);
+    const accessToken = await loginAs(app, teacherUser);
 
-    const res = await agent.post('/teacher/sessions/99/no-show').send(validBody);
+    const res = await request(app)
+      .post('/teacher/sessions/99/no-show')
+      .set('Authorization', `Bearer ${accessToken}`)
+      .send(validBody);
     expect(res.status).toBe(404);
   });
 
@@ -487,9 +527,12 @@ describe('POST /teacher/sessions/:sessionId/no-show (BR-16)', () => {
       students: [buildStudentEnrollment({ studentAccountId: 10 })],
     });
     const agent = request.agent(app);
-    await loginAs(agent, teacherUser);
+    const accessToken = await loginAs(app, teacherUser);
 
-    const res = await agent.post('/teacher/sessions/1/no-show').send(validBody);
+    const res = await request(app)
+      .post('/teacher/sessions/1/no-show')
+      .set('Authorization', `Bearer ${accessToken}`)
+      .send(validBody);
     expect(res.status).toBe(409);
     expect(res.body.error).toMatch(/ainda não terminou/i);
   });
@@ -498,9 +541,12 @@ describe('POST /teacher/sessions/:sessionId/no-show (BR-16)', () => {
     const { app, teacherUser, db } = createContext();
     db.sessionRow = buildSession({ sessionId: 1, endTime: PAST_TIME, students: [] });
     const agent = request.agent(app);
-    await loginAs(agent, teacherUser);
+    const accessToken = await loginAs(app, teacherUser);
 
-    const res = await agent.post('/teacher/sessions/1/no-show').send(validBody);
+    const res = await request(app)
+      .post('/teacher/sessions/1/no-show')
+      .set('Authorization', `Bearer ${accessToken}`)
+      .send(validBody);
     expect(res.status).toBe(404);
     expect(res.body.error).toMatch(/aluno não inscrito/i);
   });
@@ -513,9 +559,12 @@ describe('POST /teacher/sessions/:sessionId/no-show (BR-16)', () => {
       students: [buildStudentEnrollment({ studentAccountId: 10, attendanceStatus: 'NO_SHOW' })],
     });
     const agent = request.agent(app);
-    await loginAs(agent, teacherUser);
+    const accessToken = await loginAs(app, teacherUser);
 
-    const res = await agent.post('/teacher/sessions/1/no-show').send(validBody);
+    const res = await request(app)
+      .post('/teacher/sessions/1/no-show')
+      .set('Authorization', `Bearer ${accessToken}`)
+      .send(validBody);
     expect(res.status).toBe(409);
     expect(res.body.error).toMatch(/já registada/i);
   });
@@ -529,9 +578,12 @@ describe('POST /teacher/sessions/:sessionId/no-show (BR-16)', () => {
     });
 
     const agent = request.agent(app);
-    await loginAs(agent, teacherUser);
+    const accessToken = await loginAs(app, teacherUser);
 
-    const res = await agent.post('/teacher/sessions/1/no-show').send(validBody);
+    const res = await request(app)
+      .post('/teacher/sessions/1/no-show')
+      .set('Authorization', `Bearer ${accessToken}`)
+      .send(validBody);
     expect(res.status).toBe(201);
     expect(res.body).toMatchObject({ sessionId: 1, studentAccountId: 10, status: 'no_show_registered' });
 

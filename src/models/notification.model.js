@@ -8,6 +8,7 @@
 const prisma = require('../config/prisma');
 
 const DEFAULT_NOTIFICATION_TYPE_ID = 1;
+const DEFAULT_NOTIFICATION_TYPE_NAME = 'system';
 
 const toInt = (value, fieldName) => {
     const parsed = Number.parseInt(value, 10);
@@ -24,11 +25,38 @@ const buildDefaultTitle = (message) => {
     return trimmed.length > 50 ? `${trimmed.slice(0, 50)}...` : trimmed;
 };
 
+const resolveNotificationTypeId = async (type) => {
+    const normalizedType = String(type || DEFAULT_NOTIFICATION_TYPE_NAME).trim().toLowerCase();
+
+    const notificationType = await prisma.notificationType.findUnique({
+        where: { TypeName: normalizedType },
+        select: { TypeID: true },
+    });
+
+    if (notificationType) {
+        return notificationType.TypeID;
+    }
+
+    if (normalizedType !== DEFAULT_NOTIFICATION_TYPE_NAME) {
+        const fallbackType = await prisma.notificationType.findUnique({
+            where: { TypeName: DEFAULT_NOTIFICATION_TYPE_NAME },
+            select: { TypeID: true },
+        });
+
+        if (fallbackType) {
+            return fallbackType.TypeID;
+        }
+    }
+
+    return DEFAULT_NOTIFICATION_TYPE_ID;
+};
+
 const mapNotification = (row) => ({
     id: row.NotificationID,
     userId: row.UserID,
     message: row.Message,
     typeId: row.TypeID,
+    type: String(row.NotificationType?.TypeName || '').trim().toLowerCase() || null,
     isRead: row.IsRead,
     createdAt: row.CreatedAt,
     title: row.Title,
@@ -39,6 +67,11 @@ const findByUser = async (userId) => {
     const rows = await prisma.notification.findMany({
         where: { UserID: toInt(userId, 'userId') },
         orderBy: { CreatedAt: 'desc' },
+        include: {
+            NotificationType: {
+                select: { TypeName: true },
+            },
+        },
     });
 
     return rows.map(mapNotification);
@@ -51,6 +84,11 @@ const findPreviewByUser = async (userId, limit = 5) => {
         where: { UserID: toInt(userId, 'userId') },
         orderBy: { CreatedAt: 'desc' },
         take: safeLimit,
+        include: {
+            NotificationType: {
+                select: { TypeName: true },
+            },
+        },
     });
 
     return rows.map(mapNotification);
@@ -61,6 +99,11 @@ const findByIdAndUser = async (id, userId) => {
         where: {
             NotificationID: toInt(id, 'id'),
             UserID: toInt(userId, 'userId'),
+        },
+        include: {
+            NotificationType: {
+                select: { TypeName: true },
+            },
         },
     });
 
@@ -86,19 +129,25 @@ const deleteNotif = async (id, userId) => {
     });
 };
 
-const insert = async (userId, message, title) => {
+const insert = async (userId, message, title, type) => {
     const normalizedTitle = typeof title === 'string' && title.trim()
         ? title.trim()
         : buildDefaultTitle(message);
+    const typeId = await resolveNotificationTypeId(type);
 
     const row = await prisma.notification.create({
         data: {
             UserID: toInt(userId, 'userId'),
             Message: message,
-            TypeID: DEFAULT_NOTIFICATION_TYPE_ID,
+            TypeID: typeId,
             IsRead: false,
             CreatedAt: new Date(),
             Title: normalizedTitle.length > 255 ? normalizedTitle.slice(0, 255) : normalizedTitle,
+        },
+        include: {
+            NotificationType: {
+                select: { TypeName: true },
+            },
         },
     });
 

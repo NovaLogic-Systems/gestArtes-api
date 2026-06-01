@@ -273,6 +273,7 @@ async function getListings(req, res, next) {
     const where = {
       IsActive: true,
     };
+    const authenticatedUserId = getAuthenticatedUserId(req);
 
     const textQuery = req.query.q ?? req.query.search;
     const textSearchFilter = buildTextSearchFilter(textQuery);
@@ -303,6 +304,12 @@ async function getListings(req, res, next) {
       if (req.query.maxPrice !== undefined) {
         where.Price.lte = req.query.maxPrice;
       }
+    }
+
+    if (authenticatedUserId) {
+      where.SellerID = {
+        not: authenticatedUserId,
+      };
     }
 
     const listings = await prisma.marketplaceItem.findMany({

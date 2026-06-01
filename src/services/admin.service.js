@@ -10,6 +10,7 @@ const { createPricingService } = require('./pricing.service');
 const { createHttpError } = require('../utils/http-error');
 
 const pricingService = createPricingService(prisma);
+const FINALIZED_SESSION_STATUS_NAME = 'Finalized';
 
 function toInteger(value) {
   if (typeof value === 'bigint') {
@@ -25,6 +26,43 @@ function normalizeKey(value) {
     .trim()
     .toLowerCase()
     .replace(/[^a-z0-9]/g, '');
+}
+
+function isTeacherConfirmationStep(stepName) {
+  const normalized = normalizeKey(stepName);
+  return normalized.includes('teacher') && normalized.includes('confirm');
+}
+
+function isStudentConfirmationStep(stepName) {
+  const normalized = normalizeKey(stepName);
+  return normalized.includes('student') && normalized.includes('confirm');
+}
+
+async function resolveOrCreateSessionStatusId(db, statusName) {
+  const expected = normalizeKey(statusName);
+  const statuses = await db.sessionStatus.findMany({
+    select: {
+      StatusID: true,
+      StatusName: true,
+    },
+  });
+
+  const existing = statuses.find((status) => normalizeKey(status.StatusName) === expected);
+
+  if (existing) {
+    return existing.StatusID;
+  }
+
+  const created = await db.sessionStatus.create({
+    data: {
+      StatusName: statusName,
+    },
+    select: {
+      StatusID: true,
+    },
+  });
+
+  return created.StatusID;
 }
 
 function parseDateParam(value) {
@@ -56,6 +94,8 @@ function mapPostSessionRow(row) {
     teacherCount: toInteger(row.teacherCount),
     studentCount: toInteger(row.studentCount),
     lastConfirmationAt: row.lastConfirmationAt,
+    teacherName: row.teacherName,
+    studentName: row.studentName,
   };
 }
 
@@ -64,8 +104,24 @@ async function listPostSessionValidationQueue() {
     WITH ValidationByRole AS (
       SELECT
         sv.SessionID,
-        MAX(CASE WHEN LOWER(r.RoleName) = 'teacher' THEN 1 ELSE 0 END) AS hasTeacherConfirmation,
-        MAX(CASE WHEN LOWER(r.RoleName) = 'student' THEN 1 ELSE 0 END) AS hasStudentConfirmation,
+        MAX(
+          CASE
+            WHEN LOWER(r.RoleName) = 'teacher'
+              AND LOWER(vs.StepName) LIKE '%teacher%'
+              AND LOWER(vs.StepName) LIKE '%confirm%'
+            THEN 1
+            ELSE 0
+          END
+        ) AS hasTeacherConfirmation,
+        MAX(
+          CASE
+            WHEN LOWER(r.RoleName) = 'student'
+              AND LOWER(vs.StepName) LIKE '%student%'
+              AND LOWER(vs.StepName) LIKE '%confirm%'
+            THEN 1
+            ELSE 0
+          END
+        ) AS hasStudentConfirmation,
         MAX(
           CASE
             WHEN LOWER(r.RoleName) = 'admin'
@@ -97,7 +153,30 @@ async function listPostSessionValidationQueue() {
       cs.EndTime AS endTime,
       COUNT(DISTINCT stt.TeacherID) AS teacherCount,
       COUNT(DISTINCT sstd.StudentAccountID) AS studentCount,
-      vbr.lastConfirmationAt AS lastConfirmationAt
+      vbr.lastConfirmationAt AS lastConfirmationAt,
+      COALESCE(
+        (
+          SELECT TOP (1)
+            CONCAT(u.FirstName, ' ', COALESCE(u.LastName, ''))
+          FROM [SessionTeacher] AS st2
+          INNER JOIN [User] AS u ON u.UserID = st2.TeacherID
+          WHERE st2.SessionID = cs.SessionID
+          ORDER BY st2.TeacherID
+        ),
+        '—'
+      ) AS teacherName,
+      COALESCE(
+        (
+          SELECT TOP (1)
+            CONCAT(u.FirstName, ' ', COALESCE(u.LastName, ''))
+          FROM [SessionStudent] AS ss2
+          INNER JOIN [StudentAccount] AS sa ON sa.StudentAccountID = ss2.StudentAccountID
+          INNER JOIN [User] AS u ON u.UserID = sa.UserID
+          WHERE ss2.SessionID = cs.SessionID
+          ORDER BY ss2.StudentAccountID
+        ),
+        '—'
+      ) AS studentName
     FROM ValidationByRole AS vbr
     INNER JOIN [CoachingSession] AS cs ON cs.SessionID = vbr.SessionID
     INNER JOIN [Studio] AS st ON st.StudioID = cs.StudioID
@@ -105,8 +184,7 @@ async function listPostSessionValidationQueue() {
     INNER JOIN [SessionStatus] AS ss ON ss.StatusID = cs.StatusID
     LEFT JOIN [SessionTeacher] AS stt ON stt.SessionID = cs.SessionID
     LEFT JOIN [SessionStudent] AS sstd ON sstd.SessionID = cs.SessionID
-    WHERE vbr.hasTeacherConfirmation = 1
-      AND vbr.hasStudentConfirmation = 1
+    WHERE (vbr.hasTeacherConfirmation = 1 OR vbr.hasStudentConfirmation = 1)
       AND vbr.hasAdminFinalValidation = 0
     GROUP BY
       cs.SessionID,
@@ -145,24 +223,25 @@ async function assertSessionIsReadyForFinalValidation(sessionId) {
   let hasAdminFinalValidation = false;
 
   for (const sv of validations) {
-    const stepName = (sv.ValidationStep.StepName || '').toLowerCase();
+    const stepName = sv.ValidationStep.StepName || '';
+    const normalizedStepName = stepName.toLowerCase();
     for (const ur of sv.User.UserRole) {
       const roleName = (ur.Role.RoleName || '').toLowerCase();
-      if (roleName === 'teacher') hasTeacherConfirmation = true;
-      if (roleName === 'student') hasStudentConfirmation = true;
+      if (roleName === 'teacher' && isTeacherConfirmationStep(stepName)) hasTeacherConfirmation = true;
+      if (roleName === 'student' && isStudentConfirmationStep(stepName)) hasStudentConfirmation = true;
       if (
         roleName === 'admin' &&
-        (stepName.includes('admin') ||
-          stepName.includes('final') ||
-          stepName.includes('gest') ||
-          stepName.includes('manag'))
+        (normalizedStepName.includes('admin') ||
+          normalizedStepName.includes('final') ||
+          normalizedStepName.includes('gest') ||
+          normalizedStepName.includes('manag'))
       ) {
         hasAdminFinalValidation = true;
       }
     }
   }
 
-  if (!hasTeacherConfirmation || !hasStudentConfirmation) {
+  if (!hasTeacherConfirmation && !hasStudentConfirmation) {
     throw createHttpError(
       409,
       'Sessão ainda não está pronta para validação final administrativa'
@@ -245,23 +324,34 @@ async function finalizeSessionValidation({ sessionId, adminUserId }) {
   const stepId = await resolveAdminFinalStepId();
   const finalizedAt = new Date();
 
-  const validation = await prisma.sessionValidation.create({
-    data: {
-      SessionID: sessionId,
-      ValidationStepID: stepId,
-      ValidatedByUserID: adminUserId,
-      ValidatedAt: finalizedAt,
-    },
-    select: {
-      ValidationID: true,
-    },
-  });
+  return prisma.$transaction(async (tx) => {
+    const validation = await tx.sessionValidation.create({
+      data: {
+        SessionID: sessionId,
+        ValidationStepID: stepId,
+        ValidatedByUserID: adminUserId,
+        ValidatedAt: finalizedAt,
+      },
+      select: {
+        ValidationID: true,
+      },
+    });
 
-  try {
     const entry = await pricingService.generateFinancialEntryOnFinalization(
       sessionId,
-      adminUserId
+      adminUserId,
+      tx
     );
+    const finalizedStatusId = await resolveOrCreateSessionStatusId(tx, FINALIZED_SESSION_STATUS_NAME);
+
+    await tx.coachingSession.update({
+      where: {
+        SessionID: sessionId,
+      },
+      data: {
+        StatusID: finalizedStatusId,
+      },
+    });
 
     return {
       sessionId,
@@ -269,15 +359,7 @@ async function finalizeSessionValidation({ sessionId, adminUserId }) {
       finalizedAt,
       financialEntryId: entry.EntryID,
     };
-  } catch (error) {
-    await prisma.sessionValidation.delete({
-      where: {
-        ValidationID: validation.ValidationID,
-      },
-    });
-
-    throw error;
-  }
+  });
 }
 
 async function getStudioOccupancy({ from, to }) {
@@ -373,4 +455,3 @@ module.exports = {
   finalizeSessionValidation,
   getStudioOccupancy,
 };
-

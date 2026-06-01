@@ -138,9 +138,11 @@ function createCoachingContext() {
   };
 }
 
-async function loginAs(agent, user) {
-  const response = await agent.post('/auth/login').send(buildLoginPayload(user.Email));
+async function loginAs(app, user) {
+  const response = await request(app).post('/auth/login').send(buildLoginPayload(user.Email));
   expect(response.status).toBe(200);
+  expect(response.body.accessToken).toBeTruthy();
+  return response.body.accessToken;
 }
 
 describe('Coaching API (Jest + SuperTest)', () => {
@@ -161,14 +163,15 @@ describe('Coaching API (Jest + SuperTest)', () => {
       coachingServiceMock,
       notificationControllerMock,
     } = createCoachingContext();
-    const agent = request.agent(app);
-
-    await loginAs(agent, teacherUser);
+    const accessToken = await loginAs(app, teacherUser);
 
     const futureDate = new Date();
     futureDate.setHours(futureDate.getHours() + 2);
 
-    const response = await agent.post('/coaching/sessions').send({
+    const response = await request(app)
+      .post('/coaching/sessions')
+      .set('Authorization', `Bearer ${accessToken}`)
+      .send({
       date: futureDate.toISOString(),
       studioId: '12',
       modalityId: '7',
@@ -221,14 +224,15 @@ describe('Coaching API (Jest + SuperTest)', () => {
 
   test('POST /coaching/sessions returns 403 for student role', async () => {
     const { app, studentUser, coachingServiceMock } = createCoachingContext();
-    const agent = request.agent(app);
-
-    await loginAs(agent, studentUser);
+    const accessToken = await loginAs(app, studentUser);
 
     const futureDate = new Date();
     futureDate.setHours(futureDate.getHours() + 2);
 
-    const response = await agent.post('/coaching/sessions').send({
+    const response = await request(app)
+      .post('/coaching/sessions')
+      .set('Authorization', `Bearer ${accessToken}`)
+      .send({
       date: futureDate.toISOString(),
       studioId: '12',
       modalityId: '7',
@@ -242,11 +246,12 @@ describe('Coaching API (Jest + SuperTest)', () => {
 
   test('POST /coaching/sessions rejects invalid payload', async () => {
     const { app, teacherUser, coachingServiceMock } = createCoachingContext();
-    const agent = request.agent(app);
+    const accessToken = await loginAs(app, teacherUser);
 
-    await loginAs(agent, teacherUser);
-
-    const response = await agent.post('/coaching/sessions').send({
+    const response = await request(app)
+      .post('/coaching/sessions')
+      .set('Authorization', `Bearer ${accessToken}`)
+      .send({
       studioId: 'invalid',
       modalityId: '7',
       capacity: '8',
@@ -264,15 +269,16 @@ describe('Coaching API (Jest + SuperTest)', () => {
       coachingServiceMock,
       notificationControllerMock,
     } = createCoachingContext();
-    const agent = request.agent(app);
-
     coachingServiceMock.listAdminUserIds.mockResolvedValueOnce([]);
-    await loginAs(agent, teacherUser);
+    const accessToken = await loginAs(app, teacherUser);
 
     const futureDate = new Date();
     futureDate.setHours(futureDate.getHours() + 2);
 
-    const response = await agent.post('/coaching/sessions').send({
+    const response = await request(app)
+      .post('/coaching/sessions')
+      .set('Authorization', `Bearer ${accessToken}`)
+      .send({
       date: futureDate.toISOString(),
       studioId: '12',
       modalityId: '7',
@@ -296,10 +302,11 @@ describe('Coaching API (Jest + SuperTest)', () => {
       notificationControllerMock,
     } = createCoachingContext();
 
-    const agent = request.agent(app);
-    await loginAs(agent, studentUser);
+    const accessToken = await loginAs(app, studentUser);
 
-    const response = await agent.post('/coaching/sessions/42/join-requests');
+    const response = await request(app)
+      .post('/coaching/sessions/42/join-requests')
+      .set('Authorization', `Bearer ${accessToken}`);
 
     expect(response.status).toBe(201);
     expect(joinRequestServiceMock.createJoinRequest).toHaveBeenCalledWith({
@@ -317,11 +324,11 @@ describe('Coaching API (Jest + SuperTest)', () => {
 
   test('GET /coaching/sessions/:id/join-requests returns requests for teachers', async () => {
     const { app, teacherUser, joinRequestServiceMock } = createCoachingContext();
-    const agent = request.agent(app);
+    const accessToken = await loginAs(app, teacherUser);
 
-    await loginAs(agent, teacherUser);
-
-    const response = await agent.get('/coaching/sessions/42/join-requests');
+    const response = await request(app)
+      .get('/coaching/sessions/42/join-requests')
+      .set('Authorization', `Bearer ${accessToken}`);
 
     expect(response.status).toBe(200);
     expect(response.body.requests).toHaveLength(1);
@@ -334,11 +341,11 @@ describe('Coaching API (Jest + SuperTest)', () => {
 
   test('GET /coaching/join-requests/teacher-pending returns pending requests', async () => {
     const { app, teacherUser, joinRequestServiceMock } = createCoachingContext();
-    const agent = request.agent(app);
+    const accessToken = await loginAs(app, teacherUser);
 
-    await loginAs(agent, teacherUser);
-
-    const response = await agent.get('/coaching/join-requests/teacher-pending');
+    const response = await request(app)
+      .get('/coaching/join-requests/teacher-pending')
+      .set('Authorization', `Bearer ${accessToken}`);
 
     expect(response.status).toBe(200);
     expect(joinRequestServiceMock.listTeacherPendingRequests).toHaveBeenCalledWith({
@@ -354,11 +361,11 @@ describe('Coaching API (Jest + SuperTest)', () => {
       joinRequestServiceMock,
       notificationControllerMock,
     } = createCoachingContext();
-    const agent = request.agent(app);
+    const accessToken = await loginAs(app, teacherUser);
 
-    await loginAs(agent, teacherUser);
-
-    const response = await agent.patch('/coaching/join-requests/500/teacher-approve');
+    const response = await request(app)
+      .patch('/coaching/join-requests/500/teacher-approve')
+      .set('Authorization', `Bearer ${accessToken}`);
 
     expect(response.status).toBe(200);
     expect(joinRequestServiceMock.teacherApprove).toHaveBeenCalledWith({
@@ -382,11 +389,11 @@ describe('Coaching API (Jest + SuperTest)', () => {
       joinRequestServiceMock,
       notificationControllerMock,
     } = createCoachingContext();
-    const agent = request.agent(app);
+    const accessToken = await loginAs(app, teacherUser);
 
-    await loginAs(agent, teacherUser);
-
-    const response = await agent.patch('/coaching/join-requests/500/teacher-reject');
+    const response = await request(app)
+      .patch('/coaching/join-requests/500/teacher-reject')
+      .set('Authorization', `Bearer ${accessToken}`);
 
     expect(response.status).toBe(200);
     expect(joinRequestServiceMock.teacherReject).toHaveBeenCalledWith({
@@ -404,11 +411,11 @@ describe('Coaching API (Jest + SuperTest)', () => {
 
   test('GET /admin/coaching/join-requests/pending returns admin validation queue', async () => {
     const { app, adminUser, joinRequestServiceMock } = createCoachingContext();
-    const agent = request.agent(app);
+    const accessToken = await loginAs(app, adminUser);
 
-    await loginAs(agent, adminUser);
-
-    const response = await agent.get('/admin/coaching/join-requests/pending');
+    const response = await request(app)
+      .get('/admin/coaching/join-requests/pending')
+      .set('Authorization', `Bearer ${accessToken}`);
 
     expect(response.status).toBe(200);
     expect(joinRequestServiceMock.listAdminPendingRequests).toHaveBeenCalledTimes(1);
@@ -422,11 +429,11 @@ describe('Coaching API (Jest + SuperTest)', () => {
       joinRequestServiceMock,
       notificationControllerMock,
     } = createCoachingContext();
-    const agent = request.agent(app);
+    const accessToken = await loginAs(app, adminUser);
 
-    await loginAs(agent, adminUser);
-
-    const response = await agent.patch('/admin/coaching/join-requests/500/approve');
+    const response = await request(app)
+      .patch('/admin/coaching/join-requests/500/approve')
+      .set('Authorization', `Bearer ${accessToken}`);
 
     expect(response.status).toBe(200);
     expect(joinRequestServiceMock.adminApprove).toHaveBeenCalledWith({
@@ -450,11 +457,11 @@ describe('Coaching API (Jest + SuperTest)', () => {
       joinRequestServiceMock,
       notificationControllerMock,
     } = createCoachingContext();
-    const agent = request.agent(app);
+    const accessToken = await loginAs(app, adminUser);
 
-    await loginAs(agent, adminUser);
-
-    const response = await agent.patch('/admin/coaching/join-requests/500/reject');
+    const response = await request(app)
+      .patch('/admin/coaching/join-requests/500/reject')
+      .set('Authorization', `Bearer ${accessToken}`);
 
     expect(response.status).toBe(200);
     expect(joinRequestServiceMock.adminReject).toHaveBeenCalledWith({
@@ -472,11 +479,11 @@ describe('Coaching API (Jest + SuperTest)', () => {
 
   test('GET /coaching/join-requests/my returns the authenticated student bookings', async () => {
     const { app, studentUser, joinRequestServiceMock } = createCoachingContext();
-    const agent = request.agent(app);
+    const accessToken = await loginAs(app, studentUser);
 
-    await loginAs(agent, studentUser);
-
-    const response = await agent.get('/coaching/join-requests/my');
+    const response = await request(app)
+      .get('/coaching/join-requests/my')
+      .set('Authorization', `Bearer ${accessToken}`);
 
     expect(response.status).toBe(200);
     expect(joinRequestServiceMock.listStudentRequests).toHaveBeenCalledWith({
@@ -486,11 +493,11 @@ describe('Coaching API (Jest + SuperTest)', () => {
 
   test('PATCH /coaching/join-requests/:id/teacher-reject validates join request id', async () => {
     const { app, teacherUser, joinRequestServiceMock } = createCoachingContext();
-    const agent = request.agent(app);
+    const accessToken = await loginAs(app, teacherUser);
 
-    await loginAs(agent, teacherUser);
-
-    const response = await agent.patch('/coaching/join-requests/invalid-id/teacher-reject');
+    const response = await request(app)
+      .patch('/coaching/join-requests/invalid-id/teacher-reject')
+      .set('Authorization', `Bearer ${accessToken}`);
 
     expect(response.status).toBe(400);
     expect(response.body).toEqual({ error: 'ID de pedido de adesão inválido' });

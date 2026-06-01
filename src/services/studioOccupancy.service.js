@@ -162,6 +162,22 @@ function buildTeacherLabel(session) {
   return null;
 }
 
+function formatSessionSummary(session) {
+  return {
+    sessionId: session.SessionID,
+    startTime: session.StartTime,
+    endTime: session.EndTime,
+    status: session.SessionStatus?.StatusName || null,
+    modality: session.Modality
+      ? {
+          modalityId: session.Modality.ModalityID,
+          modalityName: session.Modality.ModalityName,
+        }
+      : null,
+    currentUser: buildTeacherLabel(session),
+  };
+}
+
 function countDoubleBookingConflicts(sessions) {
   const ordered = [...sessions].sort((a, b) => a.StartTime.getTime() - b.StartTime.getTime());
   let count = 0;
@@ -277,6 +293,17 @@ async function fetchOccupancyContext({ start, end }) {
             LastName: true,
           },
         },
+        SessionStatus: {
+          select: {
+            StatusName: true,
+          },
+        },
+        Modality: {
+          select: {
+            ModalityID: true,
+            ModalityName: true,
+          },
+        },
       },
     }),
     prisma.studioBlock.findMany({
@@ -336,6 +363,7 @@ async function fetchOccupancyContext({ start, end }) {
 
 function buildRealtimeStudioItem(studio, sessions, blocks, overrides, at) {
   const activeSessions = sessions.filter((session) => session.StartTime <= at && session.EndTime > at);
+  const upcomingSessions = sessions.filter((session) => session.StartTime > at).slice(0, 5);
   const activeBlocks = blocks.filter((block) => block.StartsAt <= at && block.EndsAt > at);
   const activeOverride = getActiveOverride(overrides, at);
 
@@ -384,6 +412,8 @@ function buildRealtimeStudioItem(studio, sessions, blocks, overrides, at) {
     occupiedUntil,
     activeSessionId: currentSession ? currentSession.SessionID : null,
     activeSessionIds: activeSessions.map((entry) => entry.SessionID),
+    activeSessions: activeSessions.map(formatSessionSummary),
+    upcomingSessions: upcomingSessions.map(formatSessionSummary),
     activeBlockId: activeBlocks[0]?.StudioBlockID || null,
     activeOverrideId: activeOverride?.StudioStatusOverrideID || null,
     activeOverrideStatus: activeOverride?.Status || null,
@@ -517,10 +547,7 @@ async function getStudioOccupancyForecast({ from, to }) {
       upcomingSessions: studioSessions
         .sort((a, b) => a.StartTime.getTime() - b.StartTime.getTime())
         .map((entry) => ({
-          sessionId: entry.SessionID,
-          startTime: entry.StartTime,
-          endTime: entry.EndTime,
-          currentUser: buildTeacherLabel(entry),
+          ...formatSessionSummary(entry),
         })),
     };
   });
@@ -779,4 +806,3 @@ module.exports = {
   blockStudio,
   updateStudioStatus,
 };
-

@@ -219,10 +219,10 @@ const updateUserRolesSchema = [
 const resetUserPasswordSchema = [
     userIdParam,
     body('newPassword')
-        .isLength({ min: 8 }).withMessage('Password deve ter no mínimo 8 caracteres')
-        .matches(/[A-Z]/).withMessage('Password deve conter pelo menos uma letra maiúscula')
-        .matches(/[a-z]/).withMessage('Password deve conter pelo menos uma letra minúscula')
-        .matches(/[0-9]/).withMessage('Password deve conter pelo menos um número')
+        .isLength({ min: 8 }).withMessage('A senha deve ter no mínimo 8 caracteres.')
+        .matches(/[A-Z]/).withMessage('A senha deve conter pelo menos uma letra maiúscula.')
+        .matches(/[a-z]/).withMessage('A senha deve conter pelo menos uma letra minúscula.')
+        .matches(/[0-9]/).withMessage('A senha deve conter pelo menos um número.')
 ];
 
 module.exports = {

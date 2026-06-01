@@ -177,6 +177,38 @@ test('getStudioOccupancyRealTime accepts DD-MM-YYYY input format', async () => {
   assert.equal(result.studios.find((item) => item.studioId === 1).status, 'occupied');
 });
 
+test('getStudioOccupancyRealTime includes active and upcoming coaching sessions', async () => {
+  resetState();
+
+  state.sessions = [
+    buildSession({
+      SessionID: 14,
+      StartTime: new Date('2026-04-25T10:00:00.000Z'),
+      EndTime: new Date('2026-04-25T11:00:00.000Z'),
+      SessionStatus: { StatusName: 'Approved' },
+      Modality: { ModalityID: 3, ModalityName: 'Piano' },
+    }),
+    buildSession({
+      SessionID: 15,
+      StartTime: new Date('2026-04-25T12:00:00.000Z'),
+      EndTime: new Date('2026-04-25T13:00:00.000Z'),
+      SessionStatus: { StatusName: 'Scheduled' },
+      Modality: { ModalityID: 4, ModalityName: 'Canto' },
+    }),
+  ];
+
+  const result = await studioOccupancyService.getStudioOccupancyRealTime({
+    at: '2026-04-25T10:30:00.000Z',
+  });
+
+  const studioA = result.studios.find((item) => item.studioId === 1);
+
+  assert.deepEqual(studioA.activeSessions.map((entry) => entry.sessionId), [14]);
+  assert.deepEqual(studioA.upcomingSessions.map((entry) => entry.sessionId), [15]);
+  assert.equal(studioA.activeSessions[0].modality.modalityName, 'Piano');
+  assert.equal(studioA.upcomingSessions[0].status, 'Scheduled');
+});
+
 test('getStudioOccupancyForecast returns occupancy analytics per studio', async () => {
   resetState();
 

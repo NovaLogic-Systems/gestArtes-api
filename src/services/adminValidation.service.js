@@ -18,6 +18,13 @@ function normalizeText(value) {
     .toLowerCase();
 }
 
+function normalizeStepKey(value) {
+  return String(value || '')
+    .trim()
+    .toLowerCase()
+    .replace(/[^a-z0-9]/g, '');
+}
+
 function toPositiveInt(value) {
   const parsed = Number.parseInt(value, 10);
   return Number.isInteger(parsed) && parsed > 0 ? parsed : null;
@@ -103,25 +110,45 @@ async function listPostSessionValidations() {
   return rows.map(mapQueueRow);
 }
 
-async function getFinalizationStepId(db) {
+async function resolveOrCreateFinalizationStepId(db) {
+  const preferred = [
+    'adminfinalvalidation',
+    'managementfinalvalidation',
+    'managementfinalization',
+    'managementfinalisation',
+    'adminfinalization',
+    'finalvalidation',
+    'finalization',
+  ];
+
   const steps = await db.validationStep.findMany({
     select: {
       StepID: true,
       StepName: true,
     },
+    orderBy: {
+      StepID: 'asc',
+    },
   });
 
-  const keywords = ['final', 'management'];
-  const step = steps.find((entry) => {
-    const normalized = normalizeText(entry.StepName);
-    return keywords.every((keyword) => normalized.includes(keyword)) || normalized.includes('finalization') || normalized.includes('finalisation');
-  });
+  for (const key of preferred) {
+    const step = steps.find((entry) => normalizeStepKey(entry.StepName) === key);
 
-  if (!step) {
-    throw createHttpError(500, 'Validation step for finalisation not configured');
+    if (step) {
+      return step.StepID;
+    }
   }
 
-  return step.StepID;
+  const created = await db.validationStep.create({
+    data: {
+      StepName: 'AdminFinalValidation',
+    },
+    select: {
+      StepID: true,
+    },
+  });
+
+  return created.StepID;
 }
 
 async function finalizeSessionValidation(sessionId, adminUserId) {
@@ -184,7 +211,7 @@ async function finalizeSessionValidation(sessionId, adminUserId) {
       throw createHttpError(409, 'Sessão já foi finalizada');
     }
 
-    const finalizationStepId = await getFinalizationStepId(tx);
+    const finalizationStepId = await resolveOrCreateFinalizationStepId(tx);
 
     await tx.sessionValidation.create({
       data: {

@@ -28,6 +28,7 @@ function buildState() {
       { StepID: 2, StepName: 'TeacherConfirmation' },
       { StepID: 3, StepName: 'StudentConfirmation' },
     ],
+    createdValidationStep: null,
     statusRows: [{ StatusID: 9, StatusName: 'Finalized' }],
     existingFinancialEntry: null,
     createdValidation: null,
@@ -76,6 +77,15 @@ const fakePrisma = {
   },
   validationStep: {
     findMany: async () => state.validationSteps,
+    create: async ({ data }) => {
+      const created = {
+        StepID: state.validationSteps.length + 1,
+        StepName: data.StepName,
+      };
+      state.validationSteps.push(created);
+      state.createdValidationStep = created;
+      return created;
+    },
   },
 };
 
@@ -120,6 +130,26 @@ test('finalizeSessionValidation accepts one actor confirmation plus admin final 
   assert.equal(state.createdValidation.ValidatedByUserID, 1);
   assert.equal(state.sessionUpdate.data.StatusID, 9);
   assert.equal(pricingState.clientReceived, fakePrisma);
+});
+
+test('finalizeSessionValidation creates the admin final step when it is missing', async () => {
+  resetState({
+    validationSteps: [],
+    validations: [
+      validation({ roleName: 'student', stepName: 'StudentConfirmation', userId: 20 }),
+      validation({ roleName: 'teacher', stepName: 'TeacherConfirmation', userId: 12 }),
+    ],
+  });
+
+  const result = await adminService.finalizeSessionValidation({
+    sessionId: 10,
+    adminUserId: 1,
+  });
+
+  assert.equal(result.sessionId, 10);
+  assert.equal(state.createdValidationStep.StepName, 'AdminFinalValidation');
+  assert.equal(state.createdValidation.ValidationStepID, state.createdValidationStep.StepID);
+  assert.equal(state.validationSteps.length, 1);
 });
 
 test('finalizeSessionValidation does not treat unrelated teacher validations as completion confirmation', async () => {

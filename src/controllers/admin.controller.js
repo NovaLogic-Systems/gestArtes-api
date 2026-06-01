@@ -21,6 +21,7 @@ const {
     getPrimaryRoleFromUser,
     toAppRole,
 } = require('../utils/roles');
+const { revokeAllRefreshTokensForUser } = require('../services/jwt.service');
 
 const PASSWORD_HASH_ROUNDS = 12;
 const SESSION_APPROVAL_NOTIFICATION_TYPE = 'schedule';
@@ -43,6 +44,8 @@ function serializeAdminUser(user) {
         .filter(Boolean)));
     const isStudent = appRoles.includes('student');
 
+    const isTeacher = appRoles.includes('teacher');
+
     return {
         userId: user.UserID,
         firstName: user.FirstName,
@@ -61,6 +64,7 @@ function serializeAdminUser(user) {
         guardianPhone: user.StudentAccount?.GuardianPhone || null,
         isModalityLocked: isStudent ? Boolean(user.StudentAccount?.IsModalityLocked) : undefined,
         allowedModalities: isStudent && user.StudentAccount?.StudentAllowedModality ? user.StudentAccount.StudentAllowedModality.map(m => m.ModalityID) : undefined,
+        teacherModalities: isTeacher && user.TeacherModality ? user.TeacherModality.map(m => m.ModalityID) : undefined,
     };
 }
 
@@ -209,6 +213,7 @@ async function getManagedUser(tx, targetUserId) {
                     StudentAllowedModality: true,
                 },
             },
+            TeacherModality: true,
         },
     });
 }
@@ -238,6 +243,7 @@ async function listUsers(req, res, next) {
                             StudentAllowedModality: true,
                         },
                     },
+                    TeacherModality: true,
                 },
                 orderBy: {
                     CreatedAt: 'desc',
@@ -295,6 +301,7 @@ async function updateUser(req, res, next) {
         const guardianPhone = typeof req.body?.guardianPhone === 'string' ? String(req.body.guardianPhone).trim() : undefined;
         const isModalityLocked = typeof req.body?.isModalityLocked === 'boolean' ? req.body.isModalityLocked : undefined;
         const allowedModalities = Array.isArray(req.body?.allowedModalities) ? req.body.allowedModalities.map(Number) : undefined;
+        const teacherModalities = Array.isArray(req.body?.teacherModalities) ? req.body.teacherModalities.map(Number) : undefined;
 
         const updatedUser = await prisma.$transaction(async (tx) => {
             const targetUser = await getManagedUser(tx, targetUserId);
@@ -372,6 +379,11 @@ async function updateUser(req, res, next) {
                 data: userUpdateData,
             });
 
+            const appRoles = (targetUser.UserRole || [])
+                .map((entry) => toAppRole(entry?.Role?.RoleName))
+                .filter(Boolean);
+            const isTeacher = appRoles.includes('teacher');
+
             const hasStudentPayload = [birthDate, guardianName, guardianPhone, isModalityLocked, allowedModalities]
                 .some((entry) => entry !== undefined);
 
@@ -411,7 +423,7 @@ async function updateUser(req, res, next) {
                     await tx.studentAllowedModality.deleteMany({
                         where: { StudentAccountID: targetUser.StudentAccount.StudentAccountID }
                     });
-                    
+
                     if (allowedModalities.length > 0) {
                         // Ensure all elements are valid IDs before query
                         const validModalities = allowedModalities.filter(id => !isNaN(id));
@@ -436,6 +448,18 @@ async function updateUser(req, res, next) {
                     },
                     data: studentData,
                 });
+            }
+
+            if (teacherModalities !== undefined && isTeacher) {
+                await tx.teacherModality.deleteMany({ where: { TeacherID: targetUserId } });
+                if (teacherModalities.length > 0) {
+                    const validIds = teacherModalities.filter(id => Number.isInteger(id) && id > 0);
+                    if (validIds.length > 0) {
+                        await tx.teacherModality.createMany({
+                            data: validIds.map(modalityId => ({ TeacherID: targetUserId, ModalityID: modalityId })),
+                        });
+                    }
+                }
             }
 
             return getManagedUser(tx, targetUserId);
@@ -722,6 +746,40 @@ async function resetUserPassword(req, res, next) {
     }
 }
 
+async function revokeUserSessions(req, res, next) {
+    try {
+        const targetUserId = Number(req.params.id);
+        const adminUserId = Number(req.auth?.userId);
+
+        if (!Number.isInteger(targetUserId) || targetUserId <= 0) {
+            return res.status(400).json({ error: 'Invalid user id' });
+        }
+
+        const targetUser = await prisma.user.findUnique({
+            where: { UserID: targetUserId },
+            select: { UserID: true, IsActive: true, DeletedAt: true },
+        });
+
+        if (!targetUser || targetUser.DeletedAt) {
+            return res.status(404).json({ error: 'User not found' });
+        }
+
+        await revokeAllRefreshTokensForUser(targetUserId);
+
+        logAudit({
+            userId: adminUserId,
+            action: 'USER_SESSIONS_REVOKED',
+            module: AUDIT_MODULES.USERS,
+            targetType: 'user',
+            targetId: targetUserId,
+        });
+
+        return res.status(200).json({ message: 'Sessions revoked successfully.' });
+    } catch (error) {
+        return next(error);
+    }
+}
+
 function toPositiveInteger(value) {
     const parsed = Number(value);
     return Number.isInteger(parsed) && parsed > 0 ? parsed : null;
@@ -970,6 +1028,7 @@ module.exports = {
     listUsers,
     rejectSession,
     resetUserPassword,
+    revokeUserSessions,
     createSession,
     getDashboard,
     getOperationalSummary,

@@ -112,14 +112,11 @@ router.delete('/options/:id', ...adminAccess, async (req, res, next) => {
       where: { ModalityID: id },
       select: {
         ModalityID: true,
-        ModalityName: true,
         _count: {
           select: {
-            StudioModality: true,
-            TeacherModality: true,
             CoachingSession: true,
-            StudentAllowedModality: true,
             CoachingRequest: true,
+            GroupCoachingProposal: true,
           },
         },
       },
@@ -130,16 +127,29 @@ router.delete('/options/:id', ...adminAccess, async (req, res, next) => {
       return;
     }
 
-    const usageCount = Object.values(existing._count).reduce((sum, n) => sum + n, 0);
-    if (usageCount > 0) {
+    const blockedByHistory =
+      existing._count.CoachingSession +
+      existing._count.CoachingRequest +
+      existing._count.GroupCoachingProposal;
+
+    if (blockedByHistory > 0) {
       res.status(409).json({
-        error: 'Não é possível apagar a modalidade porque está em uso.',
-        details: existing._count,
+        error: `Não é possível apagar esta modalidade. Está associada a ${blockedByHistory} sessão(ões) ou pedido(s) de coaching existentes, que são registos históricos e não podem ser desvinculados.`,
       });
       return;
     }
 
-    await prisma.modality.delete({ where: { ModalityID: id } });
+    await prisma.$transaction([
+      prisma.studioModality.deleteMany({ where: { ModalityID: id } }),
+      prisma.teacherModality.deleteMany({ where: { ModalityID: id } }),
+      prisma.studentAllowedModality.deleteMany({ where: { ModalityID: id } }),
+      prisma.timetableSlot.updateMany({
+        where: { ModalityID: id },
+        data: { ModalityID: null },
+      }),
+      prisma.modality.delete({ where: { ModalityID: id } }),
+    ]);
+
     res.status(200).json({ success: true, modalityId: id });
   } catch (error) {
     next(error);

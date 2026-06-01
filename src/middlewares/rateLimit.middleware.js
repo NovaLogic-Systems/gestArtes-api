@@ -80,6 +80,8 @@ const apiRateLimiter = rateLimit({
   keyGenerator: getKeyByUser,
   standardHeaders: true,
   legacyHeaders: false,
+  // keyGenerator uses JWT user ID, not req.ip — X-Forwarded-For validation is irrelevant
+  validate: { xForwardedForHeader: false },
   skip: (req) => req.path.startsWith('/auth/'),
   message: { error: 'Demasiados pedidos, por favor tente mais tarde.' },
   handler: buildRateLimitHandler('API rate limit exceeded', 'api_rate_limit_exceeded'),
@@ -93,6 +95,7 @@ const pollingRateLimiter = rateLimit({
   keyGenerator: getKeyByUser,
   standardHeaders: true,
   legacyHeaders: false,
+  validate: { xForwardedForHeader: false },
   message: { error: 'Demasiados pedidos de polling, por favor tente mais tarde.' },
   handler: buildRateLimitHandler('Polling rate limit exceeded', 'polling_rate_limit_exceeded'),
 });
@@ -103,6 +106,7 @@ const loginLimiter = rateLimit({
   skipSuccessfulRequests: true,
   standardHeaders: true,
   legacyHeaders: false,
+  validate: { xForwardedForHeader: false },
   message: {
     error: 'Too many login attempts, please try again later.',
   },

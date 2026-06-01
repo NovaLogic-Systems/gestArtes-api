@@ -183,6 +183,12 @@ router.patch(
 );
 
 router.post(
+    '/users/:id/revoke-sessions',
+    ...adminAccess,
+    adminController.revokeUserSessions
+);
+
+router.post(
     '/sessions',
     ...adminAccess,
     ...createSessionSchema,

@@ -530,9 +530,9 @@ async function getDashboard(req, res, next) {
 
     const [
       upcomingSessions,
-      pendingValidationSessions,
+      pendingValidations,
       reviewRequests,
-      externalPayments,
+      activeMarketplaceListings,
       notificationRows,
       schedule,
     ] = await Promise.all([
@@ -542,17 +542,14 @@ async function getDashboard(req, res, next) {
           CoachingSession: { StartTime: { gte: now } },
         },
       }),
-      // Count sessions with any validation entry. Avoids filtering by ValidationStep
-      // since that relation requires the ValidationStepID column in SessionValidation
-      // which may not exist in the DB until the migration is applied.
-      prisma.sessionValidation.findMany({
+      // Sessions that ended and still need the student's confirmation
+      prisma.coachingSession.count({
         where: {
-          CoachingSession: {
-            SessionStudent: { some: { StudentAccountID: studentAccountId } },
-          },
+          EndTime: { lt: now },
+          SessionStudent: { some: { StudentAccountID: studentAccountId } },
+          SessionStatus: { StatusName: { not: { contains: 'cancel' } } },
+          SessionValidation: { none: { ValidatedByUserID: userId } },
         },
-        select: { SessionID: true },
-        distinct: ['SessionID'],
       }),
       prisma.coachingJoinRequest.count({
         where: {
@@ -560,18 +557,8 @@ async function getDashboard(req, res, next) {
           StatusID: { in: openJoinRequestStatusIds },
         },
       }),
-      prisma.coachingSession.count({
-        where: {
-          IsExternal: true,
-          StartTime: { gte: now },
-          SessionStudent: { some: { StudentAccountID: studentAccountId } },
-          SessionStatus: {
-            AND: [
-              { StatusName: { not: { contains: 'completed' } } },
-              { StatusName: { not: { contains: 'cancelled' } } },
-            ],
-          },
-        },
+      prisma.marketplaceItem.count({
+        where: { SellerID: userId, IsActive: true },
       }),
       prisma.notification.findMany({
         where: { UserID: userId },
@@ -590,9 +577,9 @@ async function getDashboard(req, res, next) {
 
     res.json({
       upcomingSessions,
-      pendingValidations: pendingValidationSessions.length,
+      pendingValidations,
       reviewRequests,
-      externalPaymentsInProgress: externalPayments,
+      activeMarketplaceListings,
       notifications: notificationRows.map((n) =>
         mapNotificationRow({
           notificationId: n.NotificationID,

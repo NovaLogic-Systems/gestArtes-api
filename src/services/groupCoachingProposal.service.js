@@ -164,9 +164,12 @@ async function resolveDefaultAttendanceStatusId(tx) {
   return status.AttendanceStatusID;
 }
 
-async function findCompatibleStudio(tx, modalityId, startTime, endTime) {
+async function findCompatibleStudio(tx, modalityId, startTime, endTime, minCapacity = 1) {
   const studios = await tx.studio.findMany({
-    where: { StudioModality: { some: { ModalityID: modalityId } } },
+    where: {
+      StudioModality: { some: { ModalityID: modalityId } },
+      Capacity: { gte: minCapacity },
+    },
     select: { StudioID: true, StudioName: true, Capacity: true },
     orderBy: [{ Capacity: 'asc' }, { StudioName: 'asc' }],
   });
@@ -177,7 +180,10 @@ async function findCompatibleStudio(tx, modalityId, startTime, endTime) {
     });
     if (conflicts === 0) return studio;
   }
-  throw createHttpError(409, 'Nenhum estúdio compatível disponível para este horário');
+  throw createHttpError(
+    409,
+    `Nenhum estúdio compatível disponível para este horário com capacidade para ${minCapacity} participante${minCapacity !== 1 ? 's' : ''}`
+  );
 }
 
 async function getCompatibleStudiosForProposal(proposalId, adminUserId) {
@@ -357,6 +363,9 @@ async function reviewProposalAsAdmin({ proposalId, adminUserId, payload }) {
   if (decision === 'approve') {
     const requestedStudioId = toPositiveInt(payload.studioId);
 
+    const studentUserIds = proposal.Participants.map((p) => p.StudentUserID);
+    const participantCount = studentUserIds.length;
+
     let studioRecord;
     if (requestedStudioId) {
       studioRecord = await prisma.studio.findUnique({
@@ -364,12 +373,23 @@ async function reviewProposalAsAdmin({ proposalId, adminUserId, payload }) {
         select: { StudioID: true, StudioName: true, Capacity: true },
       });
       if (!studioRecord) throw createHttpError(404, 'Estúdio não encontrado');
+      if ((studioRecord.Capacity ?? 0) < participantCount) {
+        throw createHttpError(
+          409,
+          `O estúdio selecionado tem capacidade para ${studioRecord.Capacity} participante(s), mas a sessão tem ${participantCount}.`
+        );
+      }
     } else {
-      studioRecord = await findCompatibleStudio(prisma, proposal.ModalityID, proposal.StartTime, proposal.EndTime);
+      studioRecord = await findCompatibleStudio(
+        prisma,
+        proposal.ModalityID,
+        proposal.StartTime,
+        proposal.EndTime,
+        participantCount
+      );
     }
     studioId = studioRecord.StudioID;
 
-    const studentUserIds = proposal.Participants.map((p) => p.StudentUserID);
     const [scheduledStatusId, pricingRateId, attendanceStatusId] = await Promise.all([
       resolveScheduledStatusId(prisma),
       resolveDefaultPricingRateId(prisma),
@@ -384,7 +404,7 @@ async function reviewProposalAsAdmin({ proposalId, adminUserId, payload }) {
       pricingRateId,
       statusId: scheduledStatusId,
       teacherIds: [proposal.TeacherUserID],
-      maxParticipants: studentUserIds.length,
+      maxParticipants: participantCount,
       isExternal: false,
       isOutsideStdHours: false,
       reviewNotes: null,

@@ -55,6 +55,114 @@ model CoachingJoinRequestStatus {
   CoachingJoinRequest CoachingJoinRequest[]
 }
 
+model CoachingRequest {
+  RequestID                                          Int                    @id(map: "PK__CoachingRequest") @default(autoincrement())
+  StudentUserID                                      Int
+  TeacherUserID                                      Int
+  RequestedByUserID                                  Int
+  ModalityID                                         Int
+  StudioID                                           Int?
+  ConfirmedSessionID                                 Int?
+  GroupProposalID                                    Int?
+  PreferredStartTime                                 DateTime               @db.DateTime
+  PreferredEndTime                                   DateTime?              @db.DateTime
+  CurrentStartTime                                   DateTime               @db.DateTime
+  CurrentEndTime                                     DateTime?              @db.DateTime
+  SuggestedStartTime                                 DateTime?              @db.DateTime
+  SuggestedEndTime                                   DateTime?              @db.DateTime
+  Status                                             String                 @db.VarChar(50)
+  RequestNotes                                       String?                @db.VarChar(255)
+  TeacherResponseNotes                               String?                @db.VarChar(255)
+  StudentResponseNotes                               String?                @db.VarChar(255)
+  AdminResponseNotes                                 String?                @db.VarChar(255)
+  RequestedAt                                        DateTime               @db.DateTime
+  UpdatedAt                                          DateTime?              @db.DateTime
+  ResolvedAt                                         DateTime?              @db.DateTime
+  CoachingRequestAction                              CoachingRequestAction[]
+  CoachingSession                                    CoachingSession?       @relation(fields: [ConfirmedSessionID], references: [SessionID], onDelete: NoAction, onUpdate: NoAction, map: "FK_CoachingRequest_ConfirmedSession")
+  Modality                                           Modality               @relation(fields: [ModalityID], references: [ModalityID], onUpdate: NoAction, map: "FK_CoachingRequest_Modality")
+  StudentUser                                        User                   @relation("CoachingRequest_StudentUserIDToUser", fields: [StudentUserID], references: [UserID], onUpdate: NoAction, map: "FK_CoachingRequest_StudentUser")
+  Studio                                             Studio?                @relation(fields: [StudioID], references: [StudioID], onDelete: NoAction, onUpdate: NoAction, map: "FK_CoachingRequest_Studio")
+  TeacherUser                                        User                   @relation("CoachingRequest_TeacherUserIDToUser", fields: [TeacherUserID], references: [UserID], onUpdate: NoAction, map: "FK_CoachingRequest_TeacherUser")
+  RequestedByUser                                    User                   @relation("CoachingRequest_RequestedByUserIDToUser", fields: [RequestedByUserID], references: [UserID], onUpdate: NoAction, map: "FK_CoachingRequest_RequestedByUser")
+  GroupProposal                                      GroupCoachingProposal? @relation("CR_GroupProposal", fields: [GroupProposalID], references: [ProposalID], onDelete: NoAction, onUpdate: NoAction, map: "FK_CoachingRequest_GroupProposal")
+  GroupCoachingParticipant                           GroupCoachingParticipant[] @relation("GroupParticipant_SourceRequest")
+
+  @@index([StudentUserID], map: "IX_CoachingRequest_StudentUserID")
+  @@index([TeacherUserID], map: "IX_CoachingRequest_TeacherUserID")
+  @@index([Status], map: "IX_CoachingRequest_Status")
+  @@index([RequestedAt], map: "IX_CoachingRequest_RequestedAt")
+  @@index([CurrentStartTime, CurrentEndTime], map: "IX_CoachingRequest_CurrentStartTime_CurrentEndTime")
+  @@index([GroupProposalID], map: "IX_CoachingRequest_GroupProposalID")
+  @@index([TeacherUserID, Status], map: "IX_CoachingRequest_TeacherUserID_Status")
+  @@index([StudentUserID, Status], map: "IX_CoachingRequest_StudentUserID_Status")
+  @@unique([ConfirmedSessionID], map: "UQ__CoachingRequest__ConfirmedSessionID", where: raw("([ConfirmedSessionID] IS NOT NULL)"))
+}
+
+model GroupCoachingProposal {
+  ProposalID         Int                        @id(map: "PK__GroupCoachingProposal") @default(autoincrement())
+  TeacherUserID      Int
+  ModalityID         Int
+  StudioID           Int?
+  ConfirmedSessionID Int?
+  StartTime          DateTime                   @db.DateTime
+  EndTime            DateTime                   @db.DateTime
+  Status             String                     @db.VarChar(50)
+  Notes              String?                    @db.VarChar(500)
+  AdminResponseNotes String?                    @db.VarChar(255)
+  RequestedAt        DateTime                   @db.DateTime
+  UpdatedAt          DateTime?                  @db.DateTime
+  ResolvedAt         DateTime?                  @db.DateTime
+
+  TeacherUser        User                       @relation("GroupCoachingProposal_TeacherUser", fields: [TeacherUserID], references: [UserID], onUpdate: NoAction, map: "FK_GroupCoachingProposal_TeacherUser")
+  Modality           Modality                   @relation(fields: [ModalityID], references: [ModalityID], onUpdate: NoAction, map: "FK_GroupCoachingProposal_Modality")
+  Studio             Studio?                    @relation(fields: [StudioID], references: [StudioID], onDelete: NoAction, onUpdate: NoAction, map: "FK_GroupCoachingProposal_Studio")
+  CoachingSession    CoachingSession?           @relation(fields: [ConfirmedSessionID], references: [SessionID], onDelete: NoAction, onUpdate: NoAction, map: "FK_GroupCoachingProposal_ConfirmedSession")
+  SourceRequests     CoachingRequest[]          @relation("CR_GroupProposal")
+  Participants       GroupCoachingParticipant[]
+
+  @@index([TeacherUserID], map: "IX_GroupCoachingProposal_TeacherUserID")
+  @@index([Status], map: "IX_GroupCoachingProposal_Status")
+  @@index([StartTime], map: "IX_GroupCoachingProposal_StartTime")
+  @@index([TeacherUserID, Status], map: "IX_GroupCoachingProposal_TeacherUserID_Status")
+  @@unique([ConfirmedSessionID], map: "UQ__GroupCoachingProposal__ConfirmedSessionID", where: raw("([ConfirmedSessionID] IS NOT NULL)"))
+}
+
+model GroupCoachingParticipant {
+  ParticipantID   Int                   @id(map: "PK__GroupCoachingParticipant") @default(autoincrement())
+  ProposalID      Int
+  StudentUserID   Int
+  SourceRequestID Int?
+  AddedAt         DateTime              @db.DateTime
+
+  Proposal        GroupCoachingProposal @relation(fields: [ProposalID], references: [ProposalID], onDelete: Cascade, onUpdate: NoAction, map: "FK_GroupCoachingParticipant_Proposal")
+  StudentUser     User                  @relation("GroupCoachingParticipant_StudentUser", fields: [StudentUserID], references: [UserID], onUpdate: NoAction, map: "FK_GroupCoachingParticipant_StudentUser")
+  SourceRequest   CoachingRequest?      @relation("GroupParticipant_SourceRequest", fields: [SourceRequestID], references: [RequestID], onDelete: NoAction, onUpdate: NoAction, map: "FK_GroupCoachingParticipant_SourceRequest")
+
+  @@unique([ProposalID, StudentUserID], map: "UQ__GroupCoachingParticipant__ProposalID_StudentUserID")
+  @@index([ProposalID], map: "IX_GroupCoachingParticipant_ProposalID")
+  @@index([StudentUserID], map: "IX_GroupCoachingParticipant_StudentUserID")
+}
+
+model CoachingRequestAction {
+  RequestActionID Int             @id(map: "PK__CoachingRequestAction") @default(autoincrement())
+  RequestID       Int
+  ActorUserID     Int
+  ActionType      String          @db.VarChar(50)
+  PreviousStatus  String?         @db.VarChar(50)
+  NextStatus      String?         @db.VarChar(50)
+  Message         String?         @db.VarChar(255)
+  ProposedStartTime DateTime?     @db.DateTime
+  ProposedEndTime   DateTime?     @db.DateTime
+  CreatedAt       DateTime        @db.DateTime
+  CoachingRequest CoachingRequest @relation(fields: [RequestID], references: [RequestID], onDelete: Cascade, onUpdate: NoAction, map: "FK_CoachingRequestAction_Request")
+  User            User            @relation(fields: [ActorUserID], references: [UserID], onUpdate: NoAction, map: "FK_CoachingRequestAction_User")
+
+  @@index([RequestID], map: "IX_CoachingRequestAction_RequestID")
+  @@index([ActorUserID], map: "IX_CoachingRequestAction_ActorUserID")
+  @@index([CreatedAt], map: "IX_CoachingRequestAction_CreatedAt")
+}
+
 model CoachingSession {
   SessionID                                    Int                   @id(map: "PK__Coaching__C9F4927041B081E4") @default(autoincrement())
   StudioID                                     Int
@@ -75,6 +183,8 @@ model CoachingSession {
   ReviewNotes                                  String?               @db.VarChar(255)
   PricingRateID                                Int
   CoachingJoinRequest                          CoachingJoinRequest[]
+  CoachingRequest                             CoachingRequest[]
+  GroupCoachingProposal                       GroupCoachingProposal[]
   User_CoachingSession_ReviewedByUserIDToUser  User?                 @relation("CoachingSession_ReviewedByUserIDToUser", fields: [ReviewedByUserID], references: [UserID], onDelete: NoAction, onUpdate: NoAction, map: "FKCoachingSe122574")
   SessionPricingRate                           SessionPricingRate    @relation(fields: [PricingRateID], references: [PricingRateID], onUpdate: NoAction, map: "FKCoachingSe330299")
   Studio                                       Studio                @relation(fields: [StudioID], references: [StudioID], onUpdate: NoAction, map: "FKCoachingSe374919")
@@ -279,9 +389,49 @@ model Modality {
   ModalityID             Int                      @id(map: "PK__Modality__C179441B1ADC4F85") @default(autoincrement())
   ModalityName           String                   @unique(map: "UQ__Modality__2C2AEFDF50A354AF") @db.VarChar(50)
   CoachingSession        CoachingSession[]
+  CoachingRequest        CoachingRequest[]
+  GroupCoachingProposal  GroupCoachingProposal[]
   StudioModality         StudioModality[]
   TeacherModality        TeacherModality[]
   StudentAllowedModality StudentAllowedModality[]
+  TimetableSlot          TimetableSlot[]          @relation("TimetableSlot_Modality")
+}
+
+/// Timetables: editable maps of schedules managed by admin
+model Timetable {
+  TimetableID Int             @id @default(autoincrement())
+  Label       String          @db.VarChar(150)
+  IsActive    Boolean         @default(false)
+  CreatedBy   Int?
+  CreatedAt   DateTime        @db.DateTime @default(now())
+  Slots       TimetableSlot[]
+
+  User        User?           @relation("Timetable_CreatedByUser", fields: [CreatedBy], references: [UserID], onDelete: NoAction, onUpdate: NoAction, map: "FK_Timetable_CreatedBy")
+
+  @@index([IsActive], map: "IX_Timetable_IsActive")
+}
+
+model TimetableSlot {
+  SlotID       Int      @id @default(autoincrement())
+  TimetableID  Int
+  DayOfWeek    Int      // 1=Monday .. 7=Sunday
+  StartMinutes Int      // minutes from 00:00
+  EndMinutes   Int
+  Title        String   @db.VarChar(200)
+  TeacherUserID Int?
+  StudioID     Int?
+  ModalityID   Int?
+  Color        String?  @db.VarChar(20)
+  Notes        String?  @db.VarChar(255)
+
+  Timetable    Timetable @relation(fields: [TimetableID], references: [TimetableID], onDelete: Cascade, onUpdate: NoAction, map: "FK_TimetableSlot_Timetable")
+  Teacher      User?     @relation("TimetableSlot_TeacherUser", fields: [TeacherUserID], references: [UserID], onDelete: NoAction, onUpdate: NoAction, map: "FK_TimetableSlot_Teacher")
+  Studio       Studio?   @relation("TimetableSlot_Studio", fields: [StudioID], references: [StudioID], onUpdate: NoAction, map: "FK_TimetableSlot_Studio")
+  Modality     Modality? @relation("TimetableSlot_Modality", fields: [ModalityID], references: [ModalityID], onDelete: NoAction, onUpdate: NoAction, map: "FK_TimetableSlot_Modality")
+
+  @@index([TimetableID], map: "IX_TimetableSlot_TimetableID")
+  @@index([DayOfWeek, StartMinutes, EndMinutes], map: "IX_TimetableSlot_DayStartEnd")
+  @@index([ModalityID], map: "IX_TimetableSlot_ModalityID")
 }
 
 model Notification {
@@ -299,6 +449,7 @@ model Notification {
 
   @@index([UserID], map: "IX_Notification_UserID")
   @@index([UserID, IsRead], map: "IX_Notification_UserID_IsRead")
+  @@index([UserID, CreatedAt(sort: Desc)], map: "IX_Notification_UserID_CreatedAt")
 }
 
 model NotificationType {
@@ -451,11 +602,15 @@ model Studio {
   StudioID        Int               @id(map: "PK__Studio__4ACC3B50E3DB87D4") @default(autoincrement())
   StudioName      String            @unique(map: "UQ__Studio__CEF9C6005841A721") @db.VarChar(50)
   Capacity        Int
-  CoachingSession CoachingSession[]
-  SchoolSchedule  SchoolSchedule[]
-  StudioBlock     StudioBlock[]
-  StudioModality  StudioModality[]
-  StudioStatusOverride StudioStatusOverride[]
+  CoachingSession       CoachingSession[]
+  CoachingRequest       CoachingRequest[]
+  GroupCoachingProposal GroupCoachingProposal[]
+  SchoolSchedule        SchoolSchedule[]
+  StudioBlock           StudioBlock[]
+  StudioModality        StudioModality[]
+  StudioStatusOverride  StudioStatusOverride[]
+  TimetableSlot         TimetableSlot[]   @relation("TimetableSlot_Studio")
+
 }
 
 model StudioBlock {
@@ -603,6 +758,10 @@ model User {
   IsActive                                                       Boolean
   DeletedAt                                                      DateTime?                @db.DateTime
   CoachingJoinRequest                                            CoachingJoinRequest[]
+  CoachingRequest_CoachingRequest_RequestedByUserIDToUser        CoachingRequest[]        @relation("CoachingRequest_RequestedByUserIDToUser")
+  CoachingRequest_CoachingRequest_StudentUserIDToUser            CoachingRequest[]        @relation("CoachingRequest_StudentUserIDToUser")
+  CoachingRequest_CoachingRequest_TeacherUserIDToUser            CoachingRequest[]        @relation("CoachingRequest_TeacherUserIDToUser")
+  CoachingRequestAction                                          CoachingRequestAction[]
   CoachingSession_CoachingSession_ReviewedByUserIDToUser         CoachingSession[]        @relation("CoachingSession_ReviewedByUserIDToUser")
   CoachingSession_CoachingSession_RequestedByUserIDToUser        CoachingSession[]        @relation("CoachingSession_RequestedByUserIDToUser")
   FinancialEntry                                                 FinancialEntry[]
@@ -622,10 +781,14 @@ model User {
   TeacherAbsence_TeacherAbsence_TeacherIDToUser                  TeacherAbsence[]         @relation("TeacherAbsence_TeacherIDToUser")
   TeacherAvailability_TeacherAvailability_ReviewedByUserIDToUser TeacherAvailability[]    @relation("TeacherAvailability_ReviewedByUserIDToUser")
   TeacherAvailability_TeacherAvailability_TeacherIDToUser        TeacherAvailability[]    @relation("TeacherAvailability_TeacherIDToUser")
+  Timetable_CreatedByUser                                        Timetable[]              @relation("Timetable_CreatedByUser")
+  TimetableSlot_TeacherUser                                      TimetableSlot[]          @relation("TimetableSlot_TeacherUser")
   AuditLog                                                       AuditLog[]
   RefreshToken                                                   RefreshToken[]
   TeacherModality                                                TeacherModality[]
   UserRole                                                       UserRole[]
+  GroupCoachingProposal_TeacherUser                              GroupCoachingProposal[]      @relation("GroupCoachingProposal_TeacherUser")
+  GroupCoachingParticipant_StudentUser                           GroupCoachingParticipant[]   @relation("GroupCoachingParticipant_StudentUser")
 
   @@index([IsActive], map: "IX_User_IsActive")
   @@index([CreatedAt], map: "IX_User_CreatedAt")
@@ -662,4 +825,3 @@ model ValidationStep {
   StepName          String              @unique(map: "UQ__Validati__2613973A95996C1A") @db.VarChar(50)
   SessionValidation SessionValidation[]
 }
-

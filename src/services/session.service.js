@@ -375,6 +375,7 @@ async function cancelPendingBookingsForTeacherAbsence(tx, teacherId, startTime, 
 }
 
 async function createSessionWithBusinessRules(input, requestedByUserId) {
+  const skipTeacherAvailability = Boolean(input?.skipTeacherAvailability);
   const teacherIds = normalizeTeacherIds(input.teacherIds);
   const hasAssignmentRoleId = input.assignmentRoleId !== undefined && input.assignmentRoleId !== null;
   const parsedAssignmentRoleId = Number(input.assignmentRoleId);
@@ -391,7 +392,7 @@ async function createSessionWithBusinessRules(input, requestedByUserId) {
   const startTime = new Date(input.startTime);
   const endTime = new Date(input.endTime);
   if (Number.isNaN(startTime.getTime()) || Number.isNaN(endTime.getTime()) || endTime <= startTime) {
-    throw createHttpError(400, 'Intervalo temporal invalido');
+    throw createHttpError(400, 'Intervalo temporal inválido');
   }
 
   return prisma.$transaction(async (tx) => {
@@ -419,7 +420,9 @@ async function createSessionWithBusinessRules(input, requestedByUserId) {
 
     for (const teacherId of teacherIds) {
       await ensureTeacherNotAbsent(tx, teacherId, startTime, endTime);
-      await ensureTeacherHasAvailability(tx, teacherId, startTime, endTime);
+      if (!skipTeacherAvailability) {
+        await ensureTeacherHasAvailability(tx, teacherId, startTime, endTime);
+      }
     }
 
     const created = await tx.coachingSession.create({

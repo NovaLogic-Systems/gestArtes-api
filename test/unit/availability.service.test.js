@@ -299,6 +299,23 @@ test('creates and lists pending exceptions', async () => {
   assert.equal(pending.exceptions[0].reason, 'Holiday');
 });
 
+test('rejects exceptions that already ended', async () => {
+  resetState();
+
+  await assert.rejects(
+    () => availabilityService.createException(42, {
+      startDate: '2020-01-10T10:00:00.000Z',
+      endDate: '2020-01-10T11:00:00.000Z',
+      reason: 'Past absence',
+    }),
+    (error) => {
+      assert.equal(error.status, 400);
+      assert.equal(error.message, 'Não é possível marcar indisponibilidade no passado');
+      return true;
+    }
+  );
+});
+
 test('creates exception and auto-cancels overlapping pending sessions with notifications', async () => {
   resetState();
   state.pendingSessions = [

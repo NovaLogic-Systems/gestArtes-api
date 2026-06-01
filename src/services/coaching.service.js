@@ -12,6 +12,7 @@ const { createHttpError } = require('../utils/http-error');
 // BR-11/BR-12: teacher initiatives are created pending management approval.
 // BR-19: initiative duration is one hour by default.
 const DEFAULT_TEACHER_INITIATIVE_DURATION_MS = 60 * 60 * 1000;
+const PENDING_TEACHER_STATUS_NAME = 'Pending_Teacher';
 const PENDING_APPROVAL_STATUS_NAME = 'Pending_Approval';
 const PENDING_APPROVAL_STATUS_ALIASES = ['PendingApproval', 'Pending Approval', 'Pending'];
 const CANCELLED_JUSTIFIED_STATUS_NAME = 'Cancelled_Justified';
@@ -634,8 +635,8 @@ async function createBooking({ teacherId, studioId, modalityId, startTime, endTi
 
   if (!studentAccount) throw createHttpError(404, 'Conta de aluno não encontrada');
 
-  const [pendingStatusId, defaultPricingRate, attendanceStatus] = await Promise.all([
-    resolveSessionStatusId(PENDING_APPROVAL_STATUS_NAME),
+  const [pendingTeacherStatusId, defaultPricingRate, attendanceStatus] = await Promise.all([
+    resolveOrCreateSessionStatusId(PENDING_TEACHER_STATUS_NAME),
     prisma.sessionPricingRate.findFirst({
       orderBy: { PricingRateID: 'asc' },
       select: { PricingRateID: true },
@@ -655,7 +656,7 @@ async function createBooking({ teacherId, studioId, modalityId, startTime, endTi
       modalityId: parsedModalityId,
       startTime: startDt,
       endTime: endDt,
-      statusId: pendingStatusId,
+      statusId: pendingTeacherStatusId,
       pricingRateId: defaultPricingRate.PricingRateID,
       maxParticipants: maxParticipants ? Number(maxParticipants) : undefined,
       isExternal: false,

@@ -6,41 +6,54 @@
  */
 
 const rateLimit = require('express-rate-limit');
+const jwt = require('jsonwebtoken');
 const logger = require('../utils/logger');
 
 function parsePositiveInt(value, fallback) {
   const parsed = Number(value);
-
-  if (Number.isInteger(parsed) && parsed > 0) {
-    return parsed;
-  }
-
+  if (Number.isInteger(parsed) && parsed > 0) return parsed;
   return fallback;
 }
 
 const windowMs = parsePositiveInt(process.env.RATE_LIMIT_WINDOW_MS, 15 * 60 * 1000);
-const max = parsePositiveInt(process.env.RATE_LIMIT_MAX_REQUESTS, 5000000);
-const loginWindowMs = parsePositiveInt(
-  process.env.LOGIN_RATE_LIMIT_WINDOW_MS,
-  15 * 60 * 1000
-);
+const max = parsePositiveInt(process.env.RATE_LIMIT_MAX_REQUESTS, 2000);
+const loginWindowMs = parsePositiveInt(process.env.LOGIN_RATE_LIMIT_WINDOW_MS, 15 * 60 * 1000);
 const loginMax = parsePositiveInt(process.env.LOGIN_RATE_LIMIT_MAX_REQUESTS, 150);
+const pollingMax = parsePositiveInt(process.env.POLLING_RATE_LIMIT_MAX_REQUESTS, 6000);
 
 function getRequestIp(req) {
   const forwardedFor = req.headers['x-forwarded-for'];
-
   if (typeof forwardedFor === 'string' && forwardedFor.trim()) {
     return forwardedFor.split(',')[0].trim();
   }
-
   return req.ip || req.socket?.remoteAddress || 'unknown';
 }
 
-// Key by userId when authenticated, fallback to IP — avoids shared-IP lockouts in dev
+// Decode JWT without verifying signature — used ONLY for rate-limit key extraction.
+// This runs before requireAuth, so we can't verify. We use the unverified userId
+// as a bucket key to avoid shared-IP lockouts (school NAT). Auth enforcement is
+// still handled by requireAuth separately.
+function tryDecodeUserIdFromBearer(req) {
+  try {
+    const authHeader = req.headers['authorization'];
+    if (typeof authHeader !== 'string' || !authHeader.startsWith('Bearer ')) return null;
+    const token = authHeader.slice(7);
+    const payload = jwt.decode(token);
+    const userId = payload?.userId ?? payload?.sub ?? payload?.id;
+    return userId ? String(userId) : null;
+  } catch {
+    return null;
+  }
+}
+
+// Key by userId (from JWT decode or req.auth), fallback to IP.
+// This runs before auth middleware, so we extract userId from the token directly.
 function getKeyByUser(req) {
-  const userId = req.auth?.userId || req.user?.userId;
-  if (userId) return `uid:${userId}`;
-  return getRequestIp(req);
+  const authedId = req.auth?.userId || req.user?.userId;
+  if (authedId) return `uid:${authedId}`;
+  const decodedId = tryDecodeUserIdFromBearer(req);
+  if (decodedId) return `uid:${decodedId}`;
+  return `ip:${getRequestIp(req)}`;
 }
 
 function buildRateLimitHandler(message, event) {
@@ -55,30 +68,28 @@ function buildRateLimitHandler(message, event) {
       email: String(req.body?.email || '').trim().toLowerCase() || null,
       retryAfter: Number(options?.windowMs) || null,
     });
-
     res.status(options.statusCode).json(options.message);
   };
 }
 
-// Global API limiter — applied after auth routes, keyed per user
+// Global API limiter — keyed per user (decoded from JWT) or IP fallback.
+// Default: 2000 requests per 15 min per user (env: RATE_LIMIT_MAX_REQUESTS).
 const apiRateLimiter = rateLimit({
   windowMs,
   max,
   keyGenerator: getKeyByUser,
   standardHeaders: true,
   legacyHeaders: false,
-  skip: (req) => {
-    // Never block auth routes — blocking /auth/refresh causes forced logout
-    return req.path.startsWith('/auth/');
-  },
+  skip: (req) => req.path.startsWith('/auth/'),
   message: { error: 'Demasiados pedidos, por favor tente mais tarde.' },
   handler: buildRateLimitHandler('API rate limit exceeded', 'api_rate_limit_exceeded'),
 });
 
 // Lenient limiter for high-frequency polling routes (notifications, etc.)
+// Higher limit (6000/15min ≈ 400/min) to account for shared NAT IPs in school.
 const pollingRateLimiter = rateLimit({
   windowMs: 15 * 60 * 1000,
-  max: 2000,
+  max: pollingMax,
   keyGenerator: getKeyByUser,
   standardHeaders: true,
   legacyHeaders: false,

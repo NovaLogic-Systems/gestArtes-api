@@ -42,6 +42,14 @@ const fakePrisma = {
 
       return state.sessionStatuses[0] || null;
     },
+    create: async ({ data }) => {
+      const created = {
+        StatusID: state.sessionStatuses.length + 1,
+        StatusName: data.StatusName,
+      };
+      state.sessionStatuses.push(created);
+      return created;
+    },
   },
   sessionPricingRate: {
     findUnique: async ({ where }) => state.pricingRateById.get(where.PricingRateID) || null,
@@ -178,19 +186,20 @@ test('createSessionInitiative returns 500 when pending status is not configured'
   );
 });
 
-test('createBooking uses pending approval status instead of completion confirmation pending status', async () => {
+test('createBooking starts with teacher approval status instead of admin approval', async () => {
   resetState({
     sessionStatuses: [
       { StatusID: 91, StatusName: 'Completion_Confirmation_Pending' },
       { StatusID: 10, StatusName: 'Pending_Approval' },
+      { StatusID: 11, StatusName: 'Pending_Teacher' },
     ],
   });
 
   const session = await coachingService.createBooking(validBookingPayload(), 700);
 
-  assert.equal(session.StatusID, 10);
+  assert.equal(session.StatusID, 11);
   assert.equal(state.createSessionCalls.length, 1);
-  assert.equal(state.createSessionCalls[0].payload.statusId, 10);
+  assert.equal(state.createSessionCalls[0].payload.statusId, 11);
   assert.equal(state.createSessionCalls[0].userId, 700);
   assert.deepEqual(state.sessionStudentCreates[0], {
     SessionID: 901,

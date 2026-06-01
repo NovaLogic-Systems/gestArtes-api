@@ -23,6 +23,7 @@ router.patch('/admissions/:joinRequestId/reject', ...teacherAccess, teacherContr
 
 router.get('/sessions/active', ...teacherAccess, teacherController.getActiveSessions);
 router.get('/sessions/pending', ...teacherAccess, teacherController.getPendingSessions);
+router.post('/sessions/:sessionId/invitations', ...teacherAccess, teacherController.inviteStudentToSession);
 router.patch('/sessions/:sessionId/confirm-completion', ...teacherAccess, teacherController.confirmCompletion);
 router.post('/sessions/:sessionId/no-show', ...teacherAccess, teacherController.registerNoShow);
 
@@ -44,4 +45,3 @@ router.post('/availability/exceptions', ...teacherAccess, availabilityController
 router.get('/availability/exceptions/pending', ...teacherAccess, availabilityController.listPendingTeacherExceptions);
 
 module.exports = router;
-

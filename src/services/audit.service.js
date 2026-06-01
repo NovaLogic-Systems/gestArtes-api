@@ -11,10 +11,43 @@ function createAuditService() {
   async function _readAllEvents(where = {}) {
     return prisma.auditLog.findMany({
       where,
+      include: {
+        User: {
+          select: {
+            UserID: true,
+            FirstName: true,
+            LastName: true,
+            Email: true,
+            UserRole: {
+              select: {
+                Role: {
+                  select: {
+                    RoleName: true,
+                  },
+                },
+              },
+            },
+          },
+        },
+      },
       orderBy: {
         AuditTimestamp: 'desc',
       },
     });
+  }
+
+  function mapAuditUserName(entry) {
+    const user = entry.User;
+    const fullName = [user?.FirstName, user?.LastName].filter(Boolean).join(' ').trim();
+    return fullName || user?.Email || entry.UserName || null;
+  }
+
+  function mapAuditUserRole(entry) {
+    const roles = entry.User?.UserRole
+      ?.map((userRole) => userRole.Role?.RoleName)
+      .filter(Boolean);
+
+    return roles?.length ? roles.join(', ') : entry.UserRole || null;
   }
 
   async function listEvents({
@@ -57,8 +90,9 @@ function createAuditService() {
     const items = filtered.slice(startIndex, startIndex + pageSize).map((e) => ({
       timestamp: e.AuditTimestamp,
       userId: e.UserID,
-      userName: e.UserName,
-      userRole: e.UserRole,
+      userName: mapAuditUserName(e),
+      userEmail: e.User?.Email || null,
+      userRole: mapAuditUserRole(e),
       action: e.Action,
       module: e.Module,
       targetType: e.TargetType,
@@ -112,4 +146,3 @@ function createAuditService() {
 }
 
 module.exports = { createAuditService };
-

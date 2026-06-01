@@ -247,8 +247,14 @@ async function createGroupProposal({ teacherUserId, payload }) {
     ? [...new Set(payload.sourceRequestIds.map(toPositiveInt).filter(Boolean))]
     : [];
 
+  const MAX_GROUP_PARTICIPANTS = 8;
+
   if (directStudentIds.length + sourceRequestIds.length < 2) {
     throw createHttpError(400, 'Uma sessão de grupo requer pelo menos 2 participantes');
+  }
+
+  if (directStudentIds.length + sourceRequestIds.length > MAX_GROUP_PARTICIPANTS) {
+    throw createHttpError(400, `Uma sessão de grupo não pode ter mais de ${MAX_GROUP_PARTICIPANTS} participantes`);
   }
 
   return prisma.$transaction(async (tx) => {
@@ -262,6 +268,9 @@ async function createGroupProposal({ teacherUserId, payload }) {
     const allStudentIds = [...new Set([...directStudentIds, ...requestStudentIds])];
     if (allStudentIds.length < 2) {
       throw createHttpError(400, 'Uma sessão de grupo requer pelo menos 2 participantes distintos');
+    }
+    if (allStudentIds.length > MAX_GROUP_PARTICIPANTS) {
+      throw createHttpError(400, `Uma sessão de grupo não pode ter mais de ${MAX_GROUP_PARTICIPANTS} participantes distintos`);
     }
 
     await resolveStudents(tx, allStudentIds);

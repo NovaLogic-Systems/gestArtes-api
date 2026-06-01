@@ -390,11 +390,6 @@ async function getProfile(req, res, next) {
         name: modalityDistribution[0]?.modalityName || null,
         modalityDistribution,
         nextSessions,
-        isModalityLocked: Boolean(profileRow.isModalityLocked),
-        allowedModalities: allowedModalityRecords.map((m) => ({
-          modalityId: m.ModalityID,
-          modalityName: m.ModalityName,
-        })),
       },
       statistics: {
         totalSessionsEnrolled,

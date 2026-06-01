@@ -49,6 +49,7 @@ function buildState() {
       { StepID: 2, StepName: 'Teacher Confirmation' },
     ],
     createdValidation: null,
+    createdValidationStep: null,
     queryRawRows: [],
   };
 }
@@ -73,6 +74,15 @@ const fakePrisma = {
   },
   validationStep: {
     findMany: async () => state.validationSteps,
+    create: async ({ data }) => {
+      const created = {
+        StepID: state.validationSteps.length + 1,
+        StepName: data.StepName,
+      };
+      state.validationSteps.push(created);
+      state.createdValidationStep = created;
+      return created;
+    },
   },
 };
 
@@ -257,7 +267,7 @@ test('finalizeSessionValidation: throws 409 when session is already finalized', 
   );
 });
 
-test('finalizeSessionValidation: throws 500 when finalization step is not configured', async () => {
+test('finalizeSessionValidation: creates the finalization step when it is missing', async () => {
   resetState();
   state.validations = [
     {
@@ -271,16 +281,18 @@ test('finalizeSessionValidation: throws 500 when finalization step is not config
       User: { UserRole: [{ Role: { RoleName: 'student' } }] },
     },
   ];
-  // Remover o passo de finalização para que a pesquisa falhe
+
   state.validationSteps = [{ StepID: 2, StepName: 'Teacher Confirmation' }];
 
-  await assert.rejects(
-    () => adminValidationService.finalizeSessionValidation(10, 1),
-    (err) => {
-      assert.equal(err.status, 500);
-      return true;
-    },
-  );
+  const result = await adminValidationService.finalizeSessionValidation(10, 1);
+
+  assert.ok(result.session);
+  assert.equal(result.session.SessionID, 10);
+  assert.ok(result.financialEntry);
+  assert.equal(result.financialEntry.EntryID, 99);
+  assert.ok(state.createdValidationStep);
+  assert.equal(state.createdValidationStep.StepName, 'AdminFinalValidation');
+  assert.equal(state.createdValidation.ValidationStepID, state.createdValidationStep.StepID);
 });
 
 test('finalizeSessionValidation: succeeds and returns session + financialEntry', async () => {

@@ -253,16 +253,18 @@ async function assertSessionIsReadyForFinalValidation(sessionId) {
   }
 }
 
-async function resolveAdminFinalStepId() {
+async function resolveOrCreateAdminFinalStepId(db) {
   const preferred = [
     'adminfinalvalidation',
     'managementfinalvalidation',
+    'managementfinalization',
+    'managementfinalisation',
     'adminfinalization',
     'finalvalidation',
     'finalization',
   ];
 
-  const steps = await prisma.validationStep.findMany({
+  const steps = await db.validationStep.findMany({
     select: {
       StepID: true,
       StepName: true,
@@ -279,11 +281,16 @@ async function resolveAdminFinalStepId() {
     }
   }
 
-  // ValidationStep rows are seeded data — throw a clear error if missing
-  throw createHttpError(
-    500,
-    'Passo de validação "AdminFinalValidation" não está configurado na base de dados. Execute o seed SQL em prisma/sql/20260509_seed_validation_steps.sql.'
-  );
+  const created = await db.validationStep.create({
+    data: {
+      StepName: 'AdminFinalValidation',
+    },
+    select: {
+      StepID: true,
+    },
+  });
+
+  return created.StepID;
 }
 
 async function assertNoFinalFinancialEntry(sessionId) {
@@ -321,10 +328,11 @@ async function finalizeSessionValidation({ sessionId, adminUserId }) {
   await assertSessionIsReadyForFinalValidation(sessionId);
   await assertNoFinalFinancialEntry(sessionId);
 
-  const stepId = await resolveAdminFinalStepId();
   const finalizedAt = new Date();
 
   return prisma.$transaction(async (tx) => {
+    const stepId = await resolveOrCreateAdminFinalStepId(tx);
+
     const validation = await tx.sessionValidation.create({
       data: {
         SessionID: sessionId,
